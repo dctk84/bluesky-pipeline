@@ -275,7 +275,7 @@ Prometheus thu thập metrics từ các service và cung cấp dữ liệu cho G
 
 ### 6.1. Ngôn ngữ và công cụ phát triển
 
-- Python 3.11.
+- Python 3.12.2.
 - SQL.
 - Bash cơ bản.
 - Git.
