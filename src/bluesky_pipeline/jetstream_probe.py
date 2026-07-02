@@ -3,9 +3,16 @@ import json
 
 import websockets
 
+WANTED_COLLECTIONS = [
+    "app.bsky.feed.post",
+    "app.bsky.feed.like",
+    "app.bsky.feed.repost",
+    "app.bsky.graph.follow",
+]
+
 JETSTREAM_URL = (
-    "wss://jetstream2.us-east.bsky.network/subscribe"
-    "?wantedCollections=app.bsky.feed.post"
+    "wss://jetstream2.us-east.bsky.network/subscribe?"
+    + "&".join(f"wantedCollections={collection}" for collection in WANTED_COLLECTIONS)
 )
 
 async def main() -> None:
@@ -14,13 +21,19 @@ async def main() -> None:
     async with websockets.connect(JETSTREAM_URL) as websocket:
         async for message in websocket:
             event = json.loads(message)
-            if event.get("commit", {}).get("operation") != "create":
-                continue
             
             event_count += 1
 
-            commit - event.get("commit", {})
+            commit = event.get("commit", {})
             record = commit.get("record", {})
+            subject = record.get("subject")
+
+            if isinstance(subject, dict):
+                subject_uri = subject.get("uri")
+                subject_cid = subject.get("cid")
+            else:
+                subject_uri = subject
+                subject_cid = None
 
             print(
                 json.dumps(
@@ -31,14 +44,17 @@ async def main() -> None:
                         "collection": commit.get("collection"),
                         "operation": commit.get("operation"),
                         "rkey": commit.get("rkey"),
+                        "record_type": record.get("$type"),
                         "created_at": record.get("createdAt"),
-                        "text": record.get("text"),
+                        "subject_uri": subject_uri,
+                        "subject_cid": subject_cid,
                     },
                     indent=2,
                     ensure_ascii=False,
                 )
+            )
 
-            if event_count >= 1:
+            if event_count >= 20:
                 break
 
 if __name__ == "__main__":

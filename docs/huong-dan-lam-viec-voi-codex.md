@@ -23,6 +23,19 @@ Quy trình của mỗi bước:
 
 Mỗi bước hướng dẫn phải có các phần sau.
 
+Khi bước hiện tại giới thiệu khái niệm mới, công nghệ mới hoặc quyết định thiết kế
+mới, Codex phải dùng đầy đủ cấu trúc trong mục này.
+
+Khi bước hiện tại chỉ là thao tác quen thuộc đã được lặp lại nhiều lần như Git
+status, Git diff, commit, push, chạy lại script probe hoặc kiểm tra output, Codex
+có thể trả lời ngắn gọn hơn:
+
+- Command cần chạy.
+- Điều kiện để coi là thành công.
+- Lỗi hoặc dấu hiệu bất thường cần gửi lại.
+
+Không cần giải thích lại các khái niệm đã hiểu nếu người học không yêu cầu.
+
 ### 3.1. Mục tiêu của bước
 
 Nói rõ sau bước này hệ thống có thêm khả năng gì.
@@ -122,7 +135,8 @@ Không được:
 
 ## 6. Quy tắc sử dụng Git
 
-Sau mỗi chức năng nhỏ chạy được, Codex hướng dẫn người học:
+Sau mỗi chức năng nhỏ chạy được hoặc mỗi cụm thay đổi có ý nghĩa, Codex hướng dẫn
+người học:
 
 1. Kiểm tra `git status`.
 2. Kiểm tra `git diff`.
@@ -130,6 +144,17 @@ Sau mỗi chức năng nhỏ chạy được, Codex hướng dẫn người họ
 4. Tự tạo commit.
 
 Codex không được tự commit.
+
+Không cần push sau từng commit nhỏ nếu thay đổi vẫn đang ở giai đoạn thử nghiệm
+local. Nên push khi:
+
+- Hoàn thành một cụm việc chạy được.
+- Cần backup lên GitHub.
+- Cần chia sẻ branch hoặc tạo pull request.
+- Kết thúc một milestone hoặc một phần rõ ràng của milestone.
+
+Với các bước Git quen thuộc, Codex chỉ cần đưa command và tiêu chí kiểm tra, không
+cần giải thích lại staging area, commit, branch hoặc remote nếu người học không hỏi.
 
 Commit message sử dụng Conventional Commits, ví dụ:
 
