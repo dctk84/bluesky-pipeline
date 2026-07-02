@@ -483,15 +483,25 @@ Grafana hiển thị:
 
 ## 8. Phạm vi dữ liệu
 
-### 8.1. Phạm vi MVP
+### 8.1. Phạm vi nguồn hoàn chỉnh
 
-Collection đầu tiên:
+Project tập trung vào các event công khai chính của Bluesky Jetstream để bao phủ
+ba nhóm tín hiệu:
+
+- Content activity.
+- Engagement activity.
+- Network activity.
+
+Các collection thuộc scope hoàn chỉnh:
 
 ```text
 app.bsky.feed.post
+app.bsky.feed.like
+app.bsky.feed.repost
+app.bsky.graph.follow
 ```
 
-Operations:
+Các operation cần quan sát:
 
 ```text
 create
@@ -499,21 +509,60 @@ update
 delete
 ```
 
-MVP ưu tiên xử lý bài viết trước để giảm số lượng schema phải hỗ trợ.
+Không phải collection nào cũng có đủ cả ba operation. Milestone khám phá schema
+phải xác nhận operation thực tế của từng collection trước khi thiết kế Silver.
 
-### 8.2. Phạm vi mở rộng
+### 8.2. Thứ tự triển khai
 
-Sau khi pipeline post ổn định, có thể thêm:
+Triển khai theo thứ tự để tránh xử lý quá nhiều schema cùng lúc:
 
-- Likes.
-- Reposts.
-- Follows.
+1. Probe `app.bsky.feed.post` để xác nhận kết nối và shape event cơ bản.
+2. Probe thêm `app.bsky.feed.like`, `app.bsky.feed.repost` và
+   `app.bsky.graph.follow`.
+3. Ingest raw multi-collection event vào Kafka/Bronze.
+4. Normalize từng collection trong Spark theo use case.
 
-Các event này chỉ được bổ sung khi có use case cụ thể như:
+### 8.3. Derived signals
 
+Một số dữ liệu phục vụ analytics không cần lấy từ collection riêng mà được trích
+xuất từ post record trong Spark:
+
+```text
+hashtag
+shared_domain
+language
+is_reply
+is_quote
+text_length
+```
+
+Các tín hiệu này phục vụ:
+
+- Trending hashtags.
+- Top shared domains.
+- Reply/quote ratio.
+- Language activity.
+- Content volume theo thời gian.
+
+### 8.4. Use cases theo nhóm dữ liệu
+
+Content events phục vụ:
+
+- Post volume.
+- Create/update/delete activity.
+- Hashtag và shared domain analytics.
+
+Engagement events phục vụ:
+
+- Like/repost volume.
 - Engagement velocity.
-- Top rapidly engaging posts.
-- Network activity metrics.
+- Rapidly growing posts.
+
+Network events phục vụ:
+
+- Follow events per minute.
+- Network activity trend.
+- Active repositories theo follow activity.
 
 ---
 
@@ -553,12 +602,13 @@ Nguyên tắc:
 ### 10.1. Topic MVP
 
 ```text
-bluesky.raw.posts.v1
+bluesky.raw.events.v1
 ```
 
-Topic dùng cho raw post events.
+Topic dùng cho raw Jetstream events thuộc scope hiện tại.
 
-Topic khác chỉ được tạo khi có use case rõ ràng.
+Topic riêng theo collection chỉ được tạo khi có use case rõ ràng, ví dụ cần
+retention, partitioning hoặc consumer isolation khác nhau.
 
 ### 10.2. Message key
 
