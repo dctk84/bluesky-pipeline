@@ -14,19 +14,31 @@ async def main() -> None:
     async with websockets.connect(JETSTREAM_URL) as websocket:
         async for message in websocket:
             event = json.loads(message)
+            if event.get("commit", {}).get("operation") != "create":
+                continue
+            
             event_count += 1
 
-            print(
-                {
-                    "kind": event.get("kind"),
-                    "did": event.get("did"),
-                    "time_us": event.get("time_us"),
-                    "collection": event.get("commit", {}).get("collection"),
-                    "operation": event.get("commit", {}).get("operation"),
-                }
-            )
+            commit - event.get("commit", {})
+            record = commit.get("record", {})
 
-            if event_count >= 5:
+            print(
+                json.dumps(
+                    {
+                        "kind": event.get("kind"),
+                        "did": event.get("did"),
+                        "time_us": event.get("time_us"),
+                        "collection": commit.get("collection"),
+                        "operation": commit.get("operation"),
+                        "rkey": commit.get("rkey"),
+                        "created_at": record.get("createdAt"),
+                        "text": record.get("text"),
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+
+            if event_count >= 1:
                 break
 
 if __name__ == "__main__":
