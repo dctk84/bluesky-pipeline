@@ -18,32 +18,29 @@ app.bsky.feed.repost
 app.bsky.graph.follow
 ```
 
-Trong một lần chạy probe dài hơn, script ghi được 763 event trước khi WebSocket
-connection bị ngắt. Đây là hành vi có thể xảy ra với streaming source và là lý do
-Milestone Ingestion Gateway sau này cần reconnect có kiểm soát.
+Trong một lần chạy probe 1000 event, script ghi được sample dạng event envelope
+vào JSONL local.
 
 Số lượng event theo collection:
 
 ```text
-app.bsky.feed.like: 509
-app.bsky.feed.post: 95
-app.bsky.feed.repost: 90
-app.bsky.graph.follow: 65
-unknown: 3
+app.bsky.feed.like: 691
+app.bsky.feed.post: 120
+app.bsky.feed.repost: 108
+app.bsky.graph.follow: 81
 ```
 
 Số lượng event theo collection và operation:
 
 ```text
-app.bsky.feed.like:create: 504
-app.bsky.feed.post:create: 86
-app.bsky.feed.repost:create: 83
-app.bsky.graph.follow:create: 63
-app.bsky.feed.repost:delete: 7
-app.bsky.feed.post:delete: 9
-app.bsky.feed.like:delete: 5
-app.bsky.graph.follow:delete: 2
-unknown:unknown: 3
+app.bsky.feed.like:create: 683
+app.bsky.feed.post:create: 113
+app.bsky.feed.repost:create: 104
+app.bsky.graph.follow:create: 61
+app.bsky.graph.follow:delete: 20
+app.bsky.feed.like:delete: 8
+app.bsky.feed.post:delete: 7
+app.bsky.feed.repost:delete: 4
 ```
 
 Kết quả này xác nhận endpoint Jetstream có thể cung cấp multi-collection events
@@ -53,15 +50,25 @@ hiện `delete`. Chưa nên kết luận `update` không tồn tại nếu chưa
 Số lượng record type quan sát được:
 
 ```text
-app.bsky.feed.like: 504
-app.bsky.feed.post: 86
-app.bsky.feed.repost: 83
-app.bsky.graph.follow: 63
-missing: 26
+app.bsky.feed.like: 683
+app.bsky.feed.post: 113
+app.bsky.feed.repost: 104
+app.bsky.graph.follow: 61
+missing: 39
 ```
 
-`missing` chủ yếu là các event không có `record` đầy đủ, thường gặp ở delete
-event hoặc event không đúng shape kỳ vọng.
+`missing` khớp với tổng số delete event trong sample:
+
+```text
+20 follow delete
++ 8 like delete
++ 7 post delete
++ 4 repost delete
+= 39 missing record
+```
+
+Điều này cho thấy delete event trong sample không có `record` đầy đủ. Các bước
+xử lý sau phải kiểm tra missing field thay vì giả định mọi event đều có record.
 
 Shape của `record.subject` theo collection:
 
@@ -139,6 +146,9 @@ record.reply
 record.embed
 record.facets
 record.langs
+record.bridgyOriginalText
+record.bridgyOriginalUrl
+record.via
 ```
 
 Các tín hiệu có thể trích xuất bằng Spark:

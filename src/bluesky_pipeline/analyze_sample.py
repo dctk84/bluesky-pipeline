@@ -30,7 +30,8 @@ def main() -> None:
     with SAMPLE_PATH.open("r", encoding="utf-8") as sample_file:
         for line in sample_file:
             # Lấy từng dòng thành json
-            event = json.loads(line)
+            envelope = json.loads(line)
+            event = envelope.get("payload", envelope)
 
             # Lấy nội dung commit từ dòng
             commit = event.get("commit", {})
