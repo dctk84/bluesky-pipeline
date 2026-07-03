@@ -18,6 +18,9 @@ JETSTREAM_URL = (
 async def main() -> None:
     event_count = 0
 
+    collection_counts: dict[str, int] = {}
+    operation_counts: dict[str, int] = {}
+
     async with websockets.connect(JETSTREAM_URL) as websocket:
         async for message in websocket:
             event = json.loads(message)
@@ -25,6 +28,14 @@ async def main() -> None:
             event_count += 1
 
             commit = event.get("commit", {})
+
+            collection = commit.get("collection")
+            collection_counts[collection] = collection_counts.get(collection, 0) + 1
+
+            operation = commit.get("operation")
+            operation_key = f"{collection}:{operation}"
+            operation_counts[operation_key] = operation_counts.get(operation_key, 0) + 1
+
             record = commit.get("record", {})
             subject = record.get("subject")
 
@@ -54,7 +65,9 @@ async def main() -> None:
                 )
             )
 
-            if event_count >= 20:
+            if event_count >= 50:
+                print("collection_counts: ", collection_counts)
+                print("operation_counts: ", operation_counts)
                 break
 
 if __name__ == "__main__":
