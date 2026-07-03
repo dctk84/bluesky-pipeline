@@ -125,6 +125,17 @@ Trước mỗi đoạn code, phải nói rõ:
 
 Sau đoạn code, phải giải thích các thành phần quan trọng.
 
+Khi viết script Python:
+
+- Script phải có comment ngắn theo từng bước xử lý chính để người học dễ đọc lại
+  luồng chương trình.
+- Comment tập trung giải thích ý định của bước xử lý, không nhắc lại cú pháp hiển
+  nhiên.
+- Mỗi hàm tự định nghĩa phải có docstring mô tả ngắn gọn hàm làm gì, input chính
+  là gì và output là gì.
+- Docstring và comment trong code dùng tiếng Anh ngắn gọn để thống nhất với style
+  code, còn phần hướng dẫn bên ngoài code vẫn viết bằng tiếng Việt.
+
 Không được:
 
 - Tự sửa file.
