@@ -8,6 +8,7 @@ SAMPLE_PATH = Path("data/probe/jetstream_sample.jsonl")
 
 
 def value_shape(value: Any) -> str:
+    """Trả về nhãn kiểu dữ liệu ngắn gọn cho field quan sát được."""
     if value is None:
         return "null"
     if isinstance(value, dict):
@@ -18,55 +19,39 @@ def value_shape(value: Any) -> str:
 
 
 def main() -> None:
+    """Profile sample Jetstream JSONL local và in ra quan sát về schema."""
     collection_counts: Counter[str] = Counter()
     operation_counts: Counter[str] = Counter()
     record_type_counts: Counter[str] = Counter()
     subject_shape_counts: Counter[str] = Counter()
 
-    # Tạo dictionary để gom danh sách field xuất hiện trong record của từng collection
-    # defaultdict(set) giúp tự tạo set rỗng nếu collection chưa tồn tại
+    # Theo dõi toàn bộ record field từng xuất hiện theo từng collection.
     record_fields_by_collection: dict[str, set[str]] = defaultdict(set)
 
     with SAMPLE_PATH.open("r", encoding="utf-8") as sample_file:
         for line in sample_file:
-            # Lấy từng dòng thành json
+            # Decode một dòng JSONL và hỗ trợ cả envelope lẫn raw sample cũ.
             envelope = json.loads(line)
             event = envelope.get("payload", envelope)
 
-            # Lấy nội dung commit từ dòng
+            # Lấy metadata ở cấp commit để đếm và profile schema.
             commit = event.get("commit", {})
-
-            # Lấy record trong commit, nếu không có thì dùng {}
             record = commit.get("record") or {}
-
-            # Lấy tên collection, nếu thiếu thì gán là "unknown"
             collection = commit.get("collection", "unknown")
-
-            # Lấy loại thao tác: create/update/delete, nếu thiếu thì gán là "unknown"
             operation = commit.get("operation", "unknown")
 
-            # Lấy $type trong record, nếu thiếu thì gán là "missing"
+            # Delete event có thể không có record, nên dùng nhãn fallback rõ ràng.
             record_type = record.get("$type", "missing")
-
-            # Lấy field subject trong record, có thể là dict, string, list, None,...
             subject = record.get("subject")
-            
-            # Tăng bộ đếm cho collection hiện tại lên 1
+
+            # Cập nhật các bộ đếm cho collection, operation, record type và subject.
             collection_counts[collection] += 1
-
-            # Tăng bộ đếm cho cặp collection + operation hiên tại lên 1
             operation_counts[f"{collection}:{operation}"] += 1
-
-            # Tăng bộ đếm cho record type hiện tại lên 1
             record_type_counts[record_type] += 1
-
-            # Xác định shape của subject rồi đếm theo từng collection
             subject_shape_counts[f"{collection}:{value_shape(subject)}"] += 1
 
-            # Chỉ xử lý record nếu trong record thực sử là dict
+            # Chỉ gom field khi record thực sự là object.
             if isinstance(record, dict):
-                # Lấy toàn bộ tên field trong record hiện tại
-                # rồi thêm vào set field của collection tương ứng
                 record_fields_by_collection[collection].update(record.keys())
 
     print("collection_counts")
@@ -81,13 +66,12 @@ def main() -> None:
     print("\nsubject_shape_counts")
     print(json.dumps(subject_shape_counts, indent=2, ensure_ascii=False))
 
-    # In danh sách các field đã từng xuất hiện trong record của từng collection
+    # In danh sách record field quan sát được theo từng collection.
     print("\nrecord_fields_by_collection")
     for collection, fields in sorted(record_fields_by_collection.items()):
-        # In tên collection
         print(collection)
 
-        # Sắp xếp các field theo alphabet rồi in từng field
+        # Sắp xếp field name để các lần chạy dễ so sánh hơn.
         for field in sorted(fields):
             print(f"  - {field}")
 

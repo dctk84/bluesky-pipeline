@@ -2,6 +2,7 @@ from bluesky_pipeline.event_envelope import build_event_envelope
 
 
 def test_build_event_envelope_adds_expected_metadata_for_create_event():
+    """Envelope phải giữ raw create event và expose metadata chính."""
     raw_event = {
         "did": "did:plc:test",
         "time_us": 123456789,
@@ -28,6 +29,7 @@ def test_build_event_envelope_adds_expected_metadata_for_create_event():
 
 
 def test_build_event_envelope_handles_delete_event_without_record():
+    """Envelope phải hỗ trợ delete event không có record."""
     raw_event = {
         "did": "did:plc:test",
         "time_us": 123456790,
@@ -48,6 +50,7 @@ def test_build_event_envelope_handles_delete_event_without_record():
 
 
 def test_build_event_envelope_handles_missing_commit():
+    """Envelope phải giữ non-commit event và để trống các commit field."""
     raw_event = {
         "did": "did:plc:test",
         "time_us": 123456791,
@@ -64,6 +67,7 @@ def test_build_event_envelope_handles_missing_commit():
 
 
 def test_build_event_envelope_handles_empty_event():
+    """Envelope phải xử lý được event rỗng mà không raise exception."""
     raw_event = {}
 
     envelope = build_event_envelope(raw_event)
