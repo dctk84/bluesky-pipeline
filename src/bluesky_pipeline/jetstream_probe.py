@@ -4,6 +4,8 @@ import json
 import websockets
 from pathlib import Path
 
+from bluesky_pipeline.event_envelope import build_event_envelope
+
 WANTED_COLLECTIONS = [
     "app.bsky.feed.post",
     "app.bsky.feed.like",
@@ -30,7 +32,10 @@ async def main() -> None:
         async with websockets.connect(JETSTREAM_URL) as websocket:
             async for message in websocket:
                 event = json.loads(message)
-                output_file.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+                envelope = build_event_envelope(event)
+
+                output_file.write(json.dumps(envelope, ensure_ascii=False) + "\n")
 
                 event_count += 1
 
@@ -72,7 +77,7 @@ async def main() -> None:
                 #     )
                 # )
 
-                if event_count >= 10000:
+                if event_count >= 1000:
                     print("collection_counts: ", collection_counts)
                     print("operation_counts: ", operation_counts)
                     break
