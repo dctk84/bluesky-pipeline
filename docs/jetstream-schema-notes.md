@@ -18,6 +18,64 @@ app.bsky.feed.repost
 app.bsky.graph.follow
 ```
 
+Trong một lần chạy probe dài hơn, script ghi được 763 event trước khi WebSocket
+connection bị ngắt. Đây là hành vi có thể xảy ra với streaming source và là lý do
+Milestone Ingestion Gateway sau này cần reconnect có kiểm soát.
+
+Số lượng event theo collection:
+
+```text
+app.bsky.feed.like: 509
+app.bsky.feed.post: 95
+app.bsky.feed.repost: 90
+app.bsky.graph.follow: 65
+unknown: 3
+```
+
+Số lượng event theo collection và operation:
+
+```text
+app.bsky.feed.like:create: 504
+app.bsky.feed.post:create: 86
+app.bsky.feed.repost:create: 83
+app.bsky.graph.follow:create: 63
+app.bsky.feed.repost:delete: 7
+app.bsky.feed.post:delete: 9
+app.bsky.feed.like:delete: 5
+app.bsky.graph.follow:delete: 2
+unknown:unknown: 3
+```
+
+Kết quả này xác nhận endpoint Jetstream có thể cung cấp multi-collection events
+cho scope hiện tại. Sample này cũng cho thấy cả bốn collection đều có thể xuất
+hiện `delete`. Chưa nên kết luận `update` không tồn tại nếu chưa quan sát đủ lâu.
+
+Số lượng record type quan sát được:
+
+```text
+app.bsky.feed.like: 504
+app.bsky.feed.post: 86
+app.bsky.feed.repost: 83
+app.bsky.graph.follow: 63
+missing: 26
+```
+
+`missing` chủ yếu là các event không có `record` đầy đủ, thường gặp ở delete
+event hoặc event không đúng shape kỳ vọng.
+
+Shape của `record.subject` theo collection:
+
+```text
+app.bsky.feed.like: dict
+app.bsky.feed.repost: dict
+app.bsky.graph.follow: str
+app.bsky.feed.post: null
+```
+
+Điểm này xác nhận cùng tên field `subject` nhưng shape khác nhau giữa collection,
+nên Spark normalization không nên xử lý mọi collection bằng một schema phẳng duy
+nhất.
+
 Các collection này đại diện cho ba nhóm dữ liệu:
 
 - Content activity: bài viết, reply, quote, update và delete.
@@ -79,6 +137,7 @@ record.createdAt
 record.text
 record.reply
 record.embed
+record.facets
 record.langs
 ```
 
@@ -113,6 +172,7 @@ record.$type
 record.createdAt
 record.subject.uri
 record.subject.cid
+record.via
 ```
 
 `record.subject` trong like thường là object trỏ tới post được like.
@@ -134,6 +194,7 @@ record.$type
 record.createdAt
 record.subject.uri
 record.subject.cid
+record.via
 ```
 
 `record.subject` trong repost thường là object trỏ tới post được repost.
@@ -154,6 +215,7 @@ Các field cần tiếp tục khảo sát:
 record.$type
 record.createdAt
 record.subject
+record.via
 ```
 
 `record.subject` trong follow có thể là DID string thay vì object. Đây là điểm
@@ -210,3 +272,22 @@ bảng Silver/Gold theo use case.
 
 Bronze cần giữ raw event để audit, replay và reprocess khi schema normalization
 thay đổi.
+
+## Sample JSONL local
+
+Probe script có thể ghi raw event sample vào file local:
+
+```text
+data/probe/jetstream_sample.jsonl
+```
+
+File này dùng để khảo sát schema sau khi chạy probe, ví dụ kiểm tra shape của từng
+collection, so sánh `record.subject` giữa like/repost/follow hoặc xem các field
+thiếu theo operation.
+
+Nguyên tắc:
+
+- Đây là dữ liệu thật từ Jetstream, chỉ dùng trong môi trường local.
+- Không commit file sample lên Git.
+- Thư mục `data/` phải nằm trong `.gitignore`.
+- Khi cần sample mới, có thể xóa file local và chạy lại probe.
