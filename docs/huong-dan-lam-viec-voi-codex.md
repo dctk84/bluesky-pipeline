@@ -133,8 +133,9 @@ Khi viết script Python:
   nhiên.
 - Mỗi hàm tự định nghĩa phải có docstring mô tả ngắn gọn hàm làm gì, input chính
   là gì và output là gì.
-- Docstring và comment trong code dùng tiếng Anh ngắn gọn để thống nhất với style
-  code, còn phần hướng dẫn bên ngoài code vẫn viết bằng tiếng Việt.
+- Docstring và comment trong code phải viết bằng tiếng Việt để người học đọc lại
+  dễ hiểu. Tên biến, hàm, class, module, package và các identifier kỹ thuật vẫn
+  dùng tiếng Anh.
 
 Không được:
 
@@ -144,7 +145,30 @@ Không được:
 - Tạo abstraction khi project chưa có nhu cầu thực tế.
 - Đưa code quá dài trong một bước.
 
-## 6. Quy tắc sử dụng Git
+## 6. Quy tắc viết test
+
+Chỉ hướng dẫn viết test khi test đó có giá trị rõ ràng cho project.
+
+Nên viết test cho:
+
+- Module có logic xử lý phức tạp.
+- Hàm có nhiều edge case hoặc nhiều nhánh điều kiện.
+- Contract dữ liệu quan trọng giữa các tầng pipeline.
+- Logic parse, validate, normalize, deduplicate hoặc transform dữ liệu.
+- Code dễ regression khi refactor.
+- Bug đã từng xảy ra và cần khóa lại bằng test.
+
+Không nên viết test máy móc cho:
+
+- Hàm quá mỏng chỉ bọc một lời gọi thư viện.
+- Hàm getter, formatter hoặc mapper quá hiển nhiên.
+- Script discovery tạm thời chưa có logic ổn định.
+- Code đang thử nghiệm nhanh và chưa trở thành contract của pipeline.
+
+Khi đề xuất test, Codex phải nói rõ test đó bảo vệ rủi ro gì. Nếu không nêu được
+rủi ro cụ thể, chưa nên thêm test.
+
+## 7. Quy tắc sử dụng Git
 
 Sau mỗi chức năng nhỏ chạy được hoặc mỗi cụm thay đổi có ý nghĩa, Codex hướng dẫn
 người học:
