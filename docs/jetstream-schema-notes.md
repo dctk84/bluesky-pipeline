@@ -473,14 +473,28 @@ Message value:
 event envelope JSON
 ```
 
-Bản gateway hiện tại có giới hạn:
+Cấu hình environment variable hiện tại:
 
 ```text
-MAX_EVENTS = 100
+KAFKA_BOOTSTRAP_SERVERS
+KAFKA_TOPIC
+MAX_EVENTS
 ```
 
-Giới hạn này giúp kiểm chứng local nhanh và tránh để process chạy vô hạn trong giai
-đoạn discovery.
+Ý nghĩa:
+
+- `KAFKA_BOOTSTRAP_SERVERS`: Kafka bootstrap server, mặc định
+  `localhost:9092`.
+- `KAFKA_TOPIC`: topic raw event, mặc định `bluesky.raw.events.v1`.
+- `MAX_EVENTS`: số event tối đa gateway publish trong local discovery, mặc định
+  `100`.
+
+`MAX_EVENTS` giúp kiểm chứng local nhanh và tránh để process chạy vô hạn trong
+giai đoạn discovery.
+
+Các cấu hình này không phải secret, nhưng vẫn được đọc qua environment variable
+để tránh hard-code theo môi trường. Khi project có secret hoặc credential, các giá
+trị đó cũng phải đi qua environment variable và không được commit vào Git.
 
 Những phần chưa triển khai ở bản gateway đầu tiên:
 
@@ -489,7 +503,6 @@ Những phần chưa triển khai ở bản gateway đầu tiên:
 - Graceful shutdown.
 - Structured logging đầy đủ.
 - Metrics cho throughput, delivery failure và latency.
-- Cấu hình qua biến môi trường.
 - Backpressure handling khi Kafka hoặc downstream chậm.
 
 Vì vậy gateway hiện tại mới chứng minh được luồng live ingestion cơ bản, chưa phải

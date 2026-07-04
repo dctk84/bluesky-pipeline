@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 from typing import Any
@@ -20,9 +21,9 @@ JETSTREAM_URL = (
     + "&".join(f"wantedCollections={collection}" for collection in WANTED_COLLECTIONS)
 )
 
-TOPIC = "bluesky.raw.events.v1"
-BOOTSTRAP_SERVERS = "localhost:9092"
-MAX_EVENTS = 100
+TOPIC = os.getenv("KAFKA_TOPIC", "bluesky.raw.events.v1")
+BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+MAX_EVENTS = int(os.getenv("MAX_EVENTS", "100"))
 
 delivery_failed = 0
 
