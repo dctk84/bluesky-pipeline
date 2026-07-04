@@ -347,9 +347,94 @@ Prometheus thu thập metrics từ các service và cung cấp dữ liệu cho G
 
 ---
 
-## 7. Vai trò của từng thành phần
+## 7. Cấu trúc repository
 
-### 7.1. Bluesky Jetstream
+Repository cần được tổ chức rõ ràng theo vai trò của từng nhóm file để project dễ
+mở rộng, dễ review và gần với cách làm thực tế.
+
+Cấu trúc repository không cố định ngay từ đầu. Ở giai đoạn đầu, project có thể giữ
+cấu trúc đơn giản. Khi số lượng file tăng lên, repository phải được tách dần theo
+trách nhiệm hoặc tầng xử lý.
+
+Cấu trúc định hướng:
+
+```text
+bluesky-pipeline/
+├── docs/
+│   ├── huong-dan-lam-viec-voi-codex.md
+│   ├── tong-quan-du-an.md
+│   └── jetstream-schema-notes.md
+├── src/
+│   └── bluesky_pipeline/
+│       ├── event_envelope.py
+│       ├── normalize_event.py
+│       └── ...
+├── scripts/
+│   ├── jetstream_probe.py
+│   ├── analyze_sample.py
+│   ├── normalize_sample.py
+│   └── ...
+├── tests/
+│   └── test_*.py
+├── data/
+│   └── probe/
+│       └── *.jsonl
+├── requirements.txt
+└── .gitignore
+```
+
+Vai trò:
+
+- `src/bluesky_pipeline/`: code Python có thể dùng lại trong pipeline.
+- `scripts/`: script chạy tay phục vụ discovery, probe hoặc thao tác local.
+- `tests/`: test cho các module có logic đáng kiểm chứng.
+- `docs/`: tài liệu thiết kế, phạm vi dự án, ghi chú schema và quyết định kỹ
+  thuật.
+- `data/`: dữ liệu local sinh ra khi chạy probe hoặc sample; không commit.
+- `requirements.txt`: dependency Python cho milestone hiện tại.
+
+Khi code tăng lên, package `src/bluesky_pipeline/` có thể được tách tiếp theo các
+nhóm trách nhiệm như:
+
+```text
+src/bluesky_pipeline/
+├── ingestion/
+├── events/
+├── normalization/
+├── storage/
+├── streaming/
+├── quality/
+└── config/
+```
+
+Ý nghĩa định hướng:
+
+- `ingestion/`: kết nối nguồn, WebSocket, Kafka producer, retry và logging.
+- `events/`: event envelope, schema contract và Kafka key.
+- `normalization/`: parse và chuẩn hóa event theo collection.
+- `storage/`: helper liên quan Bronze, Silver, Gold hoặc object storage.
+- `streaming/`: Spark Structured Streaming jobs.
+- `quality/`: validation, data quality checks và reconciliation.
+- `config/`: đọc cấu hình từ biến môi trường hoặc file config không chứa secret.
+
+Các thư mục này chỉ được tạo khi có nhu cầu thực tế. Không tạo trước toàn bộ cấu
+trúc nếu milestone hiện tại chưa dùng đến.
+
+Quy ước:
+
+- Không commit dữ liệu trong `data/`.
+- Không đặt sample JSONL trong `src/`.
+- Không để script discovery phát triển lẫn với logic pipeline lâu dài. Khi số
+  lượng script chạy tay tăng lên, cần tách sang thư mục riêng như `scripts/`.
+- Chỉ tạo thư mục mới khi có vai trò rõ ràng trong milestone hiện tại.
+- Ưu tiên cấu trúc đơn giản trước, chỉ tách module/thư mục khi số lượng file hoặc
+  độ phức tạp thật sự tăng.
+
+---
+
+## 8. Vai trò của từng thành phần
+
+### 8.1. Bluesky Jetstream
 
 Vai trò:
 
@@ -365,7 +450,7 @@ Project sử dụng Jetstream cho mục đích:
 
 Project không coi Jetstream là authoritative archive.
 
-### 7.2. Ingestion Gateway
+### 8.2. Ingestion Gateway
 
 Gateway chỉ chịu trách nhiệm vận chuyển dữ liệu từ Jetstream sang Kafka.
 
@@ -389,7 +474,7 @@ Gateway thực hiện:
 - Publish event.
 - Ghi metrics và logs.
 
-### 7.3. Kafka
+### 8.3. Kafka
 
 Kafka là event backbone của platform.
 
@@ -402,7 +487,7 @@ Kafka giải quyết:
 - Consumer isolation.
 - Downstream recovery.
 
-### 7.4. Spark
+### 8.4. Spark
 
 Spark là compute engine chính.
 
@@ -416,7 +501,7 @@ Spark giải quyết:
 - Deduplication.
 - Batch backfill từ Bronze Parquet hoặc Silver Iceberg.
 
-### 7.5. MinIO
+### 8.5. MinIO
 
 MinIO là môi trường local thay thế S3.
 
@@ -428,7 +513,7 @@ MinIO giải quyết:
 - Separation of compute and storage.
 - Storage layout experiments.
 
-### 7.6. Parquet
+### 8.6. Parquet
 
 Parquet là file format.
 
@@ -440,7 +525,7 @@ Parquet được sử dụng vì:
 - Predicate pushdown.
 - Phù hợp analytical workload.
 
-### 7.7. Iceberg
+### 8.7. Iceberg
 
 Iceberg là table format.
 
@@ -453,7 +538,7 @@ Iceberg = table format
 Spark   = compute engine
 ```
 
-### 7.8. ClickHouse
+### 8.8. ClickHouse
 
 ClickHouse là analytical serving database.
 
@@ -463,13 +548,13 @@ Nó phục vụ:
 - Near-real-time metrics.
 - Low-latency analytical queries.
 
-### 7.9. Airflow
+### 8.9. Airflow
 
 Airflow orchestration các batch workflow hữu hạn.
 
 Airflow không chạy continuous consumer.
 
-### 7.10. Prometheus và Grafana
+### 8.10. Prometheus và Grafana
 
 Prometheus lưu technical metrics.
 
