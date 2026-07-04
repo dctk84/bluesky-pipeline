@@ -419,6 +419,82 @@ data/probe/jetstream_sample.jsonl
 Đây mới là kiểm chứng local cho raw event topic. Chưa có đảm bảo exactly-once,
 chưa có retry policy hoàn chỉnh và chưa phải ingestion gateway production.
 
+## Live ingestion gateway ban đầu
+
+Sau khi kiểm chứng publish từ sample JSONL, project đã có gateway ban đầu đọc dữ
+liệu live từ Jetstream và publish trực tiếp vào Kafka raw topic.
+
+File gateway:
+
+```text
+src/bluesky_pipeline/ingestion_gateway.py
+```
+
+Luồng đã kiểm chứng:
+
+```text
+Bluesky Jetstream WebSocket
+        -> Python ingestion gateway
+        -> event envelope
+        -> Kafka topic bluesky.raw.events.v1
+        -> Kafka Console Consumer
+```
+
+Input:
+
+```text
+Jetstream WebSocket live events
+```
+
+Output:
+
+```text
+Kafka topic bluesky.raw.events.v1
+```
+
+Scope collection hiện tại:
+
+```text
+app.bsky.feed.post
+app.bsky.feed.like
+app.bsky.feed.repost
+app.bsky.graph.follow
+```
+
+Message key:
+
+```text
+repository_did
+```
+
+Message value:
+
+```text
+event envelope JSON
+```
+
+Bản gateway hiện tại có giới hạn:
+
+```text
+MAX_EVENTS = 100
+```
+
+Giới hạn này giúp kiểm chứng local nhanh và tránh để process chạy vô hạn trong giai
+đoạn discovery.
+
+Những phần chưa triển khai ở bản gateway đầu tiên:
+
+- Reconnect khi WebSocket bị ngắt.
+- Bounded retry và backoff.
+- Graceful shutdown.
+- Structured logging đầy đủ.
+- Metrics cho throughput, delivery failure và latency.
+- Cấu hình qua biến môi trường.
+- Backpressure handling khi Kafka hoặc downstream chậm.
+
+Vì vậy gateway hiện tại mới chứng minh được luồng live ingestion cơ bản, chưa phải
+ingestion gateway hoàn chỉnh.
+
 ## Ghi chú thiết kế
 
 Gateway không nên normalize sâu theo từng collection. Gateway chỉ nên giữ raw
