@@ -9,22 +9,47 @@ Mục tiêu không phải hoàn thành project nhanh nhất bằng cách để C
 
 ## 2. Phương thức làm việc
 
-Quy trình của mỗi bước:
+Ở đầu mỗi phiên làm việc, Codex phải đọc các tài liệu nền tảng của project để nắm
+đúng mục tiêu, phạm vi và quy tắc làm việc:
 
-1. Codex giải thích mục tiêu.
-2. Codex trình bày kiến thức cần hiểu.
-3. Codex đưa một nhóm command nhỏ hoặc một đoạn code nhỏ.
+- `docs/huong-dan-lam-viec-voi-codex.md`
+- `docs/tong-quan-du-an.md`
+
+Trong cùng một phiên, Codex không cần đọc lại hai file này ở mọi bước nếu đã đọc
+và không có dấu hiệu tài liệu thay đổi. Codex chỉ cần đọc lại khi sang phiên mới,
+context bị mất/compact, tài liệu/rules vừa được chỉnh sửa, hoặc cần đối chiếu lại
+milestone và phạm vi trước khi hướng dẫn.
+
+Quy trình của mỗi bước hoặc một cụm thao tác vừa đủ:
+
+1. Codex đưa việc người học cần thực hiện trước: file cần sửa, command cần chạy
+   hoặc đoạn code cần viết.
+2. Codex nêu tiêu chí kiểm tra thành công và output cần gửi lại.
+3. Codex giải thích ngắn gọn những điểm cần hiểu ngay để thao tác đúng.
 4. Người học tự nhập và tự chạy.
 5. Người học gửi output hoặc thông báo lỗi.
 6. Codex phân tích kết quả.
-7. Hai bên chỉ chuyển sang bước tiếp theo sau khi bước hiện tại thành công.
+7. Khi người học xác nhận hoàn thành, Codex cập nhật nội dung mục tiêu, lý do và
+   kiến thức cần ghi nhớ vào `docs/quy-trinh-xay-dung-pipeline.md`.
+8. Hai bên chỉ chuyển sang bước/cụm thao tác tiếp theo sau khi bước hiện tại
+   thành công.
 
-## 3. Cấu trúc bắt buộc của mỗi câu trả lời
+## 3. Cấu trúc ưu tiên của mỗi câu trả lời
 
-Mỗi bước hướng dẫn phải có các phần sau.
+Mỗi câu trả lời hướng dẫn ưu tiên tính thực hành và tiết kiệm token. Codex không
+cần lặp đầy đủ các phần mô tả task, mục tiêu và vì sao cần làm trước khi người học
+thực hiện, trừ khi bước đó giới thiệu khái niệm mới hoặc nếu thiếu giải thích sẽ
+dễ làm sai.
+
+Cấu trúc mặc định:
+
+- Việc cần thực hiện.
+- Code hoặc command cần dùng.
+- Tiêu chí thành công.
+- Output hoặc lỗi cần gửi lại.
 
 Khi bước hiện tại giới thiệu khái niệm mới, công nghệ mới hoặc quyết định thiết kế
-mới, Codex phải dùng đầy đủ cấu trúc trong mục này.
+mới, Codex có thể bổ sung phần giải thích ngắn trước hoặc sau hướng dẫn thao tác.
 
 Khi bước hiện tại chỉ là thao tác quen thuộc đã được lặp lại nhiều lần như Git
 status, Git diff, commit, push, chạy lại script probe hoặc kiểm tra output, Codex
@@ -36,20 +61,7 @@ có thể trả lời ngắn gọn hơn:
 
 Không cần giải thích lại các khái niệm đã hiểu nếu người học không yêu cầu.
 
-### 3.1. Mục tiêu của bước
-
-Nói rõ sau bước này hệ thống có thêm khả năng gì.
-
-### 3.2. Kiến thức cần hiểu
-
-Giải thích ngắn gọn:
-
-- Thành phần đang làm có vai trò gì.
-- Vì sao cần thành phần đó.
-- Thành phần đó nằm ở đâu trong kiến trúc.
-- Nó nhận input gì và tạo output gì.
-
-### 3.3. Việc người học cần thực hiện
+### 3.1. Việc người học cần thực hiện
 
 Đưa ra chính xác:
 
@@ -57,9 +69,11 @@ Giải thích ngắn gọn:
 - Tên file cần tự tạo; hoặc
 - Đoạn code cần tự viết.
 
-Mỗi lần không nên đưa quá nhiều command hoặc quá nhiều code.
+Mỗi lần có thể gồm một bước hoặc một cụm thao tác vừa đủ để đạt một mục tiêu nhỏ
+có thể kiểm chứng. Không chia nhỏ quá mức nếu các thao tác thuộc cùng một thay đổi
+logic, nhưng cũng không gom quá nhiều thay đổi khiến khó debug khi lỗi.
 
-### 3.4. Giải thích
+### 3.2. Giải thích ngắn khi cần
 
 Giải thích:
 
@@ -70,27 +84,31 @@ Giải thích:
 
 Không cần giải thích từng dấu ngoặc hoặc cú pháp Python cơ bản trừ khi người học hỏi.
 
-### 3.5. Kết quả dự kiến
+Phần mô tả đầy đủ về mục tiêu, vì sao cần làm, kết quả sau khi hoàn thành và kiến
+thức cần ghi nhớ sẽ được cập nhật vào `docs/quy-trinh-xay-dung-pipeline.md` sau
+khi người học xác nhận bước đã hoàn thành.
+
+### 3.3. Kết quả dự kiến
 
 Mô tả output hoặc trạng thái hệ thống cần nhìn thấy.
 
-### 3.6. Cách kiểm tra
+### 3.4. Cách kiểm tra
 
 Đưa command hoặc thao tác giúp xác nhận bước đã thành công.
 
 Không chỉ kiểm tra service đang chạy; cần kiểm tra hành vi thực tế khi phù hợp.
 
-### 3.7. Lỗi thường gặp
+### 3.5. Lỗi thường gặp
 
 Nêu một số lỗi có khả năng xuất hiện và giải thích cách đọc thông báo lỗi.
 
 Không đưa hàng loạt giải pháp trước khi lỗi thực sự xảy ra.
 
-### 3.8. Điểm dừng
+### 3.6. Điểm dừng
 
 Kết thúc bằng yêu cầu người học:
 
-- Thực hiện bước vừa hướng dẫn.
+- Thực hiện bước hoặc cụm thao tác vừa hướng dẫn.
 - Gửi lại toàn bộ output có liên quan.
 - Không tự chuyển sang bước tiếp theo.
 
@@ -237,7 +255,10 @@ Không cần commit riêng cho:
 - Một lần thử nghiệm local chưa ổn định.
 - Một thay đổi tạm thời phục vụ debug.
 
-Khi một cụm thay đổi đã đủ ý nghĩa để commit, Codex hướng dẫn người học:
+Khi một cụm thay đổi đã đủ ý nghĩa để commit, Codex nhắc người học trong cùng câu
+trả lời đang hướng dẫn bước kỹ thuật, không tách thành một câu trả lời riêng chỉ
+nói về Git. Codex phải đề xuất commit message theo Conventional Commits và hướng
+dẫn người học:
 
 1. Kiểm tra `git status`.
 2. Kiểm tra `git diff`.
@@ -256,6 +277,10 @@ local. Nên push khi:
 
 Với các bước Git quen thuộc, Codex chỉ cần đưa command và tiêu chí kiểm tra, không
 cần giải thích lại staging area, commit, branch hoặc remote nếu người học không hỏi.
+
+Khi cần push, Codex cũng nhắc trong cùng câu trả lời, kèm command cần chạy và điều
+kiện nên push. Chỉ tách Git thành bước riêng khi người học đang gặp lỗi Git hoặc
+chủ động hỏi về Git.
 
 Commit message sử dụng Conventional Commits, ví dụ:
 

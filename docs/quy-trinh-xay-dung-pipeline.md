@@ -20,6 +20,13 @@ tồn tại trong repository.
 9. [Xây dựng live ingestion gateway ban đầu](#bước-9-xây-dựng-live-ingestion-gateway-ban-đầu)
 10. [Bổ sung cấu hình, logging và reliability cơ bản cho gateway](#bước-10-bổ-sung-cấu-hình-logging-và-reliability-cơ-bản-cho-gateway)
 11. [Duy trì tài liệu kỹ thuật theo tiến độ pipeline](#bước-11-duy-trì-tài-liệu-kỹ-thuật-theo-tiến-độ-pipeline)
+12. [Kiểm chứng Spark đọc raw event từ Kafka](#bước-12-kiểm-chứng-spark-đọc-raw-event-từ-kafka)
+13. [Parse event envelope JSON trong Spark](#bước-13-parse-event-envelope-json-trong-spark)
+14. [Ghi Bronze Parquet local bằng Spark streaming](#bước-14-ghi-bronze-parquet-local-bằng-spark-streaming)
+15. [Đọc lại Bronze Parquet để kiểm chứng dữ liệu usable](#bước-15-đọc-lại-bronze-parquet-để-kiểm-chứng-dữ-liệu-usable)
+16. [Partition Bronze local theo collection](#bước-16-partition-bronze-local-theo-collection)
+17. [Giữ raw JSON gốc trong Bronze local](#bước-17-giữ-raw-json-gốc-trong-bronze-local)
+18. [Partition Bronze local theo thời gian ingest](#bước-18-partition-bronze-local-theo-thời-gian-ingest)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -427,3 +434,258 @@ chuyển sang bước tiếp theo.
   nguồn dữ liệu, ingestion, Kafka, xử lý, lưu trữ, phục vụ truy vấn và vận hành.
 - Chỉ ghi những gì đã hoàn thành và kiểm chứng; không biến kế hoạch tương lai
   thành thành quả hiện tại.
+
+## Bước 12: Kiểm chứng Spark đọc raw event từ Kafka
+
+**Mục tiêu**
+
+Tạo lát cắt Spark Structured Streaming đầu tiên đọc trực tiếp từ Kafka raw topic
+và in dữ liệu ra console để kiểm chứng kết nối.
+
+**Vì sao cần thực hiện**
+
+Sau khi ingestion gateway đã publish event vào Kafka, cần chứng minh tầng compute
+có thể consume cùng topic đó. Đây là cầu nối đầu tiên giữa message broker và Spark,
+trước khi parse schema, validate dữ liệu hoặc ghi Bronze.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script Spark local đọc topic `bluesky.raw.events.v1`, cast Kafka
+`key` và `value` từ binary sang string, rồi in các cột raw ra console. Script đã
+chạy được sau khi cài Java, thêm `pyspark==3.5.1` và cấu hình Kafka connector
+`spark-sql-kafka-0-10_2.12:3.5.1`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `requirements.txt`
+- `docker-compose.yml`
+
+**Kiến thức cần ghi nhớ**
+
+- PySpark cần Java để khởi động Spark engine; lỗi `JAVA_GATEWAY_EXITED` thường là
+  dấu hiệu cần kiểm tra Java trước.
+- Spark core không tự có Kafka data source; muốn dùng `.format("kafka")` cần thêm
+  package `spark-sql-kafka-0-10`.
+- Kafka message trong Spark có `key` và `value` dạng binary, nên thường cần cast
+  sang string trước khi parse JSON.
+- Checkpoint là bắt buộc với streaming query nghiêm túc, kể cả khi bước hiện tại
+  mới in ra console để kiểm chứng.
+
+## Bước 13: Parse event envelope JSON trong Spark
+
+**Mục tiêu**
+
+Chuyển `message_value` từ JSON string thành các cột có schema trong Spark
+Structured Streaming.
+
+**Vì sao cần thực hiện**
+
+Kafka chỉ lưu message dạng byte. Để Spark có thể validate, transform, partition
+và ghi xuống Bronze/Silver ở các bước sau, raw JSON cần được parse thành cột có
+kiểu dữ liệu rõ ràng thay vì chỉ là một chuỗi dài.
+
+**Kết quả sau khi hoàn thành**
+
+Script Spark đọc topic `bluesky.raw.events.v1`, parse envelope JSON bằng
+`from_json` và in ra console các cột như `schema_version`, `source`,
+`received_at`, `collection`, `operation`, `repository_did` và
+`jetstream_time_us`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `requirements.txt`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- `from_json` cần schema tường minh để Spark biết cách chuyển JSON string thành
+  struct column.
+- Schema ở bước này mới là envelope schema tối thiểu, chưa phải schema đầy đủ cho
+  từng collection bên trong `payload`.
+- Parse thành cột giúp các bước sau dễ filter, partition, validate và ghi dữ liệu
+  ra storage hơn nhiều so với xử lý một chuỗi JSON thô.
+- Console sink chỉ dùng để kiểm chứng; sink thật của Bronze sẽ là Parquet.
+
+## Bước 14: Ghi Bronze Parquet local bằng Spark streaming
+
+**Mục tiêu**
+
+Đổi Spark sink từ console sang Parquet để tạo tầng Bronze local đầu tiên.
+
+**Vì sao cần thực hiện**
+
+Console sink chỉ chứng minh Spark đọc và parse được dữ liệu. Pipeline cần một
+storage sink để lưu lịch sử raw/envelope event phục vụ audit, replay và các bước
+xử lý tiếp theo. Ở giai đoạn này, ghi local Parquet giúp kiểm chứng logic Spark
+file sink trước khi đưa MinIO vào.
+
+**Kết quả sau khi hoàn thành**
+
+Spark Structured Streaming đọc topic `bluesky.raw.events.v1`, parse envelope JSON
+và ghi dữ liệu ra `data/bronze/bluesky_raw_events` dưới dạng Parquet. Khi publish
+sample batch vào Kafka, thư mục Bronze local sinh ra các file `.parquet` và metadata
+của Spark file sink.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `data/bronze/bluesky_raw_events`
+- `data/checkpoints/spark_read_kafka_raw`
+
+**Kiến thức cần ghi nhớ**
+
+- Bronze là tầng dữ liệu gần nguồn, ưu tiên append, audit và replay.
+- Với Spark Structured Streaming file sink, output path và checkpoint path là một
+  cặp trạng thái phải nhất quán với nhau.
+- Không nên xóa riêng `_spark_metadata` hoặc riêng checkpoint trong lúc test. Nếu
+  muốn chạy lại sạch ở local discovery, cần xóa cả output path và checkpoint path
+  cùng lúc.
+- Local Parquet chỉ là bước kiểm chứng sink; thiết kế chính thức của project sẽ
+  đưa Bronze lên MinIO theo kiến trúc S3-compatible object storage.
+
+## Bước 15: Đọc lại Bronze Parquet để kiểm chứng dữ liệu usable
+
+**Mục tiêu**
+
+Đọc ngược dữ liệu Bronze Parquet đã ghi để xác nhận output của Spark streaming có
+thể được sử dụng bởi job Spark khác.
+
+**Vì sao cần thực hiện**
+
+Một pipeline không chỉ cần ghi file thành công, mà còn cần chứng minh dữ liệu ghi
+ra có schema đọc được và có record thực tế. Bước này kiểm tra chất lượng tối thiểu
+của sink trước khi tiếp tục tối ưu layout hoặc chuyển sang MinIO.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script đọc `data/bronze/bluesky_raw_events`, in schema, hiển thị một số
+record mẫu và in `bronze_count`. Kết quả chạy cho thấy dữ liệu Bronze local đọc lại
+được bằng Spark.
+
+**Các file liên quan**
+
+- `scripts/read_bronze_parquet.py`
+- `data/bronze/bluesky_raw_events`
+- `scripts/spark_read_kafka_raw.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Ghi được file chưa đủ; cần đọc lại để kiểm chứng schema và dữ liệu.
+- Parquet là định dạng columnar phù hợp cho tầng Bronze vì Spark đọc/ghi hiệu quả
+  và giữ được schema.
+- Script đọc kiểm chứng nên tách khỏi streaming writer để tránh trộn trách nhiệm
+  giữa ghi dữ liệu và quan sát dữ liệu.
+
+## Bước 16: Partition Bronze local theo collection
+
+**Mục tiêu**
+
+Tổ chức dữ liệu Bronze Parquet local theo `collection` để dễ quan sát và đọc theo
+từng loại event.
+
+**Vì sao cần thực hiện**
+
+Bluesky Jetstream có nhiều collection như post, like, repost và follow. Nếu tất cả
+event nằm chung một layout phẳng, các job sau sẽ khó đọc chọn lọc theo loại event.
+Partition theo `collection` là bước đơn giản nhưng có giá trị rõ ràng cho truy vấn,
+debug và các transform downstream.
+
+**Kết quả sau khi hoàn thành**
+
+Bronze writer ghi dữ liệu xuống `data/bronze/bluesky_raw_events` với layout thư
+mục dạng `collection=...`. Khi publish sample batch, output sinh ra các thư mục
+như `collection=app.bsky.feed.like` và `collection=app.bsky.feed.post`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `data/bronze/bluesky_raw_events`
+- `data/checkpoints/spark_read_kafka_raw`
+
+**Kiến thức cần ghi nhớ**
+
+- Partition column nên là cột thường được dùng để filter hoặc phân tách luồng xử
+  lý downstream.
+- Partition quá ít thì chưa tận dụng được pruning; partition quá nhiều dễ tạo
+  nhiều file/thư mục nhỏ. Ở bước này `collection` là lựa chọn hợp lý vì số lượng
+  collection trong scope còn nhỏ.
+- Khi thay đổi partition layout của file sink streaming, cần reset cả output path
+  và checkpoint path trong môi trường local test.
+
+## Bước 17: Giữ raw JSON gốc trong Bronze local
+
+**Mục tiêu**
+
+Bổ sung cột `message_value` vào Bronze Parquet local để mỗi record đã parse vẫn
+giữ lại raw Kafka message gốc.
+
+**Vì sao cần thực hiện**
+
+Bronze là tầng gần nguồn, phục vụ audit, replay và reprocess. Nếu Bronze chỉ lưu
+các cột metadata đã parse mà bỏ raw JSON, pipeline sẽ khó xử lý lại dữ liệu khi
+schema downstream thay đổi hoặc logic parse ban đầu có lỗi.
+
+**Kết quả sau khi hoàn thành**
+
+Spark writer giữ lại `message_value` cùng với Kafka metadata và các field envelope
+đã parse. Sau khi reset output/checkpoint local, chạy lại writer và publish sample
+batch, script đọc Bronze hiển thị raw JSON trong output và in được
+`bronze_count: 9405`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/read_bronze_parquet.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `data/bronze/bluesky_raw_events`
+- `data/checkpoints/spark_read_kafka_raw`
+
+**Kiến thức cần ghi nhớ**
+
+- Bronze nên giữ dữ liệu gần nguồn nhất có thể để phục vụ audit và replay.
+- Parse JSON thành cột giúp query và partition dễ hơn, nhưng không nên thay thế
+  hoàn toàn raw payload ở tầng Bronze.
+- Khi thay đổi schema output của Spark streaming file sink trong local test, cần
+  reset đồng thời output path và checkpoint path để tránh lẫn schema cũ và mới.
+
+## Bước 18: Partition Bronze local theo thời gian ingest
+
+**Mục tiêu**
+
+Bổ sung các cột `kafka_timestamp`, `ingest_date` và `ingest_hour`, sau đó tổ chức
+Bronze Parquet local theo layout thời gian ingest kết hợp với `collection`.
+
+**Vì sao cần thực hiện**
+
+Bronze cần layout dễ đọc theo khoảng thời gian vì hầu hết thao tác audit, replay,
+backfill và kiểm tra dữ liệu đều bắt đầu từ một khoảng ngày/giờ cụ thể. Partition
+theo thời gian ingest là lựa chọn ổn định hơn so với các key có cardinality cao
+như DID, post URI hoặc hashtag.
+
+**Kết quả sau khi hoàn thành**
+
+Spark writer ghi dữ liệu xuống `data/bronze/bluesky_raw_events` với layout dạng
+`ingest_date=.../ingest_hour=.../collection=...`. Script đọc Bronze hiển thị dữ
+liệu đã ghi, bao gồm raw JSON trong `message_value`, các field envelope đã parse
+và các cột thời gian ingest.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/read_bronze_parquet.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `data/bronze/bluesky_raw_events`
+- `data/checkpoints/spark_read_kafka_raw`
+
+**Kiến thức cần ghi nhớ**
+
+- Partition theo ngày/giờ giúp các job sau đọc chọn lọc dữ liệu theo khoảng thời
+  gian, giảm số file cần scan.
+- `kafka_timestamp` là thời điểm Kafka ghi nhận message, khác với `received_at`
+  của gateway và `jetstream_time_us` từ nguồn.
+- Không nên partition Bronze theo key có quá nhiều giá trị như DID hoặc URI vì dễ
+  tạo nhiều thư mục/file nhỏ và làm layout khó quản lý.

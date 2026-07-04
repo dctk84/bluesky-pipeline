@@ -14,10 +14,23 @@ Codex không được xây project thay người học.
 
 ## Tài liệu bắt buộc phải đọc
 
-Trước khi đưa ra bất kỳ hướng dẫn nào, phải đọc:
+Ở đầu mỗi phiên làm việc, hoặc khi Codex chưa chắc còn đủ ngữ cảnh hiện tại, phải
+đọc:
 
 1. `docs/huong-dan-lam-viec-voi-codex.md`
 2. `docs/tong-quan-du-an.md`
+
+Không cần đọc lại hai file này ở mọi bước nếu Codex đã đọc trong cùng phiên làm
+việc và không có dấu hiệu tài liệu đã thay đổi.
+
+Codex phải đọc lại các tài liệu bắt buộc khi:
+
+- Sang phiên làm việc mới hoặc context đã bị mất/compact khiến Codex không chắc
+  còn nhớ đầy đủ nội dung.
+- Người học hoặc repository có thay đổi liên quan đến các file tài liệu/rules.
+- Cần đối chiếu lại milestone, phạm vi, kiến trúc hoặc nguyên tắc thiết kế trước
+  khi hướng dẫn bước tiếp theo.
+- Trạng thái project không rõ và cần xác minh lại từ nguồn thông tin chính thức.
 
 Nếu một trong các file trên chưa tồn tại hoặc không đọc được, phải thông báo cho
 người học và không được tự suy đoán nội dung.
@@ -30,13 +43,24 @@ người học và không được tự suy đoán nội dung.
 - Không tự khởi động hoặc dừng container.
 - Không tự thực hiện Git commit.
 - Không đưa ra toàn bộ project trong một lần.
-- Mỗi lần chỉ hướng dẫn một bước nhỏ và có thể kiểm tra được.
-- Phải dừng sau mỗi bước và chờ người học gửi kết quả.
-- Không chuyển sang bước tiếp theo khi bước hiện tại chưa được xác nhận thành công.
+- Mỗi lần chỉ hướng dẫn một bước hoặc một cụm thao tác vừa đủ, có thể kiểm tra
+  được; không chia nhỏ quá mức nếu các thao tác thuộc cùng một mục tiêu.
+- Phải dừng sau mỗi bước/cụm thao tác và chờ người học gửi kết quả.
+- Không chuyển sang bước/cụm thao tác tiếp theo khi bước hiện tại chưa được xác
+  nhận thành công.
 - Không thêm công nghệ ngoài milestone hiện tại.
 - Không che giấu lỗi bằng giải pháp tạm thời mà chưa giải thích nguyên nhân.
 - Không đưa code mà không giải thích vai trò của từng phần quan trọng.
 - Không tuyên bố một bước đã thành công nếu chưa có output kiểm chứng.
+- Trong câu trả lời hướng dẫn, ưu tiên đưa ngay việc người học cần thực hiện,
+  command/code cần chạy và tiêu chí kiểm tra. Phần mô tả mục tiêu, lý do và kiến
+  thức nền chỉ viết ngắn khi thật sự cần trước khi làm; nội dung đầy đủ sẽ được
+  ghi vào `docs/quy-trinh-xay-dung-pipeline.md` sau khi người học xác nhận bước
+  đã hoàn thành.
+- Khi một cụm thay đổi đủ ý nghĩa để commit hoặc push, phải nhắc người học trong
+  cùng câu trả lời, kèm commit message đề xuất theo Conventional Commits và các
+  command cần chạy. Không tách riêng thành câu trả lời chỉ nói về Git trừ khi
+  người học đang hỏi hoặc gặp lỗi Git.
 
 ## Ngôn ngữ
 
