@@ -132,6 +132,95 @@ rev
 Không phải mọi operation đều có đầy đủ `record`. Delete event có thể thiếu record
 đầy đủ, nên các bước xử lý sau phải kiểm tra null/missing field.
 
+## Normalized event schema ban đầu
+
+Sau khi có event envelope, project có thêm bước normalize nhẹ bằng
+`normalize_event()`.
+
+Mục tiêu của bước này là biến event envelope lồng nhau thành một record phẳng hơn
+để dễ quan sát, dễ ghi thử nghiệm và làm tiền đề cho Spark normalization sau này.
+Đây chưa phải Silver schema cuối cùng.
+
+Script local dùng để tạo sample normalized:
+
+```text
+scripts/normalize_sample.py
+```
+
+Input local:
+
+```text
+data/probe/jetstream_sample.jsonl
+```
+
+Output local:
+
+```text
+data/probe/jetstream_normalized_sample.jsonl
+```
+
+Các field normalized hiện tại:
+
+```text
+schema_version
+source
+received_at
+repository_did
+jetstream_time_us
+collection
+operation
+rkey
+cid
+record_type
+record_created_at
+text
+subject_uri
+subject_cid
+raw_event
+```
+
+Ý nghĩa:
+
+- `schema_version`: version của envelope schema nội bộ.
+- `source`: nguồn dữ liệu, hiện tại là `bluesky_jetstream`.
+- `received_at`: thời điểm ingestion nhận event theo UTC.
+- `repository_did`: DID của repository phát sinh event.
+- `jetstream_time_us`: timestamp từ Jetstream ở đơn vị microsecond.
+- `collection`: collection thay đổi, ví dụ `app.bsky.feed.post`.
+- `operation`: thao tác trong commit, ví dụ `create` hoặc `delete`.
+- `rkey`: record key trong repository.
+- `cid`: content identifier của record trong commit nếu event có field này.
+- `record_type`: giá trị `record.$type` nếu event có record.
+- `record_created_at`: thời điểm tạo record nếu record có `createdAt`.
+- `text`: nội dung post nếu event là post create có text.
+- `subject_uri`: target URI của like/repost hoặc target DID của follow.
+- `subject_cid`: target CID của like/repost nếu `subject` là object.
+- `raw_event`: payload gốc từ Jetstream, giữ lại để audit và replay.
+
+Lưu ý về `subject`:
+
+- Với `app.bsky.feed.like`, `record.subject` thường là object có `uri` và `cid`.
+- Với `app.bsky.feed.repost`, `record.subject` thường là object có `uri` và `cid`.
+- Với `app.bsky.graph.follow`, `record.subject` thường là DID string.
+- Với `app.bsky.feed.post`, `record.subject` thường không tồn tại.
+
+Vì vậy normalized schema tạm thời dùng:
+
+```text
+subject_uri
+subject_cid
+```
+
+Trong đó `subject_uri` có thể chứa AT URI hoặc DID string tùy collection. Khi sang
+Silver, có thể cần tách rõ hơn thành các field theo ngữ nghĩa như
+`target_post_uri`, `target_post_cid` hoặc `target_actor_did`.
+
+Lý do vẫn giữ `raw_event`:
+
+- Bronze cần giữ dữ liệu gần nguồn để audit.
+- Có thể replay hoặc reprocess khi logic normalize thay đổi.
+- Tránh mất field chưa dùng ở giai đoạn discovery.
+
 ## app.bsky.feed.post
 
 Post event đại diện cho content activity.

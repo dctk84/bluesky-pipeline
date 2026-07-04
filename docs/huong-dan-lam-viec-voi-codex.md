@@ -145,7 +145,55 @@ Không được:
 - Tạo abstraction khi project chưa có nhu cầu thực tế.
 - Đưa code quá dài trong một bước.
 
-## 6. Quy tắc viết test
+## 6. Quy tắc cấu trúc repository
+
+Codex phải giữ cấu trúc repository gọn gàng, rõ vai trò và phù hợp với mức độ phức
+tạp hiện tại của project. Không áp dụng một cấu trúc cứng từ đầu, nhưng cũng không
+để repository phát triển tự phát.
+
+Nguyên tắc chung:
+
+- Cấu trúc repo phải tiến hóa theo milestone, số lượng file và mức độ phức tạp.
+- Code reusable của pipeline phải nằm trong package chính dưới `src/`.
+- Khi code tăng lên, phải tách theo trách nhiệm hoặc tầng xử lý thay vì gom mọi
+  module vào một thư mục phẳng.
+- Script chạy tay để probe, discovery hoặc thao tác local phải được phân biệt với
+  logic pipeline dùng lại lâu dài.
+- Test đặt trong `tests/` và có thể tổ chức theo module, domain hoặc tầng pipeline
+  khi số lượng test tăng lên.
+- Tài liệu thiết kế, quan sát schema và quyết định kỹ thuật đặt trong `docs/`.
+- Dữ liệu local, sample, output probe hoặc file sinh ra trong lúc chạy đặt trong
+  `data/` và không commit.
+- Không tạo file hoặc thư mục mới nếu chưa có vai trò rõ ràng trong milestone hiện
+  tại.
+- Không để lẫn code reusable với output tạm, dữ liệu local hoặc notebook thử
+  nghiệm.
+
+Khi số lượng code tăng lên, Codex phải cân nhắc tách thư mục theo các nhóm như:
+
+- `ingestion`: kết nối nguồn, WebSocket, Kafka producer, retry, logging.
+- `events`: event envelope, schema contract, key selection.
+- `normalization`: parse và chuẩn hóa event theo collection.
+- `storage`: ghi Bronze/Silver/Gold hoặc helper liên quan storage.
+- `streaming`: Spark Structured Streaming jobs.
+- `quality`: validation, data quality checks, reconciliation.
+- `config`: đọc cấu hình từ biến môi trường hoặc file config không chứa secret.
+- `scripts`: script chạy tay phục vụ discovery, backfill thử nghiệm hoặc local
+  utility.
+
+Đây là các hướng tổ chức có thể dùng khi cần, không phải phải tạo ngay từ đầu.
+
+Khi đề xuất tạo file mới, Codex phải nói rõ:
+
+- File đó thuộc nhóm nào.
+- File đó là logic pipeline dùng lại lâu dài, script tiện ích, test, tài liệu, cấu
+  hình hay dữ liệu local không commit.
+- Vì sao đặt ở vị trí đó hợp lý ở thời điểm hiện tại.
+
+Nếu một nhóm file bắt đầu nhiều lên hoặc một file bắt đầu ôm nhiều trách nhiệm,
+Codex phải đề xuất tổ chức lại thư mục/module trước khi repository trở nên khó đọc.
+
+## 7. Quy tắc viết test
 
 Chỉ hướng dẫn viết test khi test đó có giá trị rõ ràng cho project.
 
@@ -168,10 +216,28 @@ Không nên viết test máy móc cho:
 Khi đề xuất test, Codex phải nói rõ test đó bảo vệ rủi ro gì. Nếu không nêu được
 rủi ro cụ thể, chưa nên thêm test.
 
-## 7. Quy tắc sử dụng Git
+## 8. Quy tắc sử dụng Git
 
-Sau mỗi chức năng nhỏ chạy được hoặc mỗi cụm thay đổi có ý nghĩa, Codex hướng dẫn
-người học:
+Codex không hướng dẫn commit sau từng chỉnh sửa nhỏ lẻ. Chỉ nên commit khi có một
+cụm thay đổi đủ ý nghĩa và có thể kiểm chứng.
+
+Nên commit khi:
+
+- Hoàn thành một chức năng hoặc một lát cắt pipeline chạy được.
+- Hoàn thành một cụm tài liệu quan trọng phản ánh quyết định thiết kế mới.
+- Hoàn thành một mốc discovery có output hoặc kết luận rõ ràng.
+- Hoàn thành một bug fix đã được kiểm chứng.
+- Cần lưu lại trạng thái ổn định trước khi chuyển sang phần phức tạp hơn.
+
+Không cần commit riêng cho:
+
+- Một comment nhỏ.
+- Một docstring nhỏ.
+- Một chỉnh sửa câu chữ chưa tạo thành cụm tài liệu có ý nghĩa.
+- Một lần thử nghiệm local chưa ổn định.
+- Một thay đổi tạm thời phục vụ debug.
+
+Khi một cụm thay đổi đã đủ ý nghĩa để commit, Codex hướng dẫn người học:
 
 1. Kiểm tra `git status`.
 2. Kiểm tra `git diff`.
