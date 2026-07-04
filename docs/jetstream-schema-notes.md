@@ -479,6 +479,8 @@ Cấu hình environment variable hiện tại:
 KAFKA_BOOTSTRAP_SERVERS
 KAFKA_TOPIC
 MAX_EVENTS
+MAX_RETRIES
+RETRY_BACKOFF_SECONDS
 ```
 
 Ý nghĩa:
@@ -488,20 +490,45 @@ MAX_EVENTS
 - `KAFKA_TOPIC`: topic raw event, mặc định `bluesky.raw.events.v1`.
 - `MAX_EVENTS`: số event tối đa gateway publish trong local discovery, mặc định
   `100`.
+- `MAX_RETRIES`: số lần retry tối đa khi WebSocket gặp lỗi, mặc định `3`.
+- `RETRY_BACKOFF_SECONDS`: số giây chờ giữa các lần retry, mặc định `5`.
 
 `MAX_EVENTS` giúp kiểm chứng local nhanh và tránh để process chạy vô hạn trong
 giai đoạn discovery.
+
+`MAX_RETRIES` và `RETRY_BACKOFF_SECONDS` tạo bounded retry cơ bản để gateway không
+dừng ngay khi WebSocket lỗi tạm thời, nhưng cũng không retry vô hạn khi nguồn lỗi
+liên tục.
 
 Các cấu hình này không phải secret, nhưng vẫn được đọc qua environment variable
 để tránh hard-code theo môi trường. Khi project có secret hoặc credential, các giá
 trị đó cũng phải đi qua environment variable và không được commit vào Git.
 
+Gateway hiện tại đã dùng structured logging cơ bản thay cho `print` ở phần kết
+quả chạy và lỗi delivery.
+
+Log summary hiện tại ghi các thông tin:
+
+```text
+topic
+published_events
+delivery_failed
+```
+
+Mục tiêu của logging ở bước này là giúp quan sát nhanh gateway local khi chạy thủ
+công. Đây chưa phải logging/metrics đầy đủ cho production.
+
+Gateway hiện tại đã có reconnect và bounded retry cơ bản khi WebSocket gặp lỗi.
+Khi retry vượt quá `MAX_RETRIES`, gateway log lỗi và dừng thay vì loop vô hạn.
+
+Gateway hiện tại đã có graceful shutdown cơ bản. Khi process bị interrupt hoặc
+task bị cancel, gateway vẫn đi qua nhánh kết thúc để gọi `flush()` cho Kafka
+producer trước khi thoát. Điều này giúp giảm rủi ro mất message còn nằm trong
+producer buffer, nhưng chưa thay thế được cơ chế checkpoint hoặc recovery đầy đủ.
+
 Những phần chưa triển khai ở bản gateway đầu tiên:
 
-- Reconnect khi WebSocket bị ngắt.
-- Bounded retry và backoff.
-- Graceful shutdown.
-- Structured logging đầy đủ.
+- Structured logging đầy đủ cho mọi lifecycle event.
 - Metrics cho throughput, delivery failure và latency.
 - Backpressure handling khi Kafka hoặc downstream chậm.
 

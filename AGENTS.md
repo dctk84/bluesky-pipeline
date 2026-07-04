@@ -90,3 +90,92 @@ xác nhận trước khi hướng dẫn.
 - Kiến trúc tổng thể là định hướng dài hạn, không phải yêu cầu phải triển khai đồng
   thời tất cả thành phần.
 - Mỗi milestone phải tạo ra một luồng dữ liệu chạy được và có thể kiểm chứng.
+
+## Tài liệu quy trình xây dựng pipeline
+
+Trong thư mục `docs/`, hãy tạo và duy trì file:
+
+`docs/quy-trinh-xay-dung-pipeline.md`
+
+### Mục đích của tài liệu
+
+Đây là tài liệu phục vụ học tập, không phải file theo dõi trạng thái công việc.
+
+Tài liệu phải giúp người học:
+
+- Nhìn lại các bước chính đã thực hiện để xây dựng một data pipeline hoàn chỉnh.
+- Hiểu vì sao mỗi bước cần thiết.
+- Ôn tập để trình bày dự án trong phỏng vấn Data Engineer.
+- Sử dụng như một template tham khảo cho các dự án data pipeline sau này.
+
+### Quy tắc cập nhật bắt buộc
+
+Mỗi khi người dùng xác nhận rằng một bước đã hoàn thành, chẳng hạn bằng các câu như:
+
+- "đã hoàn thành"
+- "xong bước này"
+- "ok bước này"
+- "chạy thành công"
+- hoặc một cách diễn đạt tương đương
+
+Codex phải thực hiện theo thứ tự sau:
+
+1. Xác định bước chính vừa hoàn thành.
+2. Tự động cập nhật bước đó vào `docs/quy-trinh-xay-dung-pipeline.md`.
+3. Không hỏi lại người dùng có muốn cập nhật tài liệu hay không.
+4. Sau khi cập nhật tài liệu, tiếp tục hướng dẫn bước tiếp theo.
+5. Trong phản hồi, thông báo ngắn gọn rằng tài liệu đã được cập nhật.
+
+Chỉ ghi một bước vào tài liệu khi người dùng đã xác nhận bước đó hoàn thành. Không ghi trước các bước mới chỉ đang dự định thực hiện.
+
+Nếu một bước cũ được sửa đổi, cấu hình lại hoặc thay đổi phương án triển khai, hãy cập nhật lại nội dung của bước tương ứng thay vì tạo các phần trùng lặp.
+
+### Nội dung cần ghi cho mỗi bước
+
+Mỗi bước nên có cấu trúc:
+
+#### Bước N: Tên bước
+
+**Mục tiêu**
+
+Mô tả ngắn gọn bước này nhằm đạt được điều gì.
+
+**Vì sao cần thực hiện**
+
+Giải thích ngắn gọn vai trò của bước này trong toàn bộ data pipeline và vấn đề mà nó giải quyết.
+
+**Kết quả sau khi hoàn thành**
+
+Mô tả hệ thống đã có thêm khả năng hoặc thành phần gì sau bước này.
+
+**Các file liên quan**
+
+Chỉ ghi đường dẫn tham chiếu đến các file hoặc thư mục trong repository, ví dụ:
+
+- `docker-compose.yml`
+- `src/bluesky_pipeline/event_envelope.py`
+- `tests/test_event_envelope.py`
+- `docs/tong-quan-du-an.md`
+
+Không sao chép toàn bộ code vào tài liệu.
+
+**Kiến thức cần ghi nhớ**
+
+Tóm tắt một vài ý quan trọng có thể dùng để:
+
+- Giải thích dự án trong phỏng vấn.
+- Áp dụng lại trong một dự án tương tự.
+- Hiểu mối liên hệ giữa bước này và kiến trúc tổng thể.
+
+### Yêu cầu về cách viết
+
+- Viết hoàn toàn bằng tiếng Việt.
+- Viết theo trình tự xây dựng thực tế của dự án.
+- Tập trung vào các bước kiến trúc và triển khai chính.
+- Giải thích ngắn gọn nhưng phải nêu được bản chất và lý do.
+- Không biến tài liệu thành nhật ký chi tiết theo từng câu lệnh.
+- Không ghi toàn bộ source code.
+- Không ghi những lỗi nhỏ không có giá trị học tập lâu dài.
+- Có thể ghi lại một lỗi hoặc quyết định kỹ thuật nếu nó ảnh hưởng đến kiến trúc hoặc là bài học quan trọng.
+- Các đường dẫn tham chiếu phải khớp với file thực tế trong repository.
+- Khi thêm bước mới, cập nhật mục lục nếu tài liệu có mục lục.
