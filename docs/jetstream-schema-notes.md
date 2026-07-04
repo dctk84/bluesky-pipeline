@@ -361,6 +361,64 @@ record.subject.cid
 record.subject
 ```
 
+## Kafka raw topic local
+
+Trong Milestone 1, project đã kiểm chứng Kafka local bằng cách publish event
+envelope từ sample JSONL vào raw topic.
+
+Topic hiện tại:
+
+```text
+bluesky.raw.events.v1
+```
+
+Cấu hình local đã kiểm chứng:
+
+```text
+bootstrap server: localhost:9092
+docker compose service: kafka
+container name: bluesky-kafka
+partitions: 3
+replication factor: 1
+```
+
+Message key hiện tại:
+
+```text
+repository_did
+```
+
+Message value hiện tại:
+
+```text
+event envelope JSON
+```
+
+Lý do dùng `repository_did` làm key:
+
+- Giữ ordering tương đối trong phạm vi repository.
+- Phù hợp với cách Jetstream event gắn với repository DID.
+- Tránh dùng các key quá lệch phân phối như hashtag hoặc domain ở tầng raw.
+
+Các script đã dùng để kiểm chứng:
+
+```text
+scripts/publish_sample_to_kafka.py
+scripts/publish_sample_batch_to_kafka.py
+```
+
+Luồng đã kiểm chứng:
+
+```text
+data/probe/jetstream_sample.jsonl
+        -> Python Producer
+        -> Kafka topic bluesky.raw.events.v1
+        -> Kafka Console Consumer
+```
+
+Đây mới là kiểm chứng local cho raw event topic. Chưa có đảm bảo exactly-once,
+chưa có retry policy hoàn chỉnh và chưa phải ingestion gateway production.
+
 ## Ghi chú thiết kế
 
 Gateway không nên normalize sâu theo từng collection. Gateway chỉ nên giữ raw
