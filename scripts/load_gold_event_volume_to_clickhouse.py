@@ -1,4 +1,4 @@
-"""Load Gold event volume prototype từ MinIO vào ClickHouse."""
+"""Load Gold event volume từ MinIO vào ClickHouse."""
 
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 
@@ -12,7 +12,7 @@ from bluesky_pipeline.gold_tables import (
 )
 
 def read_gold_event_volume(spark: SparkSession) -> DataFrame:
-    """Đọc Gold event volume prototype từ MinIO.
+    """Đọc Gold event volume staging từ MinIO.
 
     Input chính là SparkSession đã cấu hình S3A.
     Output là DataFrame chứa event_type và event_count.
@@ -37,7 +37,7 @@ def load_gold_event_volume(gold_df: DataFrame) -> None:
     Input chính là DataFrame Gold event volume.
     Output là dữ liệu được ghi vào ClickHouse serving table.
     """
-    # Rebuild bảng serving từ Gold prototype để đảm bảo kết quả idempotent ở local.
+    # Rebuild bảng serving từ Gold staging để đảm bảo kết quả idempotent ở local.
     execute_clickhouse(f"TRUNCATE TABLE {GOLD_EVENT_VOLUME_TABLE}")
 
     csv_payload = build_csv_payload(gold_df)
@@ -53,7 +53,7 @@ def main() -> None:
     spark = create_spark_session("bluesky-load-gold-event-volume-clickhouse")
     spark.sparkContext.setLogLevel("WARN")
 
-    # Đọc Gold prototype, load vào ClickHouse và in kết quả query.
+    # Đọc Gold staging, load vào ClickHouse và in kết quả query.
     gold_df = read_gold_event_volume(spark)
     load_gold_event_volume(gold_df)
 

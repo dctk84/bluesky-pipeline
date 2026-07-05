@@ -61,6 +61,33 @@ tồn tại trong repository.
 50. [Refactor Silver engagements dùng Bronze schema chung](#bước-50-refactor-silver-engagements-dùng-bronze-schema-chung)
 51. [Refactor Silver follows dùng Bronze schema chung](#bước-51-refactor-silver-follows-dùng-bronze-schema-chung)
 52. [Refactor Silver deleted records dùng Bronze schema chung](#bước-52-refactor-silver-deleted-records-dùng-bronze-schema-chung)
+53. [Kiểm chứng downstream sau refactor Bronze schema chung](#bước-53-kiểm-chứng-downstream-sau-refactor-bronze-schema-chung)
+54. [Chuẩn hóa ClickHouse Gold DDL thành script trong repo](#bước-54-chuẩn-hóa-clickhouse-gold-ddl-thành-script-trong-repo)
+55. [Refactor metadata Gold table dùng chung](#bước-55-refactor-metadata-gold-table-dùng-chung)
+56. [Tạo Gold post engagement summary trên MinIO](#bước-56-tạo-gold-post-engagement-summary-trên-minio)
+57. [Load Gold post engagement summary vào ClickHouse](#bước-57-load-gold-post-engagement-summary-vào-clickhouse)
+58. [Reconcile Gold post engagement summary](#bước-58-reconcile-gold-post-engagement-summary)
+59. [Cập nhật README cho luồng Gold serving v1](#bước-59-cập-nhật-readme-cho-luồng-gold-serving-v1)
+60. [Tạo checkpoint tổng hợp Gold serving v1](#bước-60-tạo-checkpoint-tổng-hợp-gold-serving-v1)
+61. [Hiển thị lỗi chi tiết từ ClickHouse HTTP API](#bước-61-hiển-thị-lỗi-chi-tiết-từ-clickhouse-http-api)
+62. [Chuẩn hóa Silver table paths thành module dùng chung](#bước-62-chuẩn-hóa-silver-table-paths-thành-module-dùng-chung)
+63. [Chuẩn hóa Bronze paths thành module dùng chung](#bước-63-chuẩn-hóa-bronze-paths-thành-module-dùng-chung)
+64. [Chuẩn hóa Bronze checkpoint paths](#bước-64-chuẩn-hóa-bronze-checkpoint-paths)
+65. [Chuẩn hóa Kafka config dùng chung](#bước-65-chuẩn-hóa-kafka-config-dùng-chung)
+66. [Cập nhật README với cấu hình local có thể override](#bước-66-cập-nhật-readme-với-cấu-hình-local-có-thể-override)
+67. [Kiểm tra compile và checkpoint sau refactor metadata](#bước-67-kiểm-tra-compile-và-checkpoint-sau-refactor-metadata)
+68. [Thêm Grafana và kết nối ClickHouse datasource](#bước-68-thêm-grafana-và-kết-nối-clickhouse-datasource)
+69. [Tạo Grafana panels cho Gold post engagement](#bước-69-tạo-grafana-panels-cho-gold-post-engagement)
+70. [Smoke test Iceberg table trên MinIO](#bước-70-smoke-test-iceberg-table-trên-minio)
+71. [Build thử Silver posts bằng Iceberg](#bước-71-build-thử-silver-posts-bằng-iceberg)
+72. [Reconcile Silver posts Parquet với Iceberg](#bước-72-reconcile-silver-posts-parquet-với-iceberg)
+73. [Chuẩn hóa metadata Iceberg Silver table](#bước-73-chuẩn-hóa-metadata-iceberg-silver-table)
+74. [Build và reconcile Silver engagements bằng Iceberg](#bước-74-build-và-reconcile-silver-engagements-bằng-iceberg)
+75. [Build và reconcile toàn bộ Silver v1 bằng Iceberg](#bước-75-build-và-reconcile-toàn-bộ-silver-v1-bằng-iceberg)
+76. [Build Gold event volume từ Silver Iceberg](#bước-76-build-gold-event-volume-từ-silver-iceberg)
+77. [Build Gold post engagement từ Silver Iceberg](#bước-77-build-gold-post-engagement-từ-silver-iceberg)
+78. [Load ClickHouse Gold từ Silver Iceberg source](#bước-78-load-clickhouse-gold-từ-silver-iceberg-source)
+79. [Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức](#bước-79-chuẩn-hóa-luồng-gold-từ-silver-iceberg-thành-luồng-chính-thức)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -2864,17 +2891,16 @@ luồng cũ. Bước này chứng minh Iceberg có thể trở thành nguồn re
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/build_gold_event_volume_from_iceberg.py` ghi Gold song song ra
-`gold/gold_event_volume_by_type_iceberg_source/`.
-`scripts/check_gold_event_volume_iceberg_source.py` chạy thành công và báo
-`Gold event volume Iceberg source reconciliation passed`.
+`scripts/build_gold_event_volume_from_iceberg.py` tạo được Gold event volume từ
+Silver Iceberg. Kết quả được kiểm chứng với luồng Gold cũ trước khi chuyển dần
+ClickHouse load sang nguồn Iceberg.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/gold_tables.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/check_gold_event_volume_iceberg_source.py`
+- `scripts/check_gold_reconciliation.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
 **Kiến thức cần ghi nhớ**
@@ -2902,25 +2928,24 @@ không làm lệch count hoặc tổng engagement metrics.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/build_gold_post_engagement_summary_from_iceberg.py` ghi dữ liệu kiểm
-chứng song song ra `gold/gold_post_engagement_summary_iceberg_source/`.
-`scripts/check_gold_post_engagement_iceberg_source.py` chạy thành công và báo
-`Gold post engagement Iceberg source reconciliation passed`.
+`scripts/build_gold_post_engagement_summary_from_iceberg.py` tạo được Gold post
+engagement summary từ Silver Iceberg. Kết quả được kiểm chứng với luồng Gold cũ
+trước khi chuyển dần ClickHouse load sang nguồn Iceberg.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/gold_tables.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/check_gold_post_engagement_iceberg_source.py`
+- `scripts/check_gold_post_engagement_reconciliation.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
 **Kiến thức cần ghi nhớ**
 
 - Iceberg là Silver Lakehouse, không phải Gold serving layer trong kiến trúc mục
   tiêu.
-- Các path Gold `_iceberg_source` ở bước này chỉ là artifact kiểm chứng tạm thời
-  để so sánh output khi đổi source từ Silver Parquet sang Silver Iceberg.
+- Khi đổi nguồn build Gold, cần kiểm chứng aggregate phức tạp có join giữa posts
+  và engagements, không chỉ kiểm tra tổng row count.
 - Gold serving chính vẫn là ClickHouse; sau khi reconcile xong cần load/rebuild
   ClickHouse từ nguồn Iceberg.
 
@@ -2965,3 +2990,47 @@ ClickHouse và `scripts/check_gold_serving_v1.py` thành công với
   serving và reconciliation.
 - Alias source trong `gold_tables.py` giúp thể hiện rõ ClickHouse đang load từ
   outputs build từ Silver Iceberg.
+
+## Bước 79: Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức
+
+**Mục tiêu**
+
+Bỏ cách đặt tên `_iceberg_source` như một artifact tạm và chuyển các script build
+Gold từ Silver Iceberg sang ghi vào Gold path chính dùng để load ClickHouse.
+
+**Vì sao cần thực hiện**
+
+Sau khi đã chứng minh Gold aggregates build từ Silver Iceberg khớp với luồng cũ,
+việc tiếp tục giữ tên `_iceberg_source` dễ gây hiểu nhầm rằng đây vẫn là nhánh thử
+nghiệm. Kiến trúc hiện tại đã xác định Silver Iceberg là analytical source of
+truth và ClickHouse là Gold serving layer, nên contract path và tài liệu chạy local
+cần phản ánh đúng luồng chính.
+
+**Kết quả sau khi hoàn thành**
+
+`src/bluesky_pipeline/gold_tables.py` không còn khai báo các path
+`*_ICEBERG_SOURCE_PATH`. Hai script build Gold từ Iceberg ghi vào path Gold chính,
+hai script load ClickHouse đọc từ source path chính, README mô tả luồng
+`Silver Iceberg -> Gold staging -> ClickHouse`, và `scripts/check_gold_serving_v1.py`
+chạy thành công.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
+- `scripts/read_gold_event_volume.py`
+- `scripts/check_gold_serving_v1.py`
+- `README.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Tên path, biến và script cũng là một phần của contract kiến trúc; tên tạm nên
+  được dọn sau khi luồng đã trở thành chính thức.
+- Gold trên MinIO trong bước này chỉ là staging/rebuild output trước khi load vào
+  ClickHouse, không phải Gold serving layer cuối cùng.
+- Khi xóa một artifact tạm, cần rà lại import, README và checkpoint để tránh để
+  lại reference chết trong repo.

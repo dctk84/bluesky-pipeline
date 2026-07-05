@@ -4,7 +4,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, count, coalesce, lit, sum as spark_sum, when
 
 from bluesky_pipeline.gold_tables import (
-    GOLD_POST_ENGAGEMENT_SUMMARY_ICEBERG_SOURCE_PATH,
+    GOLD_POST_ENGAGEMENT_SUMMARY_PATH,
 )
 from bluesky_pipeline.iceberg_config import (
     ICEBERG_SILVER_TABLES,
@@ -70,15 +70,13 @@ def build_gold_post_engagement_summary(
 
 
 def write_gold_post_engagement_summary(gold_df: DataFrame) -> None:
-    """Ghi Gold post engagement summary từ Iceberg source xuống MinIO.
+    """Ghi Gold post engagement summary chính xuống MinIO.
 
     Input chính là DataFrame Gold đã aggregate.
-    Output là dữ liệu Parquet ở path Gold riêng cho Iceberg source.
+    Output là dữ liệu Parquet ở path Gold chính dùng để load ClickHouse.
     """
-    # Ghi path riêng để so sánh với Gold cũ, chưa thay thế luồng Parquet source.
-    gold_df.write.mode("overwrite").parquet(
-        GOLD_POST_ENGAGEMENT_SUMMARY_ICEBERG_SOURCE_PATH
-    )
+    # Ghi Gold staging chính được rebuild từ Silver Iceberg.
+    gold_df.write.mode("overwrite").parquet(GOLD_POST_ENGAGEMENT_SUMMARY_PATH)
 
 
 def main() -> None:
@@ -100,7 +98,7 @@ def main() -> None:
 
     write_gold_post_engagement_summary(gold_df)
 
-    print(f"gold_post_engagement_summary_iceberg_source_count: {gold_df.count()}")
+    print(f"gold_post_engagement_summary_count: {gold_df.count()}")
     gold_df.orderBy(col("engagement_count").desc(), col("post_uri")).show(
         20,
         truncate=False,
