@@ -3,11 +3,13 @@ from pathlib import Path
 from typing import Any
 
 from confluent_kafka import Producer
+from bluesky_pipeline.kafka_config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_RAW_EVENTS_TOPIC,
+)
 
 
 SAMPLE_PATH = Path("data/probe/jetstream_sample.jsonl")
-TOPIC = "bluesky.raw.events.v1"
-BOOTSTRAP_SERVERS = "localhost:9092"
 MAX_EVENTS = 100
 
 delivery_failed = 0
@@ -41,7 +43,7 @@ def read_events(limit: int) -> list[dict[str, Any]]:
 def main() -> None:
     """Publish một batch nhỏ event envelope sample vào Kafka raw topic."""
     # Tạo Kafka producer trỏ tới broker local.
-    producer = Producer({"bootstrap.servers": BOOTSTRAP_SERVERS})
+    producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
 
     events = read_events(MAX_EVENTS)
 
@@ -51,7 +53,7 @@ def main() -> None:
         value = json.dumps(event, ensure_ascii=False)
 
         producer.produce(
-            TOPIC,
+            KAFKA_RAW_EVENTS_TOPIC,
             key=key,
             value=value,
             callback=delivery_report,
@@ -63,7 +65,7 @@ def main() -> None:
     # Chờ toàn bộ message trong buffer được gửi xong.
     producer.flush()
 
-    print(f"topic: {TOPIC}")
+    print(f"topic: {KAFKA_RAW_EVENTS_TOPIC}")
     print(f"requested_events: {MAX_EVENTS}")
     print(f"published_events: {len(events)}")
     print(f"delivery_failed: {delivery_failed}")

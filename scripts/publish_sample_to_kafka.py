@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Any
 
 from confluent_kafka import Producer
+from bluesky_pipeline.kafka_config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_RAW_EVENTS_TOPIC,
+)
 
 
 SAMPLE_PATH = Path("data/probe/jetstream_sample.jsonl")
-TOPIC = "bluesky.raw.events.v2"
-BOOTSTRAP_SERVERS = "localhost:9092"
-
 
 def delivery_report(error: Any, message: Any) -> None:
     """In kết quả Kafka trả về sau khi producer gửi message."""
@@ -35,8 +36,8 @@ def read_first_event() -> dict[str, Any]:
 
 def main() -> None:
     """Publish một event envelope sample vào Kafka raw topic."""
-    # Tạo producer trỏ tới Kafka local đang expose ở localhost:9092.
-    producer = Producer({"bootstrap.servers": BOOTSTRAP_SERVERS})
+    # Tạo producer trỏ tới Kafka bootstrap servers từ cấu hình chung.
+    producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
 
     # Đọc event envelope và dùng repository_did làm message key.
     event = read_first_event()
@@ -45,7 +46,7 @@ def main() -> None:
 
     # Gửi message vào raw topic; callback sẽ in kết quả sau khi flush.
     producer.produce(
-        TOPIC,
+        KAFKA_RAW_EVENTS_TOPIC,
         key=key,
         value=value,
         callback=delivery_report,

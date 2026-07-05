@@ -8,6 +8,10 @@ import websockets
 from confluent_kafka import Producer
 
 from bluesky_pipeline.event_envelope import build_event_envelope
+from bluesky_pipeline.kafka_config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_RAW_EVENTS_TOPIC,
+)
 
 
 WANTED_COLLECTIONS = [
@@ -22,8 +26,7 @@ JETSTREAM_URL = (
     + "&".join(f"wantedCollections={collection}" for collection in WANTED_COLLECTIONS)
 )
 
-TOPIC = os.getenv("KAFKA_TOPIC", "bluesky.raw.events.v2")
-BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "100"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 RETRY_BACKOFF_SECONDS = int(os.getenv("RETRY_BACKOFF_SECONDS", "5"))
@@ -62,7 +65,7 @@ async def publish_events_once(producer: Producer, published_events: int) -> int:
             value = json.dumps(envelope, ensure_ascii=False)
 
             producer.produce(
-                TOPIC,
+                KAFKA_RAW_EVENTS_TOPIC,
                 key=key,
                 value=value,
                 callback=delivery_report,
@@ -80,7 +83,7 @@ async def publish_events_once(producer: Producer, published_events: int) -> int:
 
 async def run_gateway() -> None:
     """Đọc live Jetstream event, bọc envelope và publish vào Kafka raw topic."""
-    producer = Producer({"bootstrap.servers": BOOTSTRAP_SERVERS})
+    producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
     published_events = 0
     retry_count = 0
 
@@ -117,7 +120,7 @@ async def run_gateway() -> None:
 
         logger.info(
             "gateway finished topic=%s published_events=%s delivery_failed=%s",
-            TOPIC,
+            KAFKA_RAW_EVENTS_TOPIC,
             published_events,
             delivery_failed,
         )
