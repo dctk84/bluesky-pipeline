@@ -18,8 +18,8 @@ Project hiện đã có một luồng local end-to-end:
 Jetstream
 → Kafka
 → Spark Bronze trên MinIO
-→ Silver Parquet v1 trên MinIO
-→ Gold prototypes trên MinIO
+→ Silver Iceberg v1 trên MinIO
+→ Gold aggregates build từ Silver Iceberg
 → ClickHouse Gold serving tables
 → Reconciliation check
 ```
@@ -27,8 +27,9 @@ Jetstream
 Lưu ý:
 
 - Bronze hiện là partitioned Parquet trên MinIO.
-- Silver v1 hiện là Parquet prototype trên MinIO, chưa phải Iceberg.
-- Gold prototypes trên MinIO dùng để kiểm chứng aggregate trước khi load serving.
+- Silver Parquet v1 vẫn còn là prototype/rebuild source trung gian.
+- Silver Iceberg v1 hiện đã có đủ 4 bảng chính trên MinIO.
+- Gold aggregates được rebuild từ Silver Iceberg trước khi load vào ClickHouse.
 - Gold serving layer hiện có 2 bảng ClickHouse:
   - `bluesky.gold_event_volume_by_type`
   - `bluesky.gold_post_engagement_summary`
@@ -80,10 +81,12 @@ PYTHONPATH=src python scripts/build_silver_follows.py
 PYTHONPATH=src python scripts/build_silver_deleted_records.py
 ```
 
-Kiểm tra Silver v1:
+Kiểm tra Silver Parquet v1 và build Silver Iceberg v1:
 
 ```bash
 PYTHONPATH=src python scripts/check_silver_v1.py
+PYTHONPATH=src python scripts/build_iceberg_silver_v1.py
+PYTHONPATH=src python scripts/check_iceberg_silver_v1.py
 ```
 
 Tạo ClickHouse Gold tables:
@@ -92,18 +95,12 @@ Tạo ClickHouse Gold tables:
 PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
 ```
 
-Build và load Gold event volume:
+Build Gold aggregates từ Silver Iceberg và load ClickHouse:
 
 ```bash
-PYTHONPATH=src python scripts/build_gold_event_volume.py
+PYTHONPATH=src python scripts/build_gold_event_volume_from_iceberg.py
+PYTHONPATH=src python scripts/build_gold_post_engagement_summary_from_iceberg.py
 PYTHONPATH=src python scripts/load_gold_event_volume_to_clickhouse.py
-```
-
-Build và load Gold post engagement summary:
-
-```bash
-PYTHONPATH=src python scripts/build_gold_post_engagement_summary.py
-PYTHONPATH=src python scripts/read_gold_post_engagement_summary.py
 PYTHONPATH=src python scripts/load_gold_post_engagement_summary_to_clickhouse.py
 ```
 
@@ -111,8 +108,8 @@ Kiểm tra ClickHouse Gold và reconciliation:
 
 ```bash
 PYTHONPATH=src python scripts/check_clickhouse_gold_event_volume.py
-PYTHONPATH=src python scripts/check_gold_reconciliation.py
 PYTHONPATH=src python scripts/check_clickhouse_gold_post_engagement_summary.py
+PYTHONPATH=src python scripts/check_gold_reconciliation.py
 PYTHONPATH=src python scripts/check_gold_post_engagement_reconciliation.py
 ```
 

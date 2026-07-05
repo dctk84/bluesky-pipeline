@@ -66,7 +66,7 @@ def load_gold_post_engagement_summary(gold_df: DataFrame) -> None:
     Input chính là DataFrame Gold post engagement summary.
     Output là dữ liệu được ghi vào ClickHouse serving table.
     """
-    # Rebuild bảng serving từ Gold prototype để kết quả chạy lại ổn định ở local.
+    # Rebuild bảng serving từ Gold staging để kết quả chạy lại ổn định ở local.
     execute_clickhouse(f"TRUNCATE TABLE {GOLD_POST_ENGAGEMENT_SUMMARY_TABLE}")
 
     json_payload = build_json_each_row_payload(gold_df)

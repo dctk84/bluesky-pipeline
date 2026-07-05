@@ -3,7 +3,7 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, count, lit
 
-from bluesky_pipeline.gold_tables import GOLD_EVENT_VOLUME_ICEBERG_SOURCE_PATH
+from bluesky_pipeline.gold_tables import GOLD_EVENT_VOLUME_PATH
 from bluesky_pipeline.iceberg_config import (
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
@@ -60,13 +60,13 @@ def build_event_volume(spark: SparkSession) -> DataFrame:
 
 
 def write_gold_event_volume(gold_df: DataFrame) -> None:
-    """Ghi Gold event volume từ Iceberg source xuống MinIO dạng Parquet.
+    """Ghi Gold event volume chính xuống MinIO dạng Parquet.
 
     Input chính là DataFrame Gold event volume.
-    Output là dữ liệu Parquet ở path Gold riêng cho Iceberg source.
+    Output là dữ liệu Parquet ở path Gold chính dùng để load ClickHouse.
     """
-    # Ghi path riêng để so sánh với Gold cũ, chưa thay thế luồng Parquet source.
-    gold_df.write.mode("overwrite").parquet(GOLD_EVENT_VOLUME_ICEBERG_SOURCE_PATH)
+    # Ghi Gold staging chính được rebuild từ Silver Iceberg.
+    gold_df.write.mode("overwrite").parquet(GOLD_EVENT_VOLUME_PATH)
 
 
 def main() -> None:
@@ -75,7 +75,7 @@ def main() -> None:
     spark = create_iceberg_spark_session("bluesky-build-gold-event-volume-iceberg")
     spark.sparkContext.setLogLevel("WARN")
 
-    # Build aggregate từ Silver Iceberg v1 và ghi xuống Gold path song song.
+    # Build aggregate từ Silver Iceberg v1 và ghi xuống Gold staging chính.
     gold_df = build_event_volume(spark)
     write_gold_event_volume(gold_df)
 
