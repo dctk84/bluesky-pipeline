@@ -2848,3 +2848,120 @@ hơn, giảm thao tác lặp và thể hiện rõ đây là một lớp Silver I
   Parquet prototype.
 - Các script thử nghiệm lẻ không còn vai trò lâu dài thì không nên commit để tránh
   repo phình và gây nhầm luồng chạy chính.
+
+## Bước 76: Build Gold event volume từ Silver Iceberg
+
+**Mục tiêu**
+
+Tạo phiên bản Gold event volume đọc từ Silver Iceberg v1 và so sánh với Gold event
+volume cũ đọc từ Silver Parquet.
+
+**Vì sao cần thực hiện**
+
+Sau khi Silver Iceberg v1 đã reconcile với Silver Parquet, cần kiểm tra downstream
+Gold aggregate có thể được rebuild từ Iceberg source mà vẫn cho kết quả giống
+luồng cũ. Bước này chứng minh Iceberg có thể trở thành nguồn rebuild cho Gold.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_gold_event_volume_from_iceberg.py` ghi Gold song song ra
+`gold/gold_event_volume_by_type_iceberg_source/`.
+`scripts/check_gold_event_volume_iceberg_source.py` chạy thành công và báo
+`Gold event volume Iceberg source reconciliation passed`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/check_gold_event_volume_iceberg_source.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi đổi source layer từ Parquet sang Iceberg, nên chạy song song và reconcile
+  trước khi thay thế luồng cũ.
+- Gold aggregate phải rebuild được từ Silver Iceberg nếu Iceberg là Silver source
+  chính trong kiến trúc mục tiêu.
+- Reconciliation giữa hai nguồn Gold giúp phát hiện khác biệt logic trước khi load
+  vào serving database.
+
+## Bước 77: Build Gold post engagement từ Silver Iceberg
+
+**Mục tiêu**
+
+Tạo phiên bản Gold post engagement summary đọc từ Silver Iceberg v1 và so sánh với
+Gold post engagement summary cũ đọc từ Silver Parquet.
+
+**Vì sao cần thực hiện**
+
+Sau khi event volume đã khớp khi đổi source sang Iceberg, cần kiểm tra tiếp
+aggregate phức tạp hơn có join giữa `silver_posts` và `silver_engagements`.
+Bước này đảm bảo Gold post engagement summary có thể rebuild từ Silver Iceberg mà
+không làm lệch count hoặc tổng engagement metrics.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_gold_post_engagement_summary_from_iceberg.py` ghi dữ liệu kiểm
+chứng song song ra `gold/gold_post_engagement_summary_iceberg_source/`.
+`scripts/check_gold_post_engagement_iceberg_source.py` chạy thành công và báo
+`Gold post engagement Iceberg source reconciliation passed`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/check_gold_post_engagement_iceberg_source.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Iceberg là Silver Lakehouse, không phải Gold serving layer trong kiến trúc mục
+  tiêu.
+- Các path Gold `_iceberg_source` ở bước này chỉ là artifact kiểm chứng tạm thời
+  để so sánh output khi đổi source từ Silver Parquet sang Silver Iceberg.
+- Gold serving chính vẫn là ClickHouse; sau khi reconcile xong cần load/rebuild
+  ClickHouse từ nguồn Iceberg.
+
+## Bước 78: Load ClickHouse Gold từ Silver Iceberg source
+
+**Mục tiêu**
+
+Chuyển nguồn load ClickHouse Gold sang các Gold outputs được build từ Silver
+Iceberg, rồi chạy lại checkpoint Gold serving v1.
+
+**Vì sao cần thực hiện**
+
+Kiến trúc mục tiêu là Silver Lakehouse bằng Iceberg và Gold serving bằng
+ClickHouse. Sau khi đã chứng minh các Gold aggregate từ Silver Iceberg khớp với
+luồng cũ, cần dùng chúng làm nguồn load ClickHouse để hoàn tất đường đi
+`Silver Iceberg -> Gold ClickHouse`.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/load_gold_event_volume_to_clickhouse.py` và
+`scripts/load_gold_post_engagement_summary_to_clickhouse.py` đọc từ các source
+được build từ Silver Iceberg. Chạy lại toàn bộ luồng build từ Iceberg, load
+ClickHouse và `scripts/check_gold_serving_v1.py` thành công với
+`Gold serving v1 check passed`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/build_iceberg_silver_v1.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
+- `scripts/check_gold_serving_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Gold ClickHouse vẫn là serving layer; Iceberg chỉ đóng vai trò Silver source để
+  rebuild Gold.
+- Khi đổi source cho ClickHouse load, cần chạy lại cả build aggregate, load
+  serving và reconciliation.
+- Alias source trong `gold_tables.py` giúp thể hiện rõ ClickHouse đang load từ
+  outputs build từ Silver Iceberg.

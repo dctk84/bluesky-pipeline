@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame, SparkSession
 from bluesky_pipeline.spark_session import create_spark_session
 
 from bluesky_pipeline.gold_tables import (
-    GOLD_EVENT_VOLUME_PATH,
+    GOLD_EVENT_VOLUME_CLICKHOUSE_SOURCE_PATH,
     GOLD_EVENT_VOLUME_TABLE,
 )
 
@@ -17,7 +17,7 @@ def read_gold_event_volume(spark: SparkSession) -> DataFrame:
     Input chính là SparkSession đã cấu hình S3A.
     Output là DataFrame chứa event_type và event_count.
     """
-    return spark.read.parquet(GOLD_EVENT_VOLUME_PATH)
+    return spark.read.parquet(GOLD_EVENT_VOLUME_CLICKHOUSE_SOURCE_PATH)
 
 
 def build_csv_payload(gold_df: DataFrame) -> str:
