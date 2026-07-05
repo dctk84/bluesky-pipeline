@@ -2286,3 +2286,83 @@ nhận Gold serving v1 đang nhất quán trước khi làm dashboard hoặc m�
   toàn bộ logic.
 - Một SparkSession dùng chung giúp script tổng hợp nhẹ hơn so với khởi tạo Spark
   nhiều lần.
+
+## Bước 61: Hiển thị lỗi chi tiết từ ClickHouse HTTP API
+
+**Mục tiêu**
+
+Cải thiện helper `src/bluesky_pipeline/clickhouse_client.py` để khi ClickHouse trả
+lỗi HTTP, script hiển thị cả response body từ ClickHouse.
+
+**Vì sao cần thực hiện**
+
+Khi load dữ liệu text vào ClickHouse, lỗi `HTTP Error 400: Bad Request` mặc định
+của Python không cho biết nguyên nhân thật. ClickHouse thường trả chi tiết lỗi
+trong response body, ví dụ sai format, sai kiểu dữ liệu hoặc sai column. Đọc và
+raise lại nội dung này giúp debug nhanh hơn.
+
+**Kết quả sau khi hoàn thành**
+
+`execute_clickhouse()` bắt `HTTPError`, đọc response body và raise `RuntimeError`
+có `status_code`, `reason`, `query` và `response`. Checkpoint
+`scripts/check_gold_serving_v1.py` vẫn chạy thành công sau thay đổi.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `scripts/check_gold_serving_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Với API qua HTTP, thông tin lỗi quan trọng thường nằm trong response body chứ
+  không chỉ ở status code.
+- Helper dùng chung nên surface lỗi rõ ràng để mọi script downstream dễ debug hơn.
+- Cải thiện observability của tool local là một phần quan trọng của data platform,
+  không chỉ là tiện ích lập trình.
+
+## Bước 62: Chuẩn hóa Silver table paths thành module dùng chung
+
+**Mục tiêu**
+
+Tạo module `src/bluesky_pipeline/silver_tables.py` để quản lý tập trung các path
+của Silver v1 trên MinIO.
+
+**Vì sao cần thực hiện**
+
+Các path như `silver_posts`, `silver_engagements`, `silver_follows` và
+`silver_deleted_records` đang được dùng ở nhiều script build, read, check và Gold
+aggregate. Nếu mỗi script tự khai báo path riêng, project dễ bị drift khi đổi vị
+trí lưu hoặc khi chuyển dần từ Parquet prototype sang Iceberg.
+
+**Kết quả sau khi hoàn thành**
+
+Các script Silver và Gold đọc path Silver từ `src/bluesky_pipeline/silver_tables.py`.
+Kiểm tra bằng `rg` chỉ còn hard-code `s3a://bluesky-lake/silver/...` trong module
+này. `scripts/check_silver_v1.py` và `scripts/check_gold_serving_v1.py` đều chạy
+thành công sau refactor.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/silver_tables.py`
+- `scripts/build_silver_posts.py`
+- `scripts/build_silver_engagements.py`
+- `scripts/build_silver_follows.py`
+- `scripts/build_silver_deleted_records.py`
+- `scripts/read_silver_posts.py`
+- `scripts/read_silver_engagements.py`
+- `scripts/read_silver_follows.py`
+- `scripts/read_silver_deleted_records.py`
+- `scripts/check_silver_v1.py`
+- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/check_gold_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Path/table metadata nên có một nguồn khai báo duy nhất để giảm rủi ro drift.
+- Refactor metadata cần được kiểm chứng ở cả layer trực tiếp sử dụng nó và các
+  layer downstream phụ thuộc.
+- Chuẩn hóa Silver paths là bước chuẩn bị tốt trước khi thay đổi implementation
+  storage của Silver ở các milestone sau.

@@ -3,10 +3,8 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
 
+from bluesky_pipeline.silver_tables import SILVER_ENGAGEMENTS_PATH
 from bluesky_pipeline.spark_session import create_spark_session
-
-
-SILVER_ENGAGEMENTS_PATH = "s3a://bluesky-lake/silver/silver_engagements"
 
 
 def read_silver_engagements(spark: SparkSession) -> DataFrame:

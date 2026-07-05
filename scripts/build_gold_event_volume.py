@@ -3,15 +3,14 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, count, lit
 
+from bluesky_pipeline.gold_tables import GOLD_EVENT_VOLUME_PATH
+from bluesky_pipeline.silver_tables import (
+    SILVER_DELETED_RECORDS_PATH,
+    SILVER_ENGAGEMENTS_PATH,
+    SILVER_FOLLOWS_PATH,
+    SILVER_POSTS_PATH,
+)
 from bluesky_pipeline.spark_session import create_spark_session
-
-
-SILVER_POSTS_PATH = "s3a://bluesky-lake/silver/silver_posts"
-SILVER_ENGAGEMENTS_PATH = "s3a://bluesky-lake/silver/silver_engagements"
-SILVER_FOLLOWS_PATH = "s3a://bluesky-lake/silver/silver_follows"
-SILVER_DELETED_RECORDS_PATH = "s3a://bluesky-lake/silver/silver_deleted_records"
-
-GOLD_EVENT_VOLUME_PATH = "s3a://bluesky-lake/gold/gold_event_volume_by_type"
 
 
 def read_silver_table(spark: SparkSession, path: str) -> DataFrame:
