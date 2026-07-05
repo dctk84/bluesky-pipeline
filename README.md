@@ -104,6 +104,12 @@ PYTHONPATH=src python scripts/load_gold_event_volume_to_clickhouse.py
 PYTHONPATH=src python scripts/load_gold_post_engagement_summary_to_clickhouse.py
 ```
 
+Refresh Gold serving từ Silver Iceberg bằng một entrypoint tổng hợp:
+
+```bash
+PYTHONPATH=src:. python scripts/refresh_gold_serving_from_iceberg.py
+```
+
 Kiểm tra ClickHouse Gold và reconciliation:
 
 ```bash
