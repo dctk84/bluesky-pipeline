@@ -42,6 +42,8 @@ tồn tại trong repository.
 31. [Đọc và kiểm chứng Silver posts](#bước-31-đọc-và-kiểm-chứng-silver-posts)
 32. [Build Silver engagements từ Bronze commit events](#bước-32-build-silver-engagements-từ-bronze-commit-events)
 33. [Đọc và kiểm chứng Silver engagements](#bước-33-đọc-và-kiểm-chứng-silver-engagements)
+34. [Build Silver follows từ Bronze commit events](#bước-34-build-silver-follows-từ-bronze-commit-events)
+35. [Đọc và kiểm chứng Silver follows](#bước-35-đọc-và-kiểm-chứng-silver-follows)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1255,3 +1257,74 @@ has_subject_uri=true: 981
   type có đúng không.
 - Kiểm chứng field completeness trước khi làm Gold giúp tránh xây analytics trên
   dữ liệu thiếu target.
+
+## Bước 34: Build Silver follows từ Bronze commit events
+
+**Mục tiêu**
+
+Tạo bảng `silver_follows` từ follow create events trong Bronze commit events.
+
+**Vì sao cần thực hiện**
+
+Follow events đại diện cho network activity. Việc chuẩn hóa follow create thành
+Silver giúp project có dữ liệu phục vụ các phân tích như follow volume, network
+activity trend và active repositories theo follow activity.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/build_silver_follows.py` đọc Bronze commit events, lọc
+`app.bsky.graph.follow` với operation `create`, parse `record.subject` dạng string
+thành `target_actor_did`, rồi ghi ra `s3a://bluesky-lake/silver/silver_follows`.
+Kết quả hiện tại có `silver_follows_count: 67` và toàn bộ record có
+`target_actor_did`.
+
+**Các file liên quan**
+
+- `scripts/build_silver_follows.py`
+- `docs/silver-schema-v1.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Follow khác like/repost ở chỗ `record.subject` là string DID, không phải object
+  có `uri` và `cid`.
+- Cùng tên field trong raw JSON có thể có schema khác nhau theo collection, nên
+  Silver job cần parse theo từng event family.
+- `target_actor_did` là field chính để phân tích network activity.
+
+## Bước 35: Đọc và kiểm chứng Silver follows
+
+**Mục tiêu**
+
+Đọc lại `silver_follows` từ MinIO để xác nhận bảng follow đã chuẩn hóa có thể dùng
+cho downstream analytics.
+
+**Vì sao cần thực hiện**
+
+`silver_follows` chỉ có giá trị phân tích nếu field target của follow được parse
+đúng. Kiểm tra `target_actor_did` giúp xác nhận Spark job đã xử lý đúng shape
+string của `record.subject` trong follow events.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/read_silver_follows.py` đọc
+`s3a://bluesky-lake/silver/silver_follows` và in schema, count cùng kiểm tra field
+target. Kết quả hiện tại:
+
+```text
+silver_follows_count: 67
+has_target_actor_did=true: 67
+```
+
+**Các file liên quan**
+
+- `scripts/read_silver_follows.py`
+- `scripts/build_silver_follows.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Kiểm chứng field chính của từng bảng Silver quan trọng hơn chỉ kiểm tra tổng số
+  dòng.
+- Với network activity, `actor_did` và `target_actor_did` là cặp field cốt lõi.
+- Cách build/read/check này có thể lặp lại cho các bảng Silver tiếp theo.
