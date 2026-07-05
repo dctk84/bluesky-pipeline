@@ -1993,3 +1993,77 @@ vẫn đủ count các bảng.
   cho Silver v1.
 - Sau khi refactor toàn bộ Silver build scripts, module schema chung trở thành
   điểm quản lý contract parse Bronze chính của project.
+
+## Bước 53: Kiểm chứng downstream sau refactor Bronze schema chung
+
+**Mục tiêu**
+
+Chạy lại checkpoint tổng hợp cho Silver v1 và reconciliation giữa Silver với
+ClickHouse Gold sau khi toàn bộ Silver build scripts đã dùng schema chung.
+
+**Vì sao cần thực hiện**
+
+Refactor schema không nên làm thay đổi ý nghĩa dữ liệu đầu ra. Vì Gold aggregate
+và ClickHouse serving phụ thuộc vào các bảng Silver, cần kiểm chứng lại cả layer
+Silver và kết quả reconcile downstream trước khi tiếp tục mở rộng pipeline.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/check_silver_v1.py` chạy thành công và xác nhận các bảng Silver chính vẫn
+đọc được. `scripts/check_gold_reconciliation.py` chạy thành công và xác nhận count
+giữa Silver v1 và ClickHouse Gold vẫn khớp.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `scripts/check_silver_v1.py`
+- `scripts/check_gold_reconciliation.py`
+- `scripts/build_silver_posts.py`
+- `scripts/build_silver_engagements.py`
+- `scripts/build_silver_follows.py`
+- `scripts/build_silver_deleted_records.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Sau refactor, cần kiểm chứng không chỉ script vừa sửa mà cả các tầng phụ thuộc.
+- Reconciliation là cách đơn giản để phát hiện dữ liệu bị thiếu, bị nhân đôi hoặc
+  bị lệch khi chuyển từ Lakehouse sang serving database.
+- Khi checkpoint tổng hợp vẫn pass, refactor có thể xem là an toàn để commit và
+  tiếp tục phát triển tính năng mới.
+
+## Bước 54: Chuẩn hóa ClickHouse Gold DDL thành script trong repo
+
+**Mục tiêu**
+
+Tạo script `scripts/create_clickhouse_gold_tables.py` để tự động tạo database và
+bảng Gold serving trong ClickHouse local.
+
+**Vì sao cần thực hiện**
+
+Trước đó database và table ClickHouse có thể được tạo bằng lệnh thủ công. Đưa DDL
+vào script giúp luồng setup dễ chạy lại, dễ review và giảm rủi ro sai khác giữa
+các lần dựng môi trường local.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script tạo `bluesky` database và bảng
+`bluesky.gold_event_volume_by_type` bằng `CREATE ... IF NOT EXISTS`. Script có thể
+chạy nhiều lần mà không xóa dữ liệu hiện có.
+
+**Các file liên quan**
+
+- `scripts/create_clickhouse_gold_tables.py`
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `scripts/check_gold_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- DDL của serving layer nên được version trong repository thay vì chỉ chạy thủ
+  công trên terminal.
+- `CREATE ... IF NOT EXISTS` giúp script setup có tính idempotent trong môi trường
+  local.
+- Chuẩn hóa setup ClickHouse là bước nhỏ nhưng quan trọng trước khi mở rộng thêm
+  Gold tables hoặc dashboard.
