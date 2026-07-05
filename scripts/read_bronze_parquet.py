@@ -1,34 +1,14 @@
 """Đọc dữ liệu Bronze Parquet local để kiểm chứng Spark đã ghi được dữ liệu usable."""
 
 from pyspark.sql import SparkSession
-
+from bluesky_pipeline.spark_session import create_spark_session
 
 BRONZE_INPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_raw_events"
-
-
-def create_spark_session() -> SparkSession:
-    """Tạo SparkSession local để đọc dữ liệu Parquet Bronze từ MinIO."""
-    return (
-        SparkSession.builder
-        .appName("bluesky-read-bronze-parquet")
-        .master("local[*]")
-        .config(
-            "spark.jars.packages",
-            "org.apache.hadoop:hadoop-aws:3.3.4",
-        )
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
-
 
 def main() -> None:
     """Đọc Bronze Parquet, in schema và một số dòng mẫu để kiểm chứng dữ liệu."""
     # Bước 1: Tạo SparkSession.
-    spark = create_spark_session()
+    spark = create_spark_session("bluesky-read-bronze-parquet")
     spark.sparkContext.setLogLevel("WARN")
 
     # Bước 2: Đọc dữ liệu Parquet đã được Spark streaming ghi ra Bronze local.

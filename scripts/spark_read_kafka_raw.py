@@ -3,6 +3,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, date_format, from_json, to_date
 from pyspark.sql.types import LongType, MapType, StringType, StructField, StructType
+from bluesky_pipeline.spark_session import create_spark_session
 
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
@@ -23,35 +24,13 @@ RAW_EVENT_SCHEMA = StructType(
     ]
 )
 
-def create_spark_session() -> SparkSession:
-    """Tạo SparkSession local kèm Kafka connector để đọc Kafka stream."""
-    return (
-        SparkSession.builder
-        .appName("bluesky-read-kafka-raw")
-        .master("local[*]")
-        # Cấu hình S3A để Spark ghi Parquet vào MinIO local.
-        .config(
-            "spark.jars.packages",
-            ",".join(
-                [
-                    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1",
-                    "org.apache.hadoop:hadoop-aws:3.3.4",
-                ]
-            ),
-        )
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
-
-
 def main() -> None:
     """Đọc Kafka topic, parse envelope JSON và ghi dữ liệu ra Bronze Parquet local."""
     # Bước 1: Tạo SparkSession.
-    spark = create_spark_session()
+    spark = create_spark_session(
+        "bluesky-read-kafka-raw",
+        extra_packages=["org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"],
+    )
     spark.sparkContext.setLogLevel("WARN")
 
     # Bước 2: Đọc stream từ Kafka topic raw events.

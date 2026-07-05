@@ -31,6 +31,7 @@ tồn tại trong repository.
 20. [Tạo bucket Bronze trên MinIO](#bước-20-tạo-bucket-bronze-trên-minio)
 21. [Ghi Bronze Parquet lên MinIO bằng Spark S3A](#bước-21-ghi-bronze-parquet-lên-minio-bằng-spark-s3a)
 22. [Đọc lại Bronze Parquet từ MinIO](#bước-22-đọc-lại-bronze-parquet-từ-minio)
+23. [Tách cấu hình Spark S3A dùng chung](#bước-23-tách-cấu-hình-spark-s3a-dùng-chung)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -821,3 +822,39 @@ S3A connector cho MinIO local và in được schema cùng sample rows từ dữ
   công” và “dữ liệu downstream thật sự dùng được”.
 - Bronze trên MinIO là source để các job Spark tiếp theo đọc lại, không phụ thuộc
   vào dữ liệu local trong `data/`.
+
+## Bước 23: Tách cấu hình Spark S3A dùng chung
+
+**Mục tiêu**
+
+Tách logic tạo `SparkSession` có cấu hình S3A sang module dùng chung để writer và
+reader không lặp lại cấu hình MinIO.
+
+**Vì sao cần thực hiện**
+
+Khi nhiều Spark script cùng đọc/ghi MinIO, việc lặp endpoint, credential, package
+và S3A options ở từng file dễ gây sai lệch cấu hình. Module dùng chung giúp các
+script Spark dùng cùng một cách kết nối object storage.
+
+**Kết quả sau khi hoàn thành**
+
+Project có module `src/bluesky_pipeline/spark_session.py` tạo SparkSession local
+đã cấu hình S3A. `scripts/spark_read_kafka_raw.py` và
+`scripts/read_bronze_parquet.py` dùng lại helper này. Script đọc Bronze từ MinIO
+đã chạy thành công khi đặt `PYTHONPATH=src`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/spark_session.py`
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/read_bronze_parquet.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Cấu hình kết nối storage là phần dùng chung, nên tách ra khi nhiều job Spark
+  cùng cần sử dụng.
+- `PYTHONPATH=src` giúp Python tìm package local khi chạy script trực tiếp từ repo
+  mà chưa cài project dưới dạng package.
+- Tách helper chỉ nên làm sau khi có duplication thật và đã kiểm chứng hành vi
+  trước đó chạy đúng.
