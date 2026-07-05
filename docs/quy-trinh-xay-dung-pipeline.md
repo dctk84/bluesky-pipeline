@@ -2481,3 +2481,39 @@ và bootstrap server chỉ còn nằm trong module config chung.
 - Config có thể lấy default local từ code nhưng vẫn nên cho phép override bằng
   environment variables.
 - Gom Kafka metadata giúp giảm lỗi khi đổi topic version hoặc broker address.
+
+## Bước 66: Cập nhật README với cấu hình local có thể override
+
+**Mục tiêu**
+
+Bổ sung vào `README.md` danh sách các biến môi trường quan trọng có thể override
+khi chạy pipeline local.
+
+**Vì sao cần thực hiện**
+
+Sau khi chuẩn hóa Kafka config và đã có ClickHouse helper dùng environment
+variables, README cần chỉ rõ các biến cấu hình chính để người đọc không phải dò
+trong source code. Điều này đặc biệt hữu ích khi đổi Kafka topic, broker address,
+Spark Kafka connector package hoặc thông tin kết nối ClickHouse.
+
+**Kết quả sau khi hoàn thành**
+
+README có phần cấu hình local gồm `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC`,
+`SPARK_KAFKA_CONNECTOR_PACKAGE`, `MAX_EVENTS`, `CLICKHOUSE_URL`,
+`CLICKHOUSE_USER` và `CLICKHOUSE_PASSWORD`.
+
+**Các file liên quan**
+
+- `README.md`
+- `src/bluesky_pipeline/kafka_config.py`
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- README nên ghi rõ các biến môi trường quan trọng để project dễ chạy lại ở môi
+  trường local khác.
+- Config mặc định trong code phục vụ local convenience, nhưng environment
+  variables giúp thay đổi cấu hình mà không sửa source code.
+- Tài liệu cấu hình nên được cập nhật ngay sau khi config được gom thành module
+  dùng chung.
