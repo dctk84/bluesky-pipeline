@@ -44,6 +44,8 @@ tồn tại trong repository.
 33. [Đọc và kiểm chứng Silver engagements](#bước-33-đọc-và-kiểm-chứng-silver-engagements)
 34. [Build Silver follows từ Bronze commit events](#bước-34-build-silver-follows-từ-bronze-commit-events)
 35. [Đọc và kiểm chứng Silver follows](#bước-35-đọc-và-kiểm-chứng-silver-follows)
+36. [Build Silver deleted records từ Bronze commit events](#bước-36-build-silver-deleted-records-từ-bronze-commit-events)
+37. [Đọc và kiểm chứng Silver deleted records](#bước-37-đọc-và-kiểm-chứng-silver-deleted-records)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1328,3 +1330,87 @@ has_target_actor_did=true: 67
   dòng.
 - Với network activity, `actor_did` và `target_actor_did` là cặp field cốt lõi.
 - Cách build/read/check này có thể lặp lại cho các bảng Silver tiếp theo.
+
+## Bước 36: Build Silver deleted records từ Bronze commit events
+
+**Mục tiêu**
+
+Tạo bảng `silver_deleted_records` từ delete events của các commit collection trong
+scope.
+
+**Vì sao cần thực hiện**
+
+Delete events thường không có record payload đầy đủ, nên không phù hợp ghi chung
+vào các bảng Silver create/update như posts, engagements hoặc follows. Một bảng
+deleted records riêng giúp downstream biết record nào đã bị xóa và có thể xử lý
+rebuild, reconciliation hoặc serving layer chính xác hơn.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/build_silver_deleted_records.py` đọc Bronze commit
+events, lọc operation `delete`, dựng `record_uri` từ `repository_did`, `collection`
+và `rkey`, rồi ghi ra `s3a://bluesky-lake/silver/silver_deleted_records`. Kết quả
+hiện tại có `silver_deleted_records_count: 29` với phân bố:
+
+```text
+app.bsky.feed.post: 6
+app.bsky.feed.like: 11
+app.bsky.feed.repost: 2
+app.bsky.graph.follow: 10
+```
+
+**Các file liên quan**
+
+- `scripts/build_silver_deleted_records.py`
+- `docs/silver-schema-v1.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Delete event là một loại lifecycle event quan trọng, không nên bỏ qua chỉ vì
+  thiếu record payload.
+- Tách delete sang bảng riêng giúp các bảng create/update giữ schema rõ ràng hơn.
+- `record_uri` là key tự nhiên giúp nhận diện record bị xóa trong từng collection.
+
+## Bước 37: Đọc và kiểm chứng Silver deleted records
+
+**Mục tiêu**
+
+Đọc lại `silver_deleted_records` từ MinIO để xác nhận bảng delete lifecycle đã
+chuẩn hóa có thể dùng cho downstream processing.
+
+**Vì sao cần thực hiện**
+
+Delete records ảnh hưởng tới tính đúng đắn của serving layer và rebuild sau này.
+Kiểm tra `record_uri` giúp xác nhận mỗi delete event có định danh record bị xóa,
+không chỉ có count tổng.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/read_silver_deleted_records.py` đọc
+`s3a://bluesky-lake/silver/silver_deleted_records`, in schema, count theo
+collection và kiểm tra `record_uri`. Kết quả hiện tại:
+
+```text
+silver_deleted_records_count: 29
+app.bsky.feed.like: 11
+app.bsky.feed.post: 6
+app.bsky.feed.repost: 2
+app.bsky.graph.follow: 10
+has_record_uri=true: 29
+```
+
+**Các file liên quan**
+
+- `scripts/read_silver_deleted_records.py`
+- `scripts/build_silver_deleted_records.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Delete records cần được kiểm chứng riêng vì chúng có payload nghèo hơn create
+  events.
+- `record_uri` là field quan trọng để downstream biết record nào cần loại bỏ hoặc
+  đánh dấu deleted.
+- Kiểm chứng delete lifecycle sớm giúp tránh xây dashboard chỉ dựa trên create
+  events và bỏ qua thay đổi trạng thái dữ liệu.
