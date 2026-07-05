@@ -60,5 +60,24 @@ services:
       # Lưu dữ liệu object storage local qua các lần restart container.
       - minio-data:/data
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: bluesky-clickhouse
+    hostname: clickhouse
+
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+
+    environment:
+      # Credential local dùng cho môi trường học.
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+
+    volumes:
+      # Lưu dữ liệu ClickHouse local qua các lần restart container.
+      - clickhouse-data:/var/lib/clickhouse
+
 volumes:
   minio-data:
+  clickhouse-data:
