@@ -5,7 +5,7 @@ from pyspark.sql import DataFrame, SparkSession
 
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 from bluesky_pipeline.gold_tables import (
-    GOLD_POST_ENGAGEMENT_SUMMARY_PATH,
+    GOLD_POST_ENGAGEMENT_SUMMARY_CLICKHOUSE_SOURCE_PATH,
     GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
 )
 from bluesky_pipeline.spark_session import create_spark_session
@@ -17,7 +17,7 @@ def read_gold_post_engagement_summary(spark: SparkSession) -> DataFrame:
     Input chính là SparkSession đã cấu hình S3A.
     Output là DataFrame chứa summary engagement theo post.
     """
-    return spark.read.parquet(GOLD_POST_ENGAGEMENT_SUMMARY_PATH)
+    return spark.read.parquet(GOLD_POST_ENGAGEMENT_SUMMARY_CLICKHOUSE_SOURCE_PATH)
 
 
 def build_json_each_row_payload(gold_df: DataFrame) -> str:
