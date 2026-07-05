@@ -89,6 +89,9 @@ tồn tại trong repository.
 78. [Load ClickHouse Gold từ Silver Iceberg source](#bước-78-load-clickhouse-gold-từ-silver-iceberg-source)
 79. [Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức](#bước-79-chuẩn-hóa-luồng-gold-từ-silver-iceberg-thành-luồng-chính-thức)
 80. [Tạo entrypoint refresh Gold serving từ Silver Iceberg](#bước-80-tạo-entrypoint-refresh-gold-serving-từ-silver-iceberg)
+81. [Dọn các script prototype đã được thay thế](#bước-81-dọn-các-script-prototype-đã-được-thay-thế)
+82. [Tạo ClickHouse table cho streaming event volume theo phút](#bước-82-tạo-clickhouse-table-cho-streaming-event-volume-theo-phút)
+83. [Stream event volume theo phút từ Kafka vào ClickHouse](#bước-83-stream-event-volume-theo-phút-từ-kafka-vào-clickhouse)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3081,3 +3084,122 @@ staging từ Silver Iceberg, load hai bảng ClickHouse Gold và chạy
   truncate ClickHouse serving table và load lại dữ liệu.
 - Workflow đã chạy ổn trong script local là ứng viên tự nhiên để chuyển thành
   orchestration bằng Airflow ở milestone sau.
+
+## Bước 81: Dọn các script prototype đã được thay thế
+
+**Mục tiêu**
+
+Loại bỏ các script thử nghiệm cũ đã được thay bằng entrypoint hiện tại, đồng thời
+cập nhật tài liệu để không còn tham chiếu tới file không tồn tại.
+
+**Vì sao cần thực hiện**
+
+Khi project đi qua nhiều bước học tập, một số script ban đầu chỉ còn giá trị thử
+nghiệm. Nếu giữ lại quá nhiều entrypoint cũ, người đọc repo sẽ khó biết đâu là
+luồng chính hiện tại. Dọn nhẹ trước khi thêm streaming end-to-end giúp repo bớt
+nhiễu và giảm rủi ro chạy nhầm script cũ.
+
+**Kết quả sau khi hoàn thành**
+
+Các script Gold đọc từ Silver Parquet và các script Iceberg thử riêng cho
+`silver_posts` đã được xóa. Luồng hiện tại dùng các entrypoint theo layer:
+`scripts/build_iceberg_silver_v1.py`,
+`scripts/check_iceberg_silver_v1.py`,
+`scripts/build_gold_event_volume_from_iceberg.py`,
+`scripts/build_gold_post_engagement_summary_from_iceberg.py` và
+`scripts/refresh_gold_serving_from_iceberg.py`. Checkpoint sau cleanup chạy
+thành công và thay đổi đã được push.
+
+**Các file liên quan**
+
+- `scripts/build_iceberg_silver_v1.py`
+- `scripts/check_iceberg_silver_v1.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/refresh_gold_serving_from_iceberg.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Script prototype nên được xóa hoặc thay thế khi đã có entrypoint chính rõ ràng.
+- Tài liệu quy trình có thể giữ lại bài học lịch sử, nhưng phần file liên quan
+  không nên trỏ tới đường dẫn đã bị xóa khỏi repo.
+- Dọn repo theo từng cụm nhỏ an toàn hơn restructure lớn khi sắp thêm luồng dữ
+  liệu mới.
+
+## Bước 82: Tạo ClickHouse table cho streaming event volume theo phút
+
+**Mục tiêu**
+
+Tạo bảng ClickHouse mới để nhận event volume realtime theo từng phút từ Spark
+Structured Streaming.
+
+**Vì sao cần thực hiện**
+
+Luồng Gold hiện tại là batch/full refresh từ Silver Iceberg sang ClickHouse. Để
+xây dựng vertical slice streaming tới dashboard, cần một bảng serving dạng time
+series để Spark streaming có thể append aggregate theo micro-batch và Grafana có
+thể vẽ biểu đồ theo thời gian.
+
+**Kết quả sau khi hoàn thành**
+
+`src/bluesky_pipeline/gold_tables.py` có metadata và DDL cho bảng
+`bluesky.gold_event_volume_1m_stream`. Script
+`scripts/create_clickhouse_gold_tables.py` tạo thêm bảng này trong ClickHouse.
+Lệnh `SHOW TABLES FROM bluesky` hiển thị `gold_event_volume_1m_stream`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Dashboard realtime cần bảng time series, không chỉ bảng snapshot aggregate tổng.
+- `SummingMergeTree` phù hợp cho bảng aggregate append theo key
+  `(window_start, event_type)` trong môi trường local học tập.
+- Tách bảng streaming riêng giúp không làm lẫn Gold batch serving hiện tại với
+  luồng streaming end-to-end mới.
+
+## Bước 83: Stream event volume theo phút từ Kafka vào ClickHouse
+
+**Mục tiêu**
+
+Tạo Spark Structured Streaming job đọc raw events từ Kafka, aggregate số lượng
+event theo phút và ghi trực tiếp vào bảng ClickHouse streaming.
+
+**Vì sao cần thực hiện**
+
+Các bước trước đã có ingestion vào Kafka, Bronze/Silver/Gold batch và ClickHouse
+serving refresh. Để chứng minh luồng streaming end-to-end tới dashboard, cần một
+job streaming ghi metric mới vào ClickHouse mà không phải chờ batch refresh từ
+Silver Iceberg.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/stream_event_volume_to_clickhouse.py` đọc Kafka topic raw events, parse
+event envelope, map commit collection/operation thành `event_type`, aggregate
+theo `window_start` từng phút và insert vào
+`bluesky.gold_event_volume_1m_stream`. Sau khi publish events hai lần, query
+ClickHouse trả về nhiều bucket phút như `2026-07-05 23:27:00` và
+`2026-07-05 23:30:00` với các event type `deleted_record`, `follow`, `like`,
+`post` và `repost`.
+
+**Các file liên quan**
+
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/kafka_config.py`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- `foreachBatch` là cách thực dụng để Spark Structured Streaming ghi sang sink
+  không có connector streaming chính thức trong project hiện tại.
+- Bảng realtime hiện dùng Kafka timestamp làm thời gian bucket theo phút, phù hợp
+  cho lát cắt dashboard đầu tiên.
+- Luồng này đang theo semantics at-least-once; nếu Spark ghi ClickHouse xong nhưng
+  chưa checkpoint rồi bị restart, micro-batch có thể bị insert lại.
