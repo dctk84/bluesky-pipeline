@@ -2,7 +2,10 @@
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, concat, from_json, length, lit
-from pyspark.sql.types import LongType, StringType, StructField, StructType
+from bluesky_pipeline.bronze_schemas import (
+    POST_RECORD_SCHEMA,
+    build_commit_envelope_schema,
+)
 
 from bluesky_pipeline.spark_session import create_spark_session
 
@@ -10,63 +13,7 @@ from bluesky_pipeline.spark_session import create_spark_session
 BRONZE_COMMIT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
 SILVER_POSTS_PATH = "s3a://bluesky-lake/silver/silver_posts"
 
-REPLY_REF_SCHEMA = StructType(
-    [
-        StructField("uri", StringType()),
-        StructField("cid", StringType()),
-    ]
-)
-
-REPLY_SCHEMA = StructType(
-    [
-        StructField("root", REPLY_REF_SCHEMA),
-        StructField("parent", REPLY_REF_SCHEMA),
-    ]
-)
-
-RECORD_SCHEMA = StructType(
-    [
-        StructField("$type", StringType()),
-        StructField("createdAt", StringType()),
-        StructField("text", StringType()),
-        StructField("reply", REPLY_SCHEMA),
-    ]
-)
-
-COMMIT_SCHEMA = StructType(
-    [
-        StructField("operation", StringType()),
-        StructField("collection", StringType()),
-        StructField("rkey", StringType()),
-        StructField("cid", StringType()),
-        StructField("rev", StringType()),
-        StructField("record", RECORD_SCHEMA),
-    ]
-)
-
-PAYLOAD_SCHEMA = StructType(
-    [
-        StructField("did", StringType()),
-        StructField("time_us", LongType()),
-        StructField("kind", StringType()),
-        StructField("commit", COMMIT_SCHEMA),
-    ]
-)
-
-ENVELOPE_SCHEMA = StructType(
-    [
-        StructField("schema_version", LongType()),
-        StructField("source", StringType()),
-        StructField("event_kind", StringType()),
-        StructField("received_at", StringType()),
-        StructField("collection", StringType()),
-        StructField("operation", StringType()),
-        StructField("repository_did", StringType()),
-        StructField("jetstream_time_us", LongType()),
-        StructField("payload", PAYLOAD_SCHEMA),
-    ]
-)
-
+ENVELOPE_SCHEMA = build_commit_envelope_schema(POST_RECORD_SCHEMA)
 
 def read_bronze_commit_events(spark: SparkSession) -> DataFrame:
     """Đọc Bronze commit events từ MinIO.
