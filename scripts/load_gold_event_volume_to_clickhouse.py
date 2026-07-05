@@ -1,8 +1,6 @@
 """Load Gold event volume prototype từ MinIO vào ClickHouse."""
 
-from base64 import b64encode
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+from bluesky_pipeline.clickhouse_client import execute_clickhouse
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -10,37 +8,7 @@ from bluesky_pipeline.spark_session import create_spark_session
 
 
 GOLD_EVENT_VOLUME_PATH = "s3a://bluesky-lake/gold/gold_event_volume_by_type"
-CLICKHOUSE_URL = "http://localhost:8123"
-CLICKHOUSE_USER = "default"
-CLICKHOUSE_PASSWORD = "clickhouse"
 CLICKHOUSE_TABLE = "bluesky.gold_event_volume_by_type"
-
-def build_auth_header() -> str:
-    """Tạo HTTP Basic Auth header cho ClickHouse local.
-
-    Input lấy từ user/password cấu hình trong script.
-    Output là giá trị header Authorization.
-    """
-    token = b64encode(
-        f"{CLICKHOUSE_USER}:{CLICKHOUSE_PASSWORD}".encode("utf-8")
-    ).decode("utf-8")
-    return f"Basic {token}"
-
-def execute_clickhouse(query: str, body: str | None = None) -> str:
-    """Gửi query tới ClickHouse qua HTTP.
-
-    Input chính là câu SQL và body optional cho INSERT.
-    Output là response text từ ClickHouse.
-    """
-    url = f"{CLICKHOUSE_URL}/?query={quote(query)}"
-    data = body.encode("utf-8") if body is not None else None
-
-    request = Request(url, data=data, method="POST")
-    request.add_header("Authorization", build_auth_header())
-
-    with urlopen(request) as response:
-        return response.read().decode("utf-8")
-
 
 def read_gold_event_volume(spark: SparkSession) -> DataFrame:
     """Đọc Gold event volume prototype từ MinIO.

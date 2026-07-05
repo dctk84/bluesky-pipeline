@@ -54,6 +54,7 @@ tồn tại trong repository.
 43. [Load Gold event volume vào ClickHouse](#bước-43-load-gold-event-volume-vào-clickhouse)
 44. [Tự động load Gold event volume vào ClickHouse](#bước-44-tự-động-load-gold-event-volume-vào-clickhouse)
 45. [Kiểm tra Gold serving table trong ClickHouse](#bước-45-kiểm-tra-gold-serving-table-trong-clickhouse)
+46. [Tách ClickHouse HTTP helper dùng chung](#bước-46-tách-clickhouse-http-helper-dùng-chung)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1738,3 +1739,38 @@ repost          144
 - ClickHouse serving table là đích phục vụ truy vấn nhanh, còn dữ liệu có thể
   rebuild từ Silver/Gold prototype.
 - Một kiểm tra nhỏ qua HTTP query là bước đầu trước khi có dashboard Grafana.
+
+## Bước 46: Tách ClickHouse HTTP helper dùng chung
+
+**Mục tiêu**
+
+Tách logic gọi ClickHouse HTTP API sang helper dùng chung trong package
+`bluesky_pipeline`.
+
+**Vì sao cần thực hiện**
+
+Sau khi có nhiều script cần query hoặc load ClickHouse, việc lặp URL, Basic Auth
+và HTTP request ở từng script dễ gây sai lệch cấu hình. Helper dùng chung giúp các
+script ClickHouse sử dụng cùng một cách kết nối.
+
+**Kết quả sau khi hoàn thành**
+
+Project có module `src/bluesky_pipeline/clickhouse_client.py` chứa
+`execute_clickhouse()`. Hai script `scripts/check_clickhouse_gold_event_volume.py`
+và `scripts/load_gold_event_volume_to_clickhouse.py` dùng helper này và đã chạy
+thành công.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi một logic kết nối được dùng ở nhiều script, nên tách helper để giảm lặp và
+  giảm rủi ro cấu hình lệch nhau.
+- Config kết nối ClickHouse nên lấy từ environment variables với default local rõ
+  ràng.
+- Refactor helper cần được kiểm chứng bằng cả script đọc và script ghi/load.
