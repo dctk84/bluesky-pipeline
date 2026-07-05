@@ -2102,3 +2102,80 @@ chứng và reconciliation vẫn chạy thành công sau refactor.
 - Metadata của bảng serving nên có một nguồn khai báo duy nhất để tránh drift.
 - Refactor hạ tầng dữ liệu vẫn cần chạy lại create, load, check và reconciliation.
 - Module metadata giúp việc thêm Gold table mới có pattern rõ ràng hơn.
+
+## Bước 56: Tạo Gold post engagement summary trên MinIO
+
+**Mục tiêu**
+
+Tạo bảng Gold `gold_post_engagement_summary` từ `silver_posts` và
+`silver_engagements` để tổng hợp số like/repost theo từng post.
+
+**Vì sao cần thực hiện**
+
+Gold event volume chỉ cho biết tổng số event theo loại, chưa trả lời được câu hỏi
+phân tích theo thực thể bài viết. Bảng post engagement summary kết nối post với
+các engagement trỏ tới post đó, tạo nền tảng cho các metric như top posts theo
+tương tác.
+
+**Kết quả sau khi hoàn thành**
+
+Project có Gold path `gold/gold_post_engagement_summary/` trên MinIO với
+`gold_post_engagement_summary_count: 119`. Bảng có một dòng cho mỗi post, kèm
+`like_count`, `repost_count` và `engagement_count`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/read_gold_post_engagement_summary.py`
+- `scripts/build_silver_posts.py`
+- `scripts/build_silver_engagements.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Gold layer thường được thiết kế theo câu hỏi phân tích cụ thể, không chỉ copy
+  dữ liệu từ Silver.
+- Left join từ posts sang engagement counts giúp giữ cả các post chưa có tương
+  tác.
+- Aggregate theo `subject_uri` là cách nối like/repost về post gốc trong dữ liệu
+  Bluesky.
+
+## Bước 57: Load Gold post engagement summary vào ClickHouse
+
+**Mục tiêu**
+
+Tạo ClickHouse serving table cho `gold_post_engagement_summary`, load dữ liệu từ
+Gold Parquet trên MinIO vào ClickHouse và kiểm tra kết quả query.
+
+**Vì sao cần thực hiện**
+
+Gold trên MinIO là nguồn aggregate có thể rebuild, còn ClickHouse là lớp serving
+để query nhanh và phục vụ dashboard. Đưa bảng post engagement summary vào
+ClickHouse giúp truy vấn top posts theo tương tác mà không cần đọc trực tiếp từ
+Parquet.
+
+**Kết quả sau khi hoàn thành**
+
+Project có bảng `bluesky.gold_post_engagement_summary` trong ClickHouse.
+Script load và script check chạy thành công, count trong ClickHouse là
+`gold_post_engagement_summary_count: 119`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
+- `scripts/check_clickhouse_gold_post_engagement_summary.py`
+- `scripts/read_gold_post_engagement_summary.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Với dữ liệu text tự do, `JSONEachRow` an toàn hơn TSV/CSV khi insert vào
+  ClickHouse vì tránh lỗi do tab, xuống dòng hoặc ký tự đặc biệt trong nội dung
+  bài viết.
+- ClickHouse serving table nên được tạo bằng DDL versioned trong repo và load lại
+  được từ Gold source.
+- Khi thêm Gold table mới, cần có đủ build, read/check trên MinIO, DDL ClickHouse,
+  load ClickHouse và check ClickHouse.

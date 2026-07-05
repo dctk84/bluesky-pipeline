@@ -9,6 +9,13 @@ from bluesky_pipeline.gold_tables import (
     build_gold_event_volume_ddl,
 )
 
+from bluesky_pipeline.gold_tables import (
+    CLICKHOUSE_DATABASE,
+    GOLD_EVENT_VOLUME_TABLE,
+    GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
+    build_gold_event_volume_ddl,
+    build_gold_post_engagement_summary_ddl,
+)
 
 def create_database() -> None:
     """Tạo database ClickHouse cho project nếu chưa tồn tại."""
@@ -21,6 +28,10 @@ def create_gold_event_volume_table() -> None:
     # Bảng aggregate nhỏ, phục vụ phân tích số lượng event theo loại.
     execute_clickhouse(build_gold_event_volume_ddl())
 
+def create_gold_post_engagement_summary_table() -> None:
+    """Tạo bảng Gold post engagement summary serving nếu chưa tồn tại."""
+    # Bảng này phục vụ dashboard/query top posts theo engagement.
+    execute_clickhouse(build_gold_post_engagement_summary_ddl())
 
 def main() -> None:
     """Tạo các ClickHouse objects cần thiết cho Gold serving layer."""
@@ -29,6 +40,9 @@ def main() -> None:
 
     create_gold_event_volume_table()
     print(f"created_table: {GOLD_EVENT_VOLUME_TABLE}")
+
+    create_gold_post_engagement_summary_table()
+    print(f"created_table: {GOLD_POST_ENGAGEMENT_SUMMARY_TABLE}")
 
 
 if __name__ == "__main__":
