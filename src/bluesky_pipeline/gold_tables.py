@@ -14,6 +14,11 @@ GOLD_POST_ENGAGEMENT_SUMMARY_CLICKHOUSE_SOURCE_PATH = (
     GOLD_POST_ENGAGEMENT_SUMMARY_PATH
 )
 
+GOLD_EVENT_VOLUME_1M_STREAM_TABLE = "bluesky.gold_event_volume_1m_stream"
+
+GOLD_EVENT_VOLUME_1M_STREAM_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/gold_event_volume_1m_stream"
+)
 
 def build_gold_post_engagement_summary_ddl() -> str:
     """Tạo câu DDL cho bảng Gold post engagement summary trong ClickHouse."""
@@ -48,4 +53,19 @@ def build_gold_event_volume_ddl() -> str:
     )
     ENGINE = MergeTree
     ORDER BY event_type
+    """
+
+def build_gold_event_volume_1m_stream_ddl() -> str:
+    """Tạo câu DDL cho bảng event volume realtime theo phút trong ClickHouse."""
+    # Bảng này phục vụ Grafana time series cho luồng streaming end-to-end.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}
+    (
+        window_start DateTime,
+        event_type String,
+        event_count UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = SummingMergeTree
+    ORDER BY (window_start, event_type)
     """
