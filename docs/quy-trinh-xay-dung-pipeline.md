@@ -2768,3 +2768,83 @@ metadata chung và checkpoint read/reconciliation vẫn pass.
 - Refactor metadata Iceberg giúp mở rộng sang các bảng Silver khác theo cùng
   pattern.
 - Rules làm việc cũng cần được cập nhật khi phát hiện một lỗi quy trình lặp lại.
+
+## Bước 74: Build và reconcile Silver engagements bằng Iceberg
+
+**Mục tiêu**
+
+Tạo bảng Iceberg cho `silver_engagements`, đọc kiểm chứng và reconcile với bảng
+Silver Parquet v1 hiện tại.
+
+**Vì sao cần thực hiện**
+
+Sau `silver_posts`, `silver_engagements` là bảng Silver quan trọng tiếp theo vì là
+nguồn của các Gold metrics về like/repost và post engagement. Migrate thử bảng này
+sang Iceberg giúp kiểm tra pattern với dữ liệu có phân loại event và subject URI.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_iceberg_silver_engagements.py`,
+`scripts/read_iceberg_silver_engagements.py` và
+`scripts/check_iceberg_silver_engagements_reconciliation.py` chạy thành công.
+Count Iceberg là `iceberg_silver_engagements_count: 981` và reconciliation báo
+`Iceberg Silver engagements reconciliation passed`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/silver_tables.py`
+- `scripts/build_iceberg_silver_engagements.py`
+- `scripts/read_iceberg_silver_engagements.py`
+- `scripts/check_iceberg_silver_engagements_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi thêm Iceberg table mới, metadata table phải được khai báo trong module dùng
+  chung ngay từ đầu.
+- Reconciliation cho engagement cần kiểm tra cả tổng dòng, like/repost count và
+  subject URI vì đây là contract nối engagement về post gốc.
+- Migrate từng bảng Silver giúp kiểm soát lỗi trước khi thay thế toàn bộ Silver
+  Parquet prototype.
+
+## Bước 75: Build và reconcile toàn bộ Silver v1 bằng Iceberg
+
+**Mục tiêu**
+
+Tạo batch scripts để build và reconcile toàn bộ các bảng Silver v1 dạng Iceberg:
+`silver_posts`, `silver_engagements`, `silver_follows` và
+`silver_deleted_records`.
+
+**Vì sao cần thực hiện**
+
+Sau khi `silver_posts` và `silver_engagements` đã chứng minh pattern hoạt động,
+không cần tiếp tục tạo từng script thử nghiệm riêng cho từng bảng. Một entrypoint
+build và một entrypoint reconciliation cho toàn bộ Silver v1 giúp migration gọn
+hơn, giảm thao tác lặp và thể hiện rõ đây là một lớp Silver Iceberg hoàn chỉnh.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_iceberg_silver_v1.py` build đủ 4 bảng Iceberg và in count:
+`iceberg_silver_posts_count: 119`, `iceberg_silver_engagements_count: 981`,
+`iceberg_silver_follows_count: 67` và
+`iceberg_silver_deleted_records_count: 29`.
+`scripts/check_iceberg_silver_v1.py` chạy thành công và báo
+`Iceberg Silver v1 reconciliation passed`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/silver_tables.py`
+- `scripts/build_iceberg_silver_v1.py`
+- `scripts/check_iceberg_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi pattern đã được chứng minh, nên chuyển từ script thử nghiệm lẻ sang batch
+  entrypoint theo layer.
+- Reconciliation tổng hợp giúp xác nhận toàn bộ Silver v1 Iceberg khớp với Silver
+  Parquet prototype.
+- Các script thử nghiệm lẻ không còn vai trò lâu dài thì không nên commit để tránh
+  repo phình và gây nhầm luồng chạy chính.
