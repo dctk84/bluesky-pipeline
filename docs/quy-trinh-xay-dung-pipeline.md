@@ -47,6 +47,8 @@ tồn tại trong repository.
 36. [Build Silver deleted records từ Bronze commit events](#bước-36-build-silver-deleted-records-từ-bronze-commit-events)
 37. [Đọc và kiểm chứng Silver deleted records](#bước-37-đọc-và-kiểm-chứng-silver-deleted-records)
 38. [Kiểm tra tổng quan Silver v1](#bước-38-kiểm-tra-tổng-quan-silver-v1)
+39. [Build Gold event volume prototype từ Silver v1](#bước-39-build-gold-event-volume-prototype-từ-silver-v1)
+40. [Đọc và kiểm chứng Gold event volume prototype](#bước-40-đọc-và-kiểm-chứng-gold-event-volume-prototype)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1466,3 +1468,77 @@ silver_deleted_records_count: 29
   xác nhận Silver layer có dữ liệu usable.
 - Silver v1 hiện vẫn là Parquet trên MinIO, chưa phải Iceberg và chưa có
   deduplication/quarantine/pseudonymization.
+
+## Bước 39: Build Gold event volume prototype từ Silver v1
+
+**Mục tiêu**
+
+Tạo aggregate Gold prototype đầu tiên từ các bảng Silver v1 để đếm event volume
+theo loại event business.
+
+**Vì sao cần thực hiện**
+
+Sau khi có Silver v1, project cần chứng minh dữ liệu đã chuẩn hóa có thể tạo ra
+aggregate phục vụ analytics. Bước này nối Silver sang Gold ở mức prototype, trước
+khi đưa Gold serving marts vào ClickHouse theo kiến trúc chính thức.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/build_gold_event_volume.py` đọc các bảng Silver
+`silver_posts`, `silver_engagements`, `silver_follows` và
+`silver_deleted_records`, tạo aggregate theo `event_type`, rồi ghi ra
+`s3a://bluesky-lake/gold/gold_event_volume_by_type`.
+
+**Các file liên quan**
+
+- `scripts/build_gold_event_volume.py`
+- `scripts/check_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Đây là Gold prototype trên MinIO, chưa phải Gold serving layer chính thức bằng
+  ClickHouse.
+- Gold aggregate nên được rebuild từ Silver, không phụ thuộc trực tiếp vào raw
+  Bronze.
+- Bắt đầu bằng aggregate đơn giản giúp kiểm chứng luồng Silver -> Gold trước khi
+  thêm ClickHouse và dashboard.
+
+## Bước 40: Đọc và kiểm chứng Gold event volume prototype
+
+**Mục tiêu**
+
+Đọc lại Gold event volume prototype từ MinIO để xác nhận aggregate đã ghi có thể
+được query bằng Spark.
+
+**Vì sao cần thực hiện**
+
+Tương tự Bronze và Silver, ghi Gold thành công chưa đủ; cần đọc lại để xác nhận
+schema và giá trị aggregate. Bước này giúp kiểm tra các count tổng theo event type
+trước khi chuyển Gold sang ClickHouse.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/read_gold_event_volume.py` đọc
+`s3a://bluesky-lake/gold/gold_event_volume_by_type` và in aggregate:
+
+```text
+deleted_record: 29
+follow: 67
+like: 837
+post: 119
+repost: 144
+```
+
+**Các file liên quan**
+
+- `scripts/read_gold_event_volume.py`
+- `scripts/build_gold_event_volume.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Gold prototype là bước kiểm chứng logic aggregate, không thay thế ClickHouse.
+- Count trong Gold phải giải thích được từ các bảng Silver nguồn.
+- Khi thêm ClickHouse, dữ liệu Gold serving marts phải có khả năng rebuild từ
+  Silver hoặc Gold prototype tương ứng.
