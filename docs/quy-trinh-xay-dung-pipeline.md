@@ -1524,14 +1524,15 @@ khi đưa Gold serving marts vào ClickHouse theo kiến trúc chính thức.
 
 **Kết quả sau khi hoàn thành**
 
-Project có script `scripts/build_gold_event_volume.py` đọc các bảng Silver
-`silver_posts`, `silver_engagements`, `silver_follows` và
-`silver_deleted_records`, tạo aggregate theo `event_type`, rồi ghi ra
-`s3a://bluesky-lake/gold/gold_event_volume_by_type`.
+Project đã có logic đọc các bảng Silver `silver_posts`, `silver_engagements`,
+`silver_follows` và `silver_deleted_records`, tạo aggregate theo `event_type`,
+rồi ghi ra `s3a://bluesky-lake/gold/gold_event_volume_by_type`. Sau khi Silver
+Iceberg trở thành nguồn chính, logic build hiện tại nằm ở
+`scripts/build_gold_event_volume_from_iceberg.py`.
 
 **Các file liên quan**
 
-- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
 - `scripts/check_silver_v1.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -1573,7 +1574,7 @@ repost: 144
 **Các file liên quan**
 
 - `scripts/read_gold_event_volume.py`
-- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
 **Kiến thức cần ghi nhớ**
@@ -1678,7 +1679,7 @@ repost          144
 **Các file liên quan**
 
 - `docker-compose.yml`
-- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
 - `scripts/read_gold_event_volume.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -1721,7 +1722,7 @@ repost          144
 **Các file liên quan**
 
 - `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
 - `docker-compose.yml`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -2154,7 +2155,7 @@ Project có Gold path `gold/gold_post_engagement_summary/` trên MinIO với
 **Các file liên quan**
 
 - `src/bluesky_pipeline/gold_tables.py`
-- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/read_gold_post_engagement_summary.py`
 - `scripts/build_silver_posts.py`
 - `scripts/build_silver_engagements.py`
@@ -2258,7 +2259,7 @@ cả hai bảng Gold hiện có để người khác có thể chạy lại lu�
 
 **Kết quả sau khi hoàn thành**
 
-README mô tả luồng local end-to-end với 2 Gold prototypes trên MinIO và 2
+README mô tả luồng local end-to-end với 2 Gold staging outputs trên MinIO và 2
 ClickHouse serving tables:
 `bluesky.gold_event_volume_by_type` và
 `bluesky.gold_post_engagement_summary`.
@@ -2267,8 +2268,8 @@ ClickHouse serving tables:
 
 - `README.md`
 - `scripts/create_clickhouse_gold_tables.py`
-- `scripts/build_gold_event_volume.py`
-- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/check_gold_reconciliation.py`
 - `scripts/check_gold_post_engagement_reconciliation.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
@@ -2382,8 +2383,8 @@ thành công sau refactor.
 - `scripts/read_silver_follows.py`
 - `scripts/read_silver_deleted_records.py`
 - `scripts/check_silver_v1.py`
-- `scripts/build_gold_event_volume.py`
-- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/check_gold_reconciliation.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -2702,16 +2703,17 @@ MinIO. Bảng `silver_posts` được chọn trước vì là bảng lõi và đ
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/build_iceberg_silver_posts.py` và `scripts/read_iceberg_silver_posts.py`
-chạy thành công với `iceberg_silver_posts_count: 119`. Trên MinIO xuất hiện path
-`iceberg/warehouse/silver_v1/silver_posts/`.
+Một script thử nghiệm theo một bảng đã chạy thành công với
+`iceberg_silver_posts_count: 119`. Trên MinIO xuất hiện path
+`iceberg/warehouse/silver_v1/silver_posts/`. Sau khi pattern được chứng minh, các
+script thử nghiệm riêng cho một bảng được thay bằng entrypoint toàn layer
+`scripts/build_iceberg_silver_v1.py`.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/silver_tables.py`
-- `scripts/build_iceberg_silver_posts.py`
-- `scripts/read_iceberg_silver_posts.py`
+- `scripts/build_iceberg_silver_v1.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
 **Kiến thức cần ghi nhớ**
@@ -2738,15 +2740,16 @@ bảo dữ liệu không bị thiếu hoặc biến đổi sai trong quá trình
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/check_iceberg_silver_posts_reconciliation.py` chạy thành công và báo
+Checkpoint thử nghiệm cho `silver_posts` chạy thành công và báo
 `Iceberg Silver posts reconciliation passed`. Các metric như `row_count`,
-`reply_count` và `text_length_sum` khớp giữa Parquet và Iceberg.
+`reply_count` và `text_length_sum` khớp giữa Parquet và Iceberg. Sau đó checkpoint
+riêng này được thay bằng `scripts/check_iceberg_silver_v1.py` để kiểm tra toàn bộ
+Silver v1.
 
 **Các file liên quan**
 
-- `scripts/check_iceberg_silver_posts_reconciliation.py`
-- `scripts/build_iceberg_silver_posts.py`
-- `scripts/read_iceberg_silver_posts.py`
+- `scripts/check_iceberg_silver_v1.py`
+- `scripts/build_iceberg_silver_v1.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/silver_tables.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
@@ -2776,16 +2779,15 @@ tên bảng sẽ dễ gây lệch giữa build, read và reconciliation.
 
 **Kết quả sau khi hoàn thành**
 
-`ICEBERG_SILVER_NAMESPACE` và `ICEBERG_SILVER_POSTS_TABLE` được khai báo trong
-`src/bluesky_pipeline/iceberg_config.py`. Các script Iceberg Silver posts dùng
-metadata chung và checkpoint read/reconciliation vẫn pass.
+`ICEBERG_SILVER_NAMESPACE` và metadata bảng Silver Iceberg được khai báo trong
+`src/bluesky_pipeline/iceberg_config.py`. Các entrypoint Iceberg Silver v1 dùng
+metadata chung và checkpoint reconciliation vẫn pass.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/iceberg_config.py`
-- `scripts/build_iceberg_silver_posts.py`
-- `scripts/read_iceberg_silver_posts.py`
-- `scripts/check_iceberg_silver_posts_reconciliation.py`
+- `scripts/build_iceberg_silver_v1.py`
+- `scripts/check_iceberg_silver_v1.py`
 - `docs/huong-dan-lam-viec-voi-codex.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
