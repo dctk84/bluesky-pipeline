@@ -6,7 +6,7 @@ from confluent_kafka import Producer
 
 
 SAMPLE_PATH = Path("data/probe/jetstream_sample.jsonl")
-TOPIC = "bluesky.raw.events.v1"
+TOPIC = "bluesky.raw.events.v2"
 BOOTSTRAP_SERVERS = "localhost:9092"
 
 

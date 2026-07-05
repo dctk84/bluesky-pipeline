@@ -1,20 +1,29 @@
 """Đọc raw event từ Kafka bằng Spark Structured Streaming và ghi Bronze Parquet."""
 
-from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, date_format, from_json, to_date
 from pyspark.sql.types import LongType, MapType, StringType, StructField, StructType
+
 from bluesky_pipeline.spark_session import create_spark_session
 
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-KAFKA_TOPIC = "bluesky.raw.events.v1"
-CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_read_kafka_raw"
-BRONZE_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_raw_events"
+KAFKA_TOPIC = "bluesky.raw.events.v2"
+
+COMMIT_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
+IDENTITY_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_identity_events"
+ACCOUNT_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_account_events"
+
+COMMIT_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_commit_events"
+IDENTITY_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_identity_events"
+ACCOUNT_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_account_events"
+
+KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 
 RAW_EVENT_SCHEMA = StructType(
     [
         StructField("schema_version", LongType()),
         StructField("source", StringType()),
+        StructField("event_kind", StringType()),
         StructField("received_at", StringType()),
         StructField("collection", StringType()),
         StructField("operation", StringType()),
@@ -24,12 +33,13 @@ RAW_EVENT_SCHEMA = StructType(
     ]
 )
 
+
 def main() -> None:
-    """Đọc Kafka topic, parse envelope JSON và ghi dữ liệu ra Bronze Parquet local."""
-    # Bước 1: Tạo SparkSession.
+    """Đọc Kafka topic, parse envelope JSON và ghi các nhóm event ra Bronze."""
+    # Bước 1: Tạo SparkSession có Kafka connector và cấu hình S3A cho MinIO.
     spark = create_spark_session(
         "bluesky-read-kafka-raw",
-        extra_packages=["org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"],
+        extra_packages=[KAFKA_CONNECTOR_PACKAGE],
     )
     spark.sparkContext.setLogLevel("WARN")
 
@@ -43,7 +53,7 @@ def main() -> None:
         .load()
     )
 
-    # Bước 3: Chuyển key/value từ binary sang string để dễ quan sát.
+    # Bước 3: Chuyển key/value từ binary sang string để parse JSON.
     raw_events_df = kafka_df.select(
         col("key").cast("string").alias("message_key"),
         col("value").cast("string").alias("message_value"),
@@ -53,6 +63,7 @@ def main() -> None:
         col("timestamp"),
     )
 
+    # Bước 4: Parse event envelope và giữ lại raw JSON để audit/replay.
     parsed_events_df = raw_events_df.select(
         col("message_key"),
         col("message_value"),
@@ -66,6 +77,7 @@ def main() -> None:
         col("message_value"),
         col("event.schema_version"),
         col("event.source"),
+        col("event.event_kind"),
         col("event.received_at"),
         col("event.collection"),
         col("event.operation"),
@@ -79,19 +91,50 @@ def main() -> None:
         date_format(col("timestamp"), "HH").alias("ingest_hour"),
     )
 
-    # Bước 4: In stream ra console để kiểm chứng Spark đã đọc được Kafka.
-    query = (
-        parsed_events_df.writeStream
-        .format("parquet")
-        .option("path", BRONZE_OUTPUT_PATH)
-        .option("checkpointLocation", CHECKPOINT_LOCATION)
-        .partitionBy("ingest_date", "ingest_hour", "collection")
-        .outputMode("append")
-        .start()
-    )
+    # Bước 5: Tách event theo family để mỗi Bronze path có layout phù hợp.
+    commit_events_df = parsed_events_df.filter(col("event_kind") == "commit")
+    identity_events_df = parsed_events_df.filter(col("event_kind") == "identity")
+    account_events_df = parsed_events_df.filter(col("event_kind") == "account")
 
-    # Bước 5: Giữ process chạy cho tới khi người dùng dừng bằng Ctrl+C.
-    query.awaitTermination()
+    # Bước 6: Ghi commit events, có thêm partition collection.
+    commit_events_df.writeStream.format("parquet").option(
+        "path",
+        COMMIT_OUTPUT_PATH,
+    ).option(
+        "checkpointLocation",
+        COMMIT_CHECKPOINT_LOCATION,
+    ).partitionBy(
+        "ingest_date",
+        "ingest_hour",
+        "collection",
+    ).outputMode("append").start()
+
+    # Bước 7: Ghi identity events, không partition theo collection vì không có field này.
+    identity_events_df.writeStream.format("parquet").option(
+        "path",
+        IDENTITY_OUTPUT_PATH,
+    ).option(
+        "checkpointLocation",
+        IDENTITY_CHECKPOINT_LOCATION,
+    ).partitionBy(
+        "ingest_date",
+        "ingest_hour",
+    ).outputMode("append").start()
+
+    # Bước 8: Ghi account events, không partition theo collection vì không có field này.
+    account_events_df.writeStream.format("parquet").option(
+        "path",
+        ACCOUNT_OUTPUT_PATH,
+    ).option(
+        "checkpointLocation",
+        ACCOUNT_CHECKPOINT_LOCATION,
+    ).partitionBy(
+        "ingest_date",
+        "ingest_hour",
+    ).outputMode("append").start()
+
+    # Bước 9: Giữ process chạy cho tới khi có query lỗi hoặc người dùng dừng.
+    spark.streams.awaitAnyTermination()
 
 
 if __name__ == "__main__":

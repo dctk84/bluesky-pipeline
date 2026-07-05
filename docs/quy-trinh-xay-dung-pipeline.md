@@ -32,6 +32,10 @@ tồn tại trong repository.
 21. [Ghi Bronze Parquet lên MinIO bằng Spark S3A](#bước-21-ghi-bronze-parquet-lên-minio-bằng-spark-s3a)
 22. [Đọc lại Bronze Parquet từ MinIO](#bước-22-đọc-lại-bronze-parquet-từ-minio)
 23. [Tách cấu hình Spark S3A dùng chung](#bước-23-tách-cấu-hình-spark-s3a-dùng-chung)
+24. [Bổ sung event kind vào event envelope](#bước-24-bổ-sung-event-kind-vào-event-envelope)
+25. [Ghi Bronze raw events có event kind lên MinIO](#bước-25-ghi-bronze-raw-events-có-event-kind-lên-minio)
+26. [Tách Bronze output theo event family](#bước-26-tách-bronze-output-theo-event-family)
+27. [Đọc và kiểm chứng ba Bronze event family](#bước-27-đọc-và-kiểm-chứng-ba-bronze-event-family)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -858,3 +862,162 @@ Project có module `src/bluesky_pipeline/spark_session.py` tạo SparkSession lo
   mà chưa cài project dưới dạng package.
 - Tách helper chỉ nên làm sau khi có duplication thật và đã kiểm chứng hành vi
   trước đó chạy đúng.
+
+## Bước 24: Bổ sung event kind vào event envelope
+
+**Mục tiêu**
+
+Bổ sung `event_kind` vào event envelope để phân biệt commit event với các
+non-commit event như `identity` và `account`.
+
+**Vì sao cần thực hiện**
+
+Trước đó pipeline chủ yếu dựa vào `collection` và `operation`, nhưng hai field này
+chỉ tồn tại với commit event. Khi đưa `identity/account` vào scope phân tích,
+pipeline cần một field cấp envelope để phân loại event family trước khi ghi Bronze
+hoặc normalize downstream.
+
+**Kết quả sau khi hoàn thành**
+
+`build_event_envelope()` lấy `event_kind` từ `raw_event["kind"]`. Test envelope đã
+kiểm chứng create commit event có `event_kind = "commit"`, identity event không có
+commit vẫn giữ `event_kind = "identity"`, và event rỗng có `event_kind = None`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/event_envelope.py`
+- `tests/test_event_envelope.py`
+- `docs/tong-quan-du-an.md`
+- `docs/jetstream-schema-notes.md`
+
+**Kiến thức cần ghi nhớ**
+
+- `collection` là metadata của commit event, không phải mọi Jetstream event đều có
+  field này.
+- `event_kind` là field phân loại cấp event, phù hợp để route dữ liệu sang các
+  Bronze path khác nhau.
+- Khi mở rộng contract envelope, cần cập nhật test để khóa hành vi cho cả event
+  commit và non-commit.
+
+## Bước 25: Ghi Bronze raw events có event kind lên MinIO
+
+**Mục tiêu**
+
+Cập nhật Spark Bronze writer để parse và ghi `event_kind` xuống MinIO, giúp phân
+biệt `commit`, `identity` và `account` ở tầng Bronze.
+
+**Vì sao cần thực hiện**
+
+Khi scope mở rộng sang account lifecycle events, `collection` không còn đủ để phân
+loại mọi event. `event_kind` cho phép Bronze giữ cả commit và non-commit event mà
+vẫn đọc được theo từng event family.
+
+**Kết quả sau khi hoàn thành**
+
+Spark writer đọc topic schema mới, parse được `event_kind` và ghi dữ liệu lên
+MinIO với layout có các partition `event_kind=commit`, `event_kind=identity` và
+`event_kind=account`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/event_envelope.py`
+- `src/bluesky_pipeline/ingestion_gateway.py`
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi schema của message envelope thay đổi, dữ liệu cũ trong Kafka topic có thể
+  không có field mới. Với local learning, tạo topic version mới là cách rõ ràng để
+  tránh lẫn schema cũ và mới.
+- `event_kind` là partition có cardinality thấp, phù hợp để đọc chọn lọc theo
+  nhóm event.
+- Đây vẫn là bước chuyển tiếp; layout sạch hơn sẽ tách commit, identity và account
+  sang các Bronze path riêng.
+
+## Bước 26: Tách Bronze output theo event family
+
+**Mục tiêu**
+
+Tách Spark Bronze writer thành ba output path riêng cho commit, identity và account
+events.
+
+**Vì sao cần thực hiện**
+
+Commit events có `collection`, `operation` và record payload, trong khi
+identity/account events không có collection. Nếu ghi chung một path, Bronze dễ có
+partition `collection=NULL` hoặc layout khó hiểu. Tách theo event family giúp mỗi
+nhóm có schema và partition phù hợp hơn.
+
+**Kết quả sau khi hoàn thành**
+
+MinIO bucket `bluesky-lake` có ba prefix Bronze:
+
+```text
+bronze/bluesky_commit_events/
+bronze/bluesky_identity_events/
+bronze/bluesky_account_events/
+```
+
+Commit events được partition theo `ingest_date`, `ingest_hour` và `collection`.
+Identity/account events được partition theo `ingest_date` và `ingest_hour`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `src/bluesky_pipeline/event_envelope.py`
+- `src/bluesky_pipeline/ingestion_gateway.py`
+- `docs/tong-quan-du-an.md`
+- `docs/jetstream-schema-notes.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Không phải mọi event từ Jetstream đều là commit event có collection.
+- Bronze layout nên phản ánh bản chất dữ liệu thay vì ép các event khác schema vào
+  cùng một partition tree.
+- Tách path theo event family giúp downstream đọc đúng nguồn dữ liệu cho từng bài
+  toán phân tích.
+
+## Bước 27: Đọc và kiểm chứng ba Bronze event family
+
+**Mục tiêu**
+
+Cập nhật script đọc Bronze để đọc riêng commit, identity và account events từ ba
+path khác nhau trên MinIO.
+
+**Vì sao cần thực hiện**
+
+Sau khi tách writer thành nhiều output path, cần chứng minh từng path đều đọc lại
+được bằng Spark. Đây là bước kiểm chứng rằng layout Bronze mới không chỉ sinh
+object trên MinIO mà còn usable cho downstream jobs.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/read_bronze_parquet.py` đọc được ba path:
+
+```text
+s3a://bluesky-lake/bronze/bluesky_commit_events
+s3a://bluesky-lake/bronze/bluesky_identity_events
+s3a://bluesky-lake/bronze/bluesky_account_events
+```
+
+Script in schema, sample rows và count riêng cho từng event family. Với commit
+events, script cũng in count theo `collection`.
+
+**Các file liên quan**
+
+- `scripts/read_bronze_parquet.py`
+- `scripts/spark_read_kafka_raw.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Mỗi output path mới cần có bước đọc ngược để kiểm chứng dữ liệu có thể dùng
+  được.
+- Reader kiểm chứng nên phản ánh đúng layout storage hiện tại thay vì đọc một path
+  cũ đã bị thay thế.
+- Count theo event family và collection là kiểm tra tối thiểu trước khi xây các
+  bước Silver/analytics phía sau.
