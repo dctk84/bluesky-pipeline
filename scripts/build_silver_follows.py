@@ -6,12 +6,12 @@ from bluesky_pipeline.bronze_schemas import (
     FOLLOW_RECORD_SCHEMA,
     build_commit_envelope_schema,
 )
+from bluesky_pipeline.silver_tables import SILVER_FOLLOWS_PATH
 
 from bluesky_pipeline.spark_session import create_spark_session
 
 
 BRONZE_COMMIT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
-SILVER_FOLLOWS_PATH = "s3a://bluesky-lake/silver/silver_follows"
 
 ENVELOPE_SCHEMA = build_commit_envelope_schema(FOLLOW_RECORD_SCHEMA)
 

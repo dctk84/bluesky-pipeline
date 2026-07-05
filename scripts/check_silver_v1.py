@@ -3,14 +3,20 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
 
+from bluesky_pipeline.silver_tables import (
+    SILVER_DELETED_RECORDS_PATH,
+    SILVER_ENGAGEMENTS_PATH,
+    SILVER_FOLLOWS_PATH,
+    SILVER_POSTS_PATH,
+)
 from bluesky_pipeline.spark_session import create_spark_session
 
 
 SILVER_TABLES = {
-    "silver_posts": "s3a://bluesky-lake/silver/silver_posts",
-    "silver_engagements": "s3a://bluesky-lake/silver/silver_engagements",
-    "silver_follows": "s3a://bluesky-lake/silver/silver_follows",
-    "silver_deleted_records": "s3a://bluesky-lake/silver/silver_deleted_records",
+    "silver_posts": SILVER_POSTS_PATH,
+    "silver_engagements": SILVER_ENGAGEMENTS_PATH,
+    "silver_follows": SILVER_FOLLOWS_PATH,
+    "silver_deleted_records": SILVER_DELETED_RECORDS_PATH,
 }
 
 
