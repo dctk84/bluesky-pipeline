@@ -6,9 +6,10 @@ from pyspark.sql import DataFrame, SparkSession
 
 from bluesky_pipeline.spark_session import create_spark_session
 
-
-GOLD_EVENT_VOLUME_PATH = "s3a://bluesky-lake/gold/gold_event_volume_by_type"
-CLICKHOUSE_TABLE = "bluesky.gold_event_volume_by_type"
+from bluesky_pipeline.gold_tables import (
+    GOLD_EVENT_VOLUME_PATH,
+    GOLD_EVENT_VOLUME_TABLE,
+)
 
 def read_gold_event_volume(spark: SparkSession) -> DataFrame:
     """Đọc Gold event volume prototype từ MinIO.
@@ -37,11 +38,11 @@ def load_gold_event_volume(gold_df: DataFrame) -> None:
     Output là dữ liệu được ghi vào ClickHouse serving table.
     """
     # Rebuild bảng serving từ Gold prototype để đảm bảo kết quả idempotent ở local.
-    execute_clickhouse(f"TRUNCATE TABLE {CLICKHOUSE_TABLE}")
+    execute_clickhouse(f"TRUNCATE TABLE {GOLD_EVENT_VOLUME_TABLE}")
 
     csv_payload = build_csv_payload(gold_df)
     execute_clickhouse(
-        f"INSERT INTO {CLICKHOUSE_TABLE} (event_type,event_count) FORMAT CSV",
+        f"INSERT INTO {GOLD_EVENT_VOLUME_TABLE} (event_type,event_count) FORMAT CSV",
         body=csv_payload,
     )
 
@@ -57,7 +58,7 @@ def main() -> None:
     load_gold_event_volume(gold_df)
 
     result = execute_clickhouse(
-        f"SELECT event_type,event_count FROM {CLICKHOUSE_TABLE} ORDER BY event_type"
+        f"SELECT event_type,event_count FROM {GOLD_EVENT_VOLUME_TABLE} ORDER BY event_type"
     )
     print(result)
 
