@@ -3,8 +3,11 @@
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 
 
-CLICKHOUSE_DATABASE = "bluesky"
-GOLD_EVENT_VOLUME_TABLE = "bluesky.gold_event_volume_by_type"
+from bluesky_pipeline.gold_tables import (
+    CLICKHOUSE_DATABASE,
+    GOLD_EVENT_VOLUME_TABLE,
+    build_gold_event_volume_ddl,
+)
 
 
 def create_database() -> None:
@@ -16,18 +19,7 @@ def create_database() -> None:
 def create_gold_event_volume_table() -> None:
     """Tạo bảng Gold event volume serving nếu chưa tồn tại."""
     # Bảng aggregate nhỏ, phục vụ phân tích số lượng event theo loại.
-    execute_clickhouse(
-        f"""
-        CREATE TABLE IF NOT EXISTS {GOLD_EVENT_VOLUME_TABLE}
-        (
-            event_type String,
-            event_count UInt64,
-            loaded_at DateTime DEFAULT now()
-        )
-        ENGINE = MergeTree
-        ORDER BY event_type
-        """
-    )
+    execute_clickhouse(build_gold_event_volume_ddl())
 
 
 def main() -> None:

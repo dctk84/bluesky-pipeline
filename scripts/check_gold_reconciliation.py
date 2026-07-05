@@ -12,7 +12,7 @@ SILVER_ENGAGEMENTS_PATH = "s3a://bluesky-lake/silver/silver_engagements"
 SILVER_FOLLOWS_PATH = "s3a://bluesky-lake/silver/silver_follows"
 SILVER_DELETED_RECORDS_PATH = "s3a://bluesky-lake/silver/silver_deleted_records"
 
-CLICKHOUSE_TABLE = "bluesky.gold_event_volume_by_type"
+from bluesky_pipeline.gold_tables import GOLD_EVENT_VOLUME_TABLE
 
 
 def read_silver_table(spark: SparkSession, path: str) -> DataFrame:
@@ -60,7 +60,7 @@ def read_clickhouse_counts() -> dict[str, int]:
     result = execute_clickhouse(
         f"""
         SELECT event_type, event_count
-        FROM {CLICKHOUSE_TABLE}
+        FROM {GOLD_EVENT_VOLUME_TABLE}
         ORDER BY event_type
         """
     )
