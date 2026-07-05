@@ -103,3 +103,9 @@ PYTHONPATH=src python scripts/check_gold_reconciliation.py
 PYTHONPATH=src python scripts/check_clickhouse_gold_post_engagement_summary.py
 PYTHONPATH=src python scripts/check_gold_post_engagement_reconciliation.py
 ```
+
+Chạy checkpoint tổng hợp cho Gold serving v1:
+
+```bash
+PYTHONPATH=src:. python scripts/check_gold_serving_v1.py
+```
