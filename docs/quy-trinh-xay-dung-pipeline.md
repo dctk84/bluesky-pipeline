@@ -2067,3 +2067,38 @@ chạy nhiều lần mà không xóa dữ liệu hiện có.
   local.
 - Chuẩn hóa setup ClickHouse là bước nhỏ nhưng quan trọng trước khi mở rộng thêm
   Gold tables hoặc dashboard.
+
+## Bước 55: Refactor metadata Gold table dùng chung
+
+**Mục tiêu**
+
+Tạo module `src/bluesky_pipeline/gold_tables.py` để quản lý tập trung tên database,
+tên bảng, path Gold trên MinIO và DDL của bảng Gold event volume.
+
+**Vì sao cần thực hiện**
+
+Các script create, load, check và reconciliation đều cần dùng cùng một contract
+cho bảng `bluesky.gold_event_volume_by_type`. Nếu mỗi script tự khai báo table
+name hoặc DDL riêng, pipeline dễ bị lệch khi đổi tên bảng, đổi path hoặc mở rộng
+schema.
+
+**Kết quả sau khi hoàn thành**
+
+Các script ClickHouse/Gold dùng chung metadata từ
+`src/bluesky_pipeline/gold_tables.py`. Luồng tạo table, load dữ liệu, query kiểm
+chứng và reconciliation vẫn chạy thành công sau refactor.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `scripts/check_gold_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Metadata của bảng serving nên có một nguồn khai báo duy nhất để tránh drift.
+- Refactor hạ tầng dữ liệu vẫn cần chạy lại create, load, check và reconciliation.
+- Module metadata giúp việc thêm Gold table mới có pattern rõ ràng hơn.
