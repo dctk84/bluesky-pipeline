@@ -36,6 +36,8 @@ tồn tại trong repository.
 25. [Ghi Bronze raw events có event kind lên MinIO](#bước-25-ghi-bronze-raw-events-có-event-kind-lên-minio)
 26. [Tách Bronze output theo event family](#bước-26-tách-bronze-output-theo-event-family)
 27. [Đọc và kiểm chứng ba Bronze event family](#bước-27-đọc-và-kiểm-chứng-ba-bronze-event-family)
+28. [Profile Bronze commit events để chuẩn bị Silver](#bước-28-profile-bronze-commit-events-để-chuẩn-bị-silver)
+29. [Thiết kế Silver schema v1](#bước-29-thiết-kế-silver-schema-v1)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1021,3 +1023,74 @@ events, script cũng in count theo `collection`.
   cũ đã bị thay thế.
 - Count theo event family và collection là kiểm tra tối thiểu trước khi xây các
   bước Silver/analytics phía sau.
+
+## Bước 28: Profile Bronze commit events để chuẩn bị Silver
+
+**Mục tiêu**
+
+Profile dữ liệu `bronze/bluesky_commit_events` để hiểu phân bố collection,
+operation và các field nested quan trọng trước khi thiết kế Silver schema.
+
+**Vì sao cần thực hiện**
+
+Silver là contract dữ liệu sạch hơn Bronze, nên không nên chốt schema chỉ bằng
+cảm giác hoặc nhìn vài JSON sample thủ công. Profile bằng Spark giúp xác nhận
+field nào xuất hiện theo từng collection và operation, đặc biệt là khác biệt giữa
+create/update/delete.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script profile Bronze commit events. Kết quả hiện tại cho thấy dữ liệu
+có đủ like, post, repost và follow; create event thường có `cid`, `record_type` và
+`record_created_at`, còn delete event chủ yếu chỉ có `rkey`. Post có `text`, một
+phần post là reply có `reply_root_uri`; like/repost có `subject_uri`; follow cần
+parse riêng vì `record.subject` là string.
+
+**Các file liên quan**
+
+- `scripts/profile_bronze_commit_events.py`
+- `scripts/spark_read_kafka_raw.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Bronze profile là bước nối giữa raw storage và Silver design.
+- Delete event không nên bị ép vào cùng bảng create/update nếu payload không đủ
+  field; nên có bảng deleted records riêng.
+- Cùng field `record.subject` có shape khác nhau giữa collection, nên Silver cần
+  xử lý theo từng nhóm event.
+
+## Bước 29: Thiết kế Silver schema v1
+
+**Mục tiêu**
+
+Ghi lại thiết kế Silver schema ban đầu cho commit events trước khi viết Spark job
+tạo Silver.
+
+**Vì sao cần thực hiện**
+
+Silver schema là contract quan trọng giữa Bronze raw data và các bước analytics
+phía sau. Việc ghi docs trước giúp xác định rõ bảng nào xử lý post, engagement,
+follow và delete, đồng thời tránh đưa quá nhiều yêu cầu như deduplication,
+watermark hoặc Iceberg vào bước đầu.
+
+**Kết quả sau khi hoàn thành**
+
+Repository có `docs/silver-schema-v1.md`, mô tả nguồn dữ liệu Bronze, các quan sát
+từ profile, bốn bảng Silver dự kiến và những phần chưa thuộc scope Silver v1.
+
+**Các file liên quan**
+
+- `docs/silver-schema-v1.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+- `scripts/profile_bronze_commit_events.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Silver v1 nên bắt đầu bằng schema đơn giản và chạy được, chưa cần xử lý toàn bộ
+  yêu cầu lakehouse nâng cao.
+- Tách bảng theo bản chất event giúp downstream dễ query hơn: posts,
+  engagements, follows và deleted records.
+- Những phần như deduplication, quarantine, pseudonymization và Iceberg nên được
+  bổ sung sau khi có job Silver đầu tiên được kiểm chứng.
