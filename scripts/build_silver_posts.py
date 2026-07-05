@@ -2,6 +2,7 @@
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, concat, from_json, length, lit
+from bluesky_pipeline.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
 from bluesky_pipeline.bronze_schemas import (
     POST_RECORD_SCHEMA,
     build_commit_envelope_schema,
@@ -9,9 +10,6 @@ from bluesky_pipeline.bronze_schemas import (
 from bluesky_pipeline.silver_tables import SILVER_POSTS_PATH
 
 from bluesky_pipeline.spark_session import create_spark_session
-
-
-BRONZE_COMMIT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
 
 ENVELOPE_SCHEMA = build_commit_envelope_schema(POST_RECORD_SCHEMA)
 
@@ -21,7 +19,7 @@ def read_bronze_commit_events(spark: SparkSession) -> DataFrame:
     Input chính là SparkSession đã cấu hình S3A.
     Output là DataFrame chứa raw commit events từ Bronze.
     """
-    return spark.read.parquet(BRONZE_COMMIT_PATH)
+    return spark.read.parquet(BRONZE_COMMIT_EVENTS_PATH)
 
 
 def build_silver_posts(bronze_df: DataFrame) -> DataFrame:

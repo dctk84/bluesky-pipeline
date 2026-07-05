@@ -3,15 +3,16 @@
 from pyspark.sql.functions import col, date_format, from_json, to_date
 from pyspark.sql.types import LongType, MapType, StringType, StructField, StructType
 
+from bluesky_pipeline.bronze_tables import (
+    BRONZE_ACCOUNT_EVENTS_PATH,
+    BRONZE_COMMIT_EVENTS_PATH,
+    BRONZE_IDENTITY_EVENTS_PATH,
+)
 from bluesky_pipeline.spark_session import create_spark_session
 
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 KAFKA_TOPIC = "bluesky.raw.events.v2"
-
-COMMIT_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
-IDENTITY_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_identity_events"
-ACCOUNT_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_account_events"
 
 COMMIT_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_commit_events"
 IDENTITY_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_identity_events"
@@ -99,7 +100,7 @@ def main() -> None:
     # Bước 6: Ghi commit events, có thêm partition collection.
     commit_events_df.writeStream.format("parquet").option(
         "path",
-        COMMIT_OUTPUT_PATH,
+        BRONZE_COMMIT_EVENTS_PATH,
     ).option(
         "checkpointLocation",
         COMMIT_CHECKPOINT_LOCATION,
@@ -112,7 +113,7 @@ def main() -> None:
     # Bước 7: Ghi identity events, không partition theo collection vì không có field này.
     identity_events_df.writeStream.format("parquet").option(
         "path",
-        IDENTITY_OUTPUT_PATH,
+        BRONZE_IDENTITY_EVENTS_PATH,
     ).option(
         "checkpointLocation",
         IDENTITY_CHECKPOINT_LOCATION,
@@ -124,7 +125,7 @@ def main() -> None:
     # Bước 8: Ghi account events, không partition theo collection vì không có field này.
     account_events_df.writeStream.format("parquet").option(
         "path",
-        ACCOUNT_OUTPUT_PATH,
+        BRONZE_ACCOUNT_EVENTS_PATH,
     ).option(
         "checkpointLocation",
         ACCOUNT_CHECKPOINT_LOCATION,

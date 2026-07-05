@@ -4,10 +4,9 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, from_json
 from pyspark.sql.types import BooleanType, LongType, StringType, StructField, StructType
 
+from bluesky_pipeline.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
 from bluesky_pipeline.spark_session import create_spark_session
 
-
-BRONZE_COMMIT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
 
 SUBJECT_SCHEMA = StructType(
     [
@@ -81,7 +80,7 @@ def read_commit_events(spark: SparkSession) -> DataFrame:
     Input chính là SparkSession đã cấu hình S3A.
     Output là DataFrame chứa commit events ở tầng Bronze.
     """
-    return spark.read.parquet(BRONZE_COMMIT_PATH)
+    return spark.read.parquet(BRONZE_COMMIT_EVENTS_PATH)
 
 def parse_commit_payload(commit_df: DataFrame) -> DataFrame:
     """Parse message_value thành các cột nested quan trọng của commit event.
