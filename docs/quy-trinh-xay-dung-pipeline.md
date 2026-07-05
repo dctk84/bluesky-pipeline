@@ -2408,3 +2408,76 @@ chạy thành công sau refactor.
   nguồn cấu hình trong code.
 - Refactor path không thay đổi dữ liệu, nhưng vẫn cần checkpoint từ Bronze đến
   Gold để xác nhận downstream không bị ảnh hưởng.
+
+## Bước 64: Chuẩn hóa Bronze checkpoint paths
+
+**Mục tiêu**
+
+Đưa các checkpoint locations của Spark Bronze writer vào
+`src/bluesky_pipeline/bronze_tables.py` cùng với Bronze output paths.
+
+**Vì sao cần thực hiện**
+
+Spark Structured Streaming cần checkpoint để lưu offset và trạng thái ghi stream.
+Checkpoint path là một phần metadata của Bronze writer, nên nên được quản lý cùng
+nơi với Bronze output path để tránh writer dùng path dữ liệu và path checkpoint
+không đồng bộ.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/spark_read_kafka_raw.py` dùng các constant checkpoint từ
+`src/bluesky_pipeline/bronze_tables.py`. Kiểm tra compile/import cho
+`bronze_tables.py` và `spark_read_kafka_raw.py` chạy thành công.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/bronze_tables.py`
+- `scripts/spark_read_kafka_raw.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Checkpoint path là contract vận hành quan trọng của streaming job, không chỉ là
+  cấu hình phụ.
+- Output path và checkpoint path của cùng một streaming writer nên được quản lý
+  cùng nhóm metadata.
+- Với refactor không đổi giá trị path, kiểm tra compile/import là đủ trước khi
+  chạy lại streaming job ở lần ingest tiếp theo.
+
+## Bước 65: Chuẩn hóa Kafka config dùng chung
+
+**Mục tiêu**
+
+Tạo module `src/bluesky_pipeline/kafka_config.py` để quản lý tập trung Kafka
+bootstrap servers, raw events topic và Spark Kafka connector package.
+
+**Vì sao cần thực hiện**
+
+Kafka topic và bootstrap servers được dùng ở ingestion gateway, sample publishers
+và Spark Bronze writer. Nếu các file này tự khai báo riêng, pipeline dễ bị lệch
+topic giữa producer và consumer, đặc biệt sau khi đã chuyển raw topic sang
+`bluesky.raw.events.v2`.
+
+**Kết quả sau khi hoàn thành**
+
+Các producer và Spark consumer dùng chung config từ
+`src/bluesky_pipeline/kafka_config.py`. Compile/import cho ingestion gateway,
+Spark writer và sample publishers đều pass. Kiểm tra text cho thấy default topic
+và bootstrap server chỉ còn nằm trong module config chung.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/kafka_config.py`
+- `src/bluesky_pipeline/ingestion_gateway.py`
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/publish_sample_to_kafka.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Producer và consumer phải dùng cùng topic contract, nếu không Spark sẽ đọc sai
+  luồng dữ liệu.
+- Config có thể lấy default local từ code nhưng vẫn nên cho phép override bằng
+  environment variables.
+- Gom Kafka metadata giúp giảm lỗi khi đổi topic version hoặc broker address.

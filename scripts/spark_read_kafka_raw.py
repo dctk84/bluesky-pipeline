@@ -14,10 +14,11 @@ from bluesky_pipeline.bronze_tables import (
 
 from bluesky_pipeline.spark_session import create_spark_session
 
-KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-KAFKA_TOPIC = "bluesky.raw.events.v2"
-
-KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
+from bluesky_pipeline.kafka_config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_RAW_EVENTS_TOPIC,
+    SPARK_KAFKA_CONNECTOR_PACKAGE,
+)
 
 RAW_EVENT_SCHEMA = StructType(
     [
@@ -39,7 +40,7 @@ def main() -> None:
     # Bước 1: Tạo SparkSession có Kafka connector và cấu hình S3A cho MinIO.
     spark = create_spark_session(
         "bluesky-read-kafka-raw",
-        extra_packages=[KAFKA_CONNECTOR_PACKAGE],
+        extra_packages=[SPARK_KAFKA_CONNECTOR_PACKAGE],
     )
     spark.sparkContext.setLogLevel("WARN")
 
@@ -48,7 +49,7 @@ def main() -> None:
         spark.readStream
         .format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
-        .option("subscribe", KAFKA_TOPIC)
+        .option("subscribe", KAFKA_RAW_EVENTS_TOPIC)
         .option("startingOffsets", "earliest")
         .load()
     )
