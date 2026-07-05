@@ -7,8 +7,8 @@ from pyspark.sql.types import LongType, MapType, StringType, StructField, Struct
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 KAFKA_TOPIC = "bluesky.raw.events.v1"
-CHECKPOINT_LOCATION = "data/checkpoints/spark_read_kafka_raw"
-BRONZE_OUTPUT_PATH = "data/bronze/bluesky_raw_events"
+CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_read_kafka_raw"
+BRONZE_OUTPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_raw_events"
 
 RAW_EVENT_SCHEMA = StructType(
     [
@@ -29,10 +29,21 @@ def create_spark_session() -> SparkSession:
         SparkSession.builder
         .appName("bluesky-read-kafka-raw")
         .master("local[*]")
+        # Cấu hình S3A để Spark ghi Parquet vào MinIO local.
         .config(
             "spark.jars.packages",
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1",
+            ",".join(
+                [
+                    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1",
+                    "org.apache.hadoop:hadoop-aws:3.3.4",
+                ]
+            ),
         )
+        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
+        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .getOrCreate()
     )
 

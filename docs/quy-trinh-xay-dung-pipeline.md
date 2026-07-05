@@ -27,6 +27,10 @@ tồn tại trong repository.
 16. [Partition Bronze local theo collection](#bước-16-partition-bronze-local-theo-collection)
 17. [Giữ raw JSON gốc trong Bronze local](#bước-17-giữ-raw-json-gốc-trong-bronze-local)
 18. [Partition Bronze local theo thời gian ingest](#bước-18-partition-bronze-local-theo-thời-gian-ingest)
+19. [Dựng MinIO local làm S3-compatible object storage](#bước-19-dựng-minio-local-làm-s3-compatible-object-storage)
+20. [Tạo bucket Bronze trên MinIO](#bước-20-tạo-bucket-bronze-trên-minio)
+21. [Ghi Bronze Parquet lên MinIO bằng Spark S3A](#bước-21-ghi-bronze-parquet-lên-minio-bằng-spark-s3a)
+22. [Đọc lại Bronze Parquet từ MinIO](#bước-22-đọc-lại-bronze-parquet-từ-minio)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -689,3 +693,131 @@ và các cột thời gian ingest.
   của gateway và `jetstream_time_us` từ nguồn.
 - Không nên partition Bronze theo key có quá nhiều giá trị như DID hoặc URI vì dễ
   tạo nhiều thư mục/file nhỏ và làm layout khó quản lý.
+
+## Bước 19: Dựng MinIO local làm S3-compatible object storage
+
+**Mục tiêu**
+
+Bổ sung MinIO vào Docker Compose để project có object storage local, chuẩn bị cho
+Bronze Data Lake theo kiến trúc S3-compatible.
+
+**Vì sao cần thực hiện**
+
+Bronze local filesystem chỉ phù hợp để kiểm chứng Spark file sink ban đầu. Data
+Lake thực tế cần tách compute khỏi storage, lưu dữ liệu ở object storage và dùng
+đường dẫn S3-compatible để Spark, các job backfill và các tầng downstream có thể
+đọc lại dữ liệu ổn định hơn.
+
+**Kết quả sau khi hoàn thành**
+
+Docker Compose có service `minio` chạy bằng image version cụ thể, expose API port
+`9000` và console port `9001`. Container `bluesky-minio` chạy thành công cùng với
+Kafka trong môi trường local.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- MinIO là object storage local tương thích S3 API, không phải S3 thật trên cloud.
+- Credential `minioadmin/minioadmin` chỉ dùng cho môi trường học local, không được
+  xem là cấu hình production.
+- Dựng MinIO mới là chuẩn bị hạ tầng storage; cần tạo bucket và cấu hình Spark S3A
+  trước khi thật sự ghi Bronze lên MinIO.
+
+## Bước 20: Tạo bucket Bronze trên MinIO
+
+**Mục tiêu**
+
+Tạo bucket `bluesky-lake` trong MinIO để làm namespace lưu dữ liệu Data Lake local.
+
+**Vì sao cần thực hiện**
+
+Spark không thể ghi dữ liệu vào object storage nếu bucket chưa tồn tại. Bucket là
+đơn vị chứa object ở tầng S3-compatible, tương tự thư mục gốc của lake trong môi
+trường local.
+
+**Kết quả sau khi hoàn thành**
+
+MinIO có bucket `bluesky-lake`, sẵn sàng nhận dữ liệu Bronze ở đường dẫn như
+`s3a://bluesky-lake/bronze/bluesky_raw_events`.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Bucket phải tồn tại trước khi Spark ghi object vào MinIO.
+- `s3a://` là scheme Hadoop/Spark dùng để truy cập storage tương thích S3.
+- Trong local, bucket MinIO thay thế vai trò của S3 bucket trên cloud nhưng không
+  phải môi trường production.
+
+## Bước 21: Ghi Bronze Parquet lên MinIO bằng Spark S3A
+
+**Mục tiêu**
+
+Chuyển Spark Bronze writer từ local filesystem sang MinIO bằng đường dẫn `s3a://`.
+
+**Vì sao cần thực hiện**
+
+Milestone Bronze Data Lake cần chứng minh Spark có thể ghi dữ liệu ra object
+storage thay vì chỉ ghi vào ổ đĩa local. Đây là bước chuyển từ kiểm chứng file sink
+cục bộ sang kiến trúc S3-compatible đúng định hướng của project.
+
+**Kết quả sau khi hoàn thành**
+
+Spark Structured Streaming ghi Bronze Parquet và checkpoint vào bucket
+`bluesky-lake` trên MinIO. MinIO Console hiển thị object dưới các prefix như
+`bronze/bluesky_raw_events/` và `checkpoints/spark_read_kafka_raw/`.
+
+**Các file liên quan**
+
+- `scripts/spark_read_kafka_raw.py`
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Spark dùng Hadoop S3A connector để đọc/ghi object storage tương thích S3.
+- Với MinIO local, cần bật path-style access và trỏ endpoint về
+  `http://localhost:9000`.
+- Checkpoint cũng cần nằm trên storage ổn định tương ứng với output sink để Spark
+  có thể quản lý tiến độ streaming query.
+
+## Bước 22: Đọc lại Bronze Parquet từ MinIO
+
+**Mục tiêu**
+
+Đọc ngược dữ liệu Bronze Parquet từ MinIO để xác nhận object đã ghi có thể được
+Spark job khác sử dụng.
+
+**Vì sao cần thực hiện**
+
+Ghi object thành công chưa đủ để coi Bronze usable. Pipeline cần chứng minh dữ
+liệu trên MinIO có schema đọc được, có record thực tế và có thể dùng làm input cho
+các bước downstream như validation, normalization hoặc replay.
+
+**Kết quả sau khi hoàn thành**
+
+Script đọc Bronze trỏ tới `s3a://bluesky-lake/bronze/bluesky_raw_events`, cấu hình
+S3A connector cho MinIO local và in được schema cùng sample rows từ dữ liệu đã ghi.
+
+**Các file liên quan**
+
+- `scripts/read_bronze_parquet.py`
+- `scripts/spark_read_kafka_raw.py`
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Mỗi job Spark đọc/ghi MinIO cần có cấu hình S3A endpoint, credential, path-style
+  access và implementation class.
+- Kiểm chứng đọc lại là bước bắt buộc để tránh nhầm giữa “ghi file/object thành
+  công” và “dữ liệu downstream thật sự dùng được”.
+- Bronze trên MinIO là source để các job Spark tiếp theo đọc lại, không phụ thuộc
+  vào dữ liệu local trong `data/`.
