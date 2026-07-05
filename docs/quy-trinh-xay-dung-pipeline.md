@@ -56,6 +56,11 @@ tồn tại trong repository.
 45. [Kiểm tra Gold serving table trong ClickHouse](#bước-45-kiểm-tra-gold-serving-table-trong-clickhouse)
 46. [Tách ClickHouse HTTP helper dùng chung](#bước-46-tách-clickhouse-http-helper-dùng-chung)
 47. [Reconcile Silver v1 với ClickHouse Gold](#bước-47-reconcile-silver-v1-với-clickhouse-gold)
+48. [Tách Bronze schema dùng chung cho Spark jobs](#bước-48-tách-bronze-schema-dùng-chung-cho-spark-jobs)
+49. [Refactor Silver posts dùng Bronze schema chung](#bước-49-refactor-silver-posts-dùng-bronze-schema-chung)
+50. [Refactor Silver engagements dùng Bronze schema chung](#bước-50-refactor-silver-engagements-dùng-bronze-schema-chung)
+51. [Refactor Silver follows dùng Bronze schema chung](#bước-51-refactor-silver-follows-dùng-bronze-schema-chung)
+52. [Refactor Silver deleted records dùng Bronze schema chung](#bước-52-refactor-silver-deleted-records-dùng-bronze-schema-chung)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1818,3 +1823,173 @@ Gold reconciliation passed
   không hiển thị số liệu lệch.
 - Check hiện tại mới so sánh count tổng theo event type; các quality check sâu hơn
   có thể bổ sung sau.
+
+## Bước 48: Tách Bronze schema dùng chung cho Spark jobs
+
+**Mục tiêu**
+
+Tạo module dùng chung chứa Spark schema để parse Bronze event envelope trong các
+job Spark.
+
+**Vì sao cần thực hiện**
+
+Các script Silver và profiling đang lặp nhiều schema giống nhau. Nếu tiếp tục thêm
+Iceberg hoặc nhiều job downstream, việc sửa schema sẽ dễ bị lệch giữa các file.
+Tách schema dùng chung giúp giảm duplication trước khi mở rộng kiến trúc.
+
+**Kết quả sau khi hoàn thành**
+
+Project có module `src/bluesky_pipeline/bronze_schemas.py` chứa các schema như
+`POST_RECORD_SCHEMA`, `ENGAGEMENT_RECORD_SCHEMA`, `FOLLOW_RECORD_SCHEMA` và helper
+`build_commit_envelope_schema()`. Import module này đã được kiểm chứng thành công.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Schema parse Bronze là contract dùng chung giữa nhiều job Spark.
+- Refactor dùng chung nên làm khi duplication đã xuất hiện thật, không tạo
+  abstraction quá sớm.
+- Trước khi chuyển sang Iceberg, nên giảm các điểm lặp dễ gây lỗi schema.
+
+## Bước 49: Refactor Silver posts dùng Bronze schema chung
+
+**Mục tiêu**
+
+Refactor `scripts/build_silver_posts.py` để dùng schema chung thay vì tự định
+nghĩa toàn bộ envelope schema trong script.
+
+**Vì sao cần thực hiện**
+
+`silver_posts` là job Silver đầu tiên, nên refactor nó trước giúp kiểm chứng module
+schema dùng chung không làm thay đổi output. Đây là cách giảm rủi ro trước khi áp
+dụng cùng pattern cho engagements, follows và deleted records.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_silver_posts.py` dùng `POST_RECORD_SCHEMA` và
+`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
+Chạy lại build/read/check vẫn giữ `silver_posts_count: 119` và Silver v1 vẫn có đủ
+count các bảng.
+
+**Các file liên quan**
+
+- `scripts/build_silver_posts.py`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `scripts/check_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Refactor phải được kiểm chứng bằng output tương đương trước và sau thay đổi.
+- Bắt đầu refactor từ một job giúp debug dễ hơn so với sửa tất cả script cùng lúc.
+- `check_silver_v1.py` là checkpoint nhanh để xác nhận refactor không làm hỏng
+  layer Silver.
+
+## Bước 50: Refactor Silver engagements dùng Bronze schema chung
+
+**Mục tiêu**
+
+Refactor `scripts/build_silver_engagements.py` để dùng Bronze schema module chung.
+
+**Vì sao cần thực hiện**
+
+Like/repost jobs cũng đang parse cùng envelope structure như các Silver jobs khác.
+Dùng schema chung giúp đảm bảo cách parse envelope nhất quán, đồng thời giảm số
+lượng schema duplicate trước khi mở rộng sang Iceberg hoặc các transform mới.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_silver_engagements.py` dùng `ENGAGEMENT_RECORD_SCHEMA` và
+`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
+Chạy lại build/read/check vẫn giữ `silver_engagements_count: 981` và Silver v1 vẫn
+đủ count các bảng.
+
+**Các file liên quan**
+
+- `scripts/build_silver_engagements.py`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `scripts/read_silver_engagements.py`
+- `scripts/check_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Các event cùng nhóm schema như like/repost có thể dùng chung record schema.
+- Sau mỗi refactor schema, cần chạy lại cả build script và read/check script.
+- Refactor lặp từng job giúp giữ phạm vi lỗi nhỏ và dễ rollback nếu cần.
+
+## Bước 51: Refactor Silver follows dùng Bronze schema chung
+
+**Mục tiêu**
+
+Refactor `scripts/build_silver_follows.py` để dùng Bronze schema module chung.
+
+**Vì sao cần thực hiện**
+
+Follow events có shape riêng vì `record.subject` là string DID. Việc đưa
+`FOLLOW_RECORD_SCHEMA` vào module chung giúp giữ sự khác biệt schema này ở một nơi
+rõ ràng, thay vì lặp trong từng script.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_silver_follows.py` dùng `FOLLOW_RECORD_SCHEMA` và
+`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
+Chạy lại build/read/check vẫn giữ `silver_follows_count: 67` và Silver v1 vẫn đủ
+count các bảng.
+
+**Các file liên quan**
+
+- `scripts/build_silver_follows.py`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `scripts/read_silver_follows.py`
+- `scripts/check_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Schema dùng chung vẫn cần biểu diễn được khác biệt giữa collection, không ép mọi
+  event về cùng một shape.
+- Follow target là DID string, khác với like/repost subject object.
+- Refactor theo từng job giúp kiểm chứng output không đổi sau mỗi bước nhỏ.
+
+## Bước 52: Refactor Silver deleted records dùng Bronze schema chung
+
+**Mục tiêu**
+
+Refactor `scripts/build_silver_deleted_records.py` để dùng Bronze schema module
+chung.
+
+**Vì sao cần thực hiện**
+
+Deleted records chỉ cần commit metadata như `collection`, `operation` và `rkey`,
+không cần parse `record`. Dùng `build_commit_envelope_schema()` không truyền
+record schema giúp thể hiện rõ yêu cầu tối thiểu của delete event và giảm schema
+duplicate trong script.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_silver_deleted_records.py` dùng
+`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
+Chạy lại build/read/check vẫn giữ `silver_deleted_records_count: 29` và Silver v1
+vẫn đủ count các bảng.
+
+**Các file liên quan**
+
+- `scripts/build_silver_deleted_records.py`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `scripts/read_silver_deleted_records.py`
+- `scripts/check_silver_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Không phải mọi transform cần parse toàn bộ payload; parse tối thiểu giúp schema
+  đơn giản hơn.
+- Delete event có payload nghèo hơn create event, nên dùng schema metadata là đủ
+  cho Silver v1.
+- Sau khi refactor toàn bộ Silver build scripts, module schema chung trở thành
+  điểm quản lý contract parse Bronze chính của project.

@@ -2,7 +2,10 @@
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, concat, from_json, lit, when
-from pyspark.sql.types import LongType, StringType, StructField, StructType
+from bluesky_pipeline.bronze_schemas import (
+    ENGAGEMENT_RECORD_SCHEMA,
+    build_commit_envelope_schema,
+)
 
 from bluesky_pipeline.spark_session import create_spark_session
 
@@ -10,54 +13,7 @@ from bluesky_pipeline.spark_session import create_spark_session
 BRONZE_COMMIT_PATH = "s3a://bluesky-lake/bronze/bluesky_commit_events"
 SILVER_ENGAGEMENTS_PATH = "s3a://bluesky-lake/silver/silver_engagements"
 
-SUBJECT_SCHEMA = StructType(
-    [
-        StructField("uri", StringType()),
-        StructField("cid", StringType()),
-    ]
-)
-
-RECORD_SCHEMA = StructType(
-    [
-        StructField("$type", StringType()),
-        StructField("createdAt", StringType()),
-        StructField("subject", SUBJECT_SCHEMA),
-    ]
-)
-
-COMMIT_SCHEMA = StructType(
-    [
-        StructField("operation", StringType()),
-        StructField("collection", StringType()),
-        StructField("rkey", StringType()),
-        StructField("cid", StringType()),
-        StructField("rev", StringType()),
-        StructField("record", RECORD_SCHEMA),
-    ]
-)
-
-PAYLOAD_SCHEMA = StructType(
-    [
-        StructField("did", StringType()),
-        StructField("time_us", LongType()),
-        StructField("kind", StringType()),
-        StructField("commit", COMMIT_SCHEMA),
-    ]
-)
-
-ENVELOPE_SCHEMA = StructType(
-    [
-        StructField("schema_version", LongType()),
-        StructField("source", StringType()),
-        StructField("event_kind", StringType()),
-        StructField("received_at", StringType()),
-        StructField("collection", StringType()),
-        StructField("operation", StringType()),
-        StructField("repository_did", StringType()),
-        StructField("jetstream_time_us", LongType()),
-        StructField("payload", PAYLOAD_SCHEMA),
-    ]
-)
+ENVELOPE_SCHEMA = build_commit_envelope_schema(ENGAGEMENT_RECORD_SCHEMA)
 
 def read_bronze_commit_events(spark: SparkSession) -> DataFrame:
     """Đọc Bronze commit events từ MinIO.
