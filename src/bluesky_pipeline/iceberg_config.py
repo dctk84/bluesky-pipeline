@@ -21,6 +21,23 @@ ICEBERG_SILVER_POSTS_TABLE = (
     f"{ICEBERG_CATALOG_NAME}.{ICEBERG_SILVER_NAMESPACE}.silver_posts"
 )
 
+ICEBERG_SILVER_ENGAGEMENTS_TABLE = (
+    f"{ICEBERG_CATALOG_NAME}.{ICEBERG_SILVER_NAMESPACE}.silver_engagements"
+)
+ICEBERG_SILVER_FOLLOWS_TABLE = (
+    f"{ICEBERG_CATALOG_NAME}.{ICEBERG_SILVER_NAMESPACE}.silver_follows"
+)
+ICEBERG_SILVER_DELETED_RECORDS_TABLE = (
+    f"{ICEBERG_CATALOG_NAME}.{ICEBERG_SILVER_NAMESPACE}.silver_deleted_records"
+)
+
+ICEBERG_SILVER_TABLES = {
+    "silver_posts": ICEBERG_SILVER_POSTS_TABLE,
+    "silver_engagements": ICEBERG_SILVER_ENGAGEMENTS_TABLE,
+    "silver_follows": ICEBERG_SILVER_FOLLOWS_TABLE,
+    "silver_deleted_records": ICEBERG_SILVER_DELETED_RECORDS_TABLE,
+}
+
 
 def create_iceberg_spark_session(app_name: str) -> SparkSession:
     """Tạo SparkSession có cấu hình Iceberg Hadoop catalog trên MinIO.
