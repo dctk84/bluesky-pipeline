@@ -2517,3 +2517,111 @@ README có phần cấu hình local gồm `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPI
   variables giúp thay đổi cấu hình mà không sửa source code.
 - Tài liệu cấu hình nên được cập nhật ngay sau khi config được gom thành module
   dùng chung.
+
+## Bước 67: Kiểm tra compile và checkpoint sau refactor metadata
+
+**Mục tiêu**
+
+Chạy compile check cho toàn bộ code Python và chạy lại các checkpoint quan trọng
+sau chuỗi refactor metadata Bronze, Silver, Gold và Kafka.
+
+**Vì sao cần thực hiện**
+
+Các refactor metadata chủ yếu thay đổi import và nơi khai báo constant. Loại thay
+đổi này dễ gây lỗi import hoặc thiếu tên biến dù logic dữ liệu không đổi. Vì vậy
+cần chạy compile check và các checkpoint chính trước khi chuyển sang milestone
+mới.
+
+**Kết quả sau khi hoàn thành**
+
+`compileall` cho `src`, `scripts` và `tests` chạy thành công.
+`scripts/check_silver_v1.py` và `scripts/check_gold_serving_v1.py` cũng pass,
+xác nhận Silver v1 và Gold serving v1 vẫn hoạt động sau refactor.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/`
+- `scripts/`
+- `tests/`
+- `scripts/check_silver_v1.py`
+- `scripts/check_gold_serving_v1.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Sau nhiều refactor import/metadata, compile check giúp bắt lỗi syntax và lỗi
+  import sớm.
+- Checkpoint chức năng vẫn cần thiết vì compile pass không đảm bảo dữ liệu đọc,
+  ghi và reconcile đúng.
+- Nên có một điểm kiểm tra sạch trước khi chuyển từ phần backend pipeline sang
+  dashboard hoặc milestone lớn tiếp theo.
+
+## Bước 68: Thêm Grafana và kết nối ClickHouse datasource
+
+**Mục tiêu**
+
+Thêm Grafana vào Docker Compose, cài ClickHouse datasource plugin và kết nối
+Grafana tới ClickHouse local.
+
+**Vì sao cần thực hiện**
+
+ClickHouse là serving layer cho Gold metrics, còn Grafana là lớp hiển thị dashboard.
+Trước khi xây dashboard, cần xác nhận Grafana có thể kết nối tới ClickHouse trong
+Docker network và query được bảng Gold hiện có.
+
+**Kết quả sau khi hoàn thành**
+
+Grafana chạy ở `http://localhost:3000`, datasource ClickHouse test thành công và
+query được bảng `bluesky.gold_event_volume_by_type`. Query trả về các event type
+như `like`, `repost`, `post`, `follow` và `deleted_record` cùng count tương ứng.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Trong Docker Compose, Grafana kết nối ClickHouse bằng hostname service
+  `clickhouse`, không dùng `localhost`.
+- Với port `8123`, ClickHouse datasource cần chọn protocol HTTP, không phải
+  Native.
+- Dashboard chỉ có ý nghĩa sau khi serving layer đã có dữ liệu và query kiểm chứng
+  được.
+
+## Bước 69: Tạo Grafana panels cho Gold post engagement
+
+**Mục tiêu**
+
+Tạo các panel đầu tiên trong Grafana để hiển thị dữ liệu từ bảng
+`bluesky.gold_post_engagement_summary`.
+
+**Vì sao cần thực hiện**
+
+Sau khi Grafana đã kết nối được ClickHouse, cần kiểm chứng dashboard có thể trả
+lời câu hỏi phân tích thực tế chứ không chỉ query thử bảng event volume. Bảng post
+engagement summary cho phép quan sát top posts theo số lượng like/repost.
+
+**Kết quả sau khi hoàn thành**
+
+Dashboard có table panel `Top posts by engagement` và bar chart
+`Top 10 posts by engagement`. Cả hai panel đều query được dữ liệu từ ClickHouse và
+hiển thị các trường như `post_preview`, `like_count`, `repost_count` và
+`engagement_count`.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `scripts/check_clickhouse_gold_post_engagement_summary.py`
+- `scripts/check_gold_post_engagement_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Dashboard nên bám vào Gold serving tables thay vì query trực tiếp Silver hoặc
+  Bronze.
+- Table panel phù hợp để inspect chi tiết record, còn bar chart phù hợp để so
+  sánh top-N metric.
+- Khi dữ liệu sample còn nhỏ, metric có thể thấp nhưng luồng serving và dashboard
+  vẫn chứng minh được end-to-end analytics path.
