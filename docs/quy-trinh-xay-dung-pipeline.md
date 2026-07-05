@@ -49,6 +49,10 @@ tồn tại trong repository.
 38. [Kiểm tra tổng quan Silver v1](#bước-38-kiểm-tra-tổng-quan-silver-v1)
 39. [Build Gold event volume prototype từ Silver v1](#bước-39-build-gold-event-volume-prototype-từ-silver-v1)
 40. [Đọc và kiểm chứng Gold event volume prototype](#bước-40-đọc-và-kiểm-chứng-gold-event-volume-prototype)
+41. [Dựng ClickHouse local cho Gold serving layer](#bước-41-dựng-clickhouse-local-cho-gold-serving-layer)
+42. [Tạo Gold serving table trong ClickHouse](#bước-42-tạo-gold-serving-table-trong-clickhouse)
+43. [Load Gold event volume vào ClickHouse](#bước-43-load-gold-event-volume-vào-clickhouse)
+44. [Tự động load Gold event volume vào ClickHouse](#bước-44-tự-động-load-gold-event-volume-vào-clickhouse)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1542,3 +1546,153 @@ repost: 144
 - Count trong Gold phải giải thích được từ các bảng Silver nguồn.
 - Khi thêm ClickHouse, dữ liệu Gold serving marts phải có khả năng rebuild từ
   Silver hoặc Gold prototype tương ứng.
+
+## Bước 41: Dựng ClickHouse local cho Gold serving layer
+
+**Mục tiêu**
+
+Bổ sung ClickHouse vào Docker Compose để bắt đầu triển khai Gold serving layer
+theo kiến trúc chính thức.
+
+**Vì sao cần thực hiện**
+
+Gold prototype trên MinIO chỉ kiểm chứng logic aggregate. Theo kiến trúc dự án,
+Gold serving marts cần nằm trong ClickHouse để phục vụ truy vấn phân tích độ trễ
+thấp và dashboard sau này.
+
+**Kết quả sau khi hoàn thành**
+
+Docker Compose có service `clickhouse` dùng image version cụ thể
+`clickhouse/clickhouse-server:24.8`, expose HTTP port `8123` và native port host
+`9002`. ClickHouse chạy thành công với credential local `default/clickhouse`, và
+HTTP query `SELECT 1` trả về `1`.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- ClickHouse là serving database cho Gold marts, không phải source of truth duy
+  nhất của pipeline.
+- Dữ liệu trong ClickHouse phải có thể rebuild từ Silver hoặc Gold prototype.
+- Port native của ClickHouse được map ra `9002` trên host để tránh trùng với MinIO
+  đang dùng port `9000`.
+
+## Bước 42: Tạo Gold serving table trong ClickHouse
+
+**Mục tiêu**
+
+Tạo database và table đầu tiên trong ClickHouse để chứa Gold event volume serving
+mart.
+
+**Vì sao cần thực hiện**
+
+ClickHouse cần schema table rõ ràng trước khi load dữ liệu aggregate. Bảng Gold
+serving này là điểm bắt đầu để chuyển từ Gold prototype trên MinIO sang serving
+layer có thể query nhanh và dùng cho dashboard.
+
+**Kết quả sau khi hoàn thành**
+
+ClickHouse có database `bluesky` và table
+`bluesky.gold_event_volume_by_type` với các cột `event_type`, `event_count` và
+`loaded_at`. Lệnh `SHOW TABLES FROM bluesky` trả về
+`gold_event_volume_by_type`.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Với ClickHouse HTTP interface, các query ghi như `CREATE DATABASE` hoặc
+  `CREATE TABLE` cần gửi bằng method POST, không dùng GET readonly.
+- `MergeTree` là engine cơ bản cho bảng lưu dữ liệu phân tích trong ClickHouse.
+- Bảng Gold serving phải có thể nạp lại từ dữ liệu đã build ở Silver/Gold
+  prototype.
+
+## Bước 43: Load Gold event volume vào ClickHouse
+
+**Mục tiêu**
+
+Nạp dữ liệu aggregate `gold_event_volume_by_type` vào bảng Gold serving trong
+ClickHouse và query kiểm chứng kết quả.
+
+**Vì sao cần thực hiện**
+
+Gold prototype trên MinIO chỉ chứng minh logic aggregate. Để đi đúng kiến trúc
+serving, dữ liệu aggregate cần được đưa vào ClickHouse để phục vụ truy vấn nhanh
+và dashboard sau này.
+
+**Kết quả sau khi hoàn thành**
+
+Dữ liệu event volume được insert vào
+`bluesky.gold_event_volume_by_type`. Query từ ClickHouse trả về:
+
+```text
+deleted_record  29
+follow          67
+like            837
+post            119
+repost          144
+```
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `scripts/build_gold_event_volume.py`
+- `scripts/read_gold_event_volume.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- ClickHouse Gold serving mart là nơi phục vụ query/dashboard, không phải source
+  of truth duy nhất.
+- Dữ liệu ClickHouse phải có thể truncate và load lại từ Silver/Gold prototype.
+- CSV thủ công chỉ là bước kiểm chứng ban đầu; bước tiếp theo nên tự động hóa load
+  từ dữ liệu đã build.
+
+## Bước 44: Tự động load Gold event volume vào ClickHouse
+
+**Mục tiêu**
+
+Tạo script tự động đọc Gold event volume prototype từ MinIO và load vào ClickHouse
+serving table.
+
+**Vì sao cần thực hiện**
+
+Load thủ công bằng CSV chỉ phù hợp để kiểm chứng kết nối ban đầu. Pipeline cần một
+bước có thể chạy lại để rebuild ClickHouse Gold serving mart từ dữ liệu đã build,
+đúng nguyên tắc ClickHouse không phải source of truth duy nhất.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/load_gold_event_volume_to_clickhouse.py` đọc
+`s3a://bluesky-lake/gold/gold_event_volume_by_type`, truncate bảng
+`bluesky.gold_event_volume_by_type`, insert dữ liệu qua ClickHouse HTTP API và
+query kiểm chứng kết quả:
+
+```text
+deleted_record  29
+follow          67
+like            837
+post            119
+repost          144
+```
+
+**Các file liên quan**
+
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/build_gold_event_volume.py`
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Rebuild ClickHouse bằng truncate + insert từ Gold prototype là cách đơn giản cho
+  local learning; production cần chiến lược idempotent và kiểm soát lỗi tốt hơn.
+- Khi dùng `urllib`, không nên nhúng `user:password` trực tiếp vào URL nếu parser
+  xử lý sai host; dùng HTTP Basic Auth header rõ ràng hơn.
+- Script load tự động là bước đầu của workflow sau này có thể đưa vào Airflow.
