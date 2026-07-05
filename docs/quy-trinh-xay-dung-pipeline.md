@@ -46,6 +46,7 @@ tồn tại trong repository.
 35. [Đọc và kiểm chứng Silver follows](#bước-35-đọc-và-kiểm-chứng-silver-follows)
 36. [Build Silver deleted records từ Bronze commit events](#bước-36-build-silver-deleted-records-từ-bronze-commit-events)
 37. [Đọc và kiểm chứng Silver deleted records](#bước-37-đọc-và-kiểm-chứng-silver-deleted-records)
+38. [Kiểm tra tổng quan Silver v1](#bước-38-kiểm-tra-tổng-quan-silver-v1)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1414,3 +1415,54 @@ has_record_uri=true: 29
   đánh dấu deleted.
 - Kiểm chứng delete lifecycle sớm giúp tránh xây dashboard chỉ dựa trên create
   events và bỏ qua thay đổi trạng thái dữ liệu.
+
+## Bước 38: Kiểm tra tổng quan Silver v1
+
+**Mục tiêu**
+
+Tạo một script kiểm tra tổng quan toàn bộ các bảng Silver v1 đã build trên MinIO.
+
+**Vì sao cần thực hiện**
+
+Sau khi có nhiều bảng Silver riêng lẻ, cần một bước kiểm tra chung để xác nhận tất
+cả bảng đều tồn tại, đọc được và có count khớp với các bước build trước đó. Đây là
+mốc xác nhận Silver v1 đã hình thành một lớp dữ liệu usable trước khi chuyển sang
+Gold analytics hoặc data quality.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/check_silver_v1.py` đọc bốn bảng Silver:
+
+```text
+silver_posts
+silver_engagements
+silver_follows
+silver_deleted_records
+```
+
+Kết quả kiểm tra hiện tại:
+
+```text
+silver_posts_count: 119
+silver_engagements_count: 981
+silver_follows_count: 67
+silver_deleted_records_count: 29
+```
+
+**Các file liên quan**
+
+- `scripts/check_silver_v1.py`
+- `scripts/read_silver_posts.py`
+- `scripts/read_silver_engagements.py`
+- `scripts/read_silver_follows.py`
+- `scripts/read_silver_deleted_records.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi số lượng bảng tăng lên, cần có script kiểm tra lớp dữ liệu ở cấp layer thay
+  vì chỉ kiểm tra từng bảng rời rạc.
+- Count tổng không thay thế data quality đầy đủ, nhưng là checkpoint tối thiểu để
+  xác nhận Silver layer có dữ liệu usable.
+- Silver v1 hiện vẫn là Parquet trên MinIO, chưa phải Iceberg và chưa có
+  deduplication/quarantine/pseudonymization.
