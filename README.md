@@ -19,8 +19,8 @@ Jetstream
 → Kafka
 → Spark Bronze trên MinIO
 → Silver Parquet v1 trên MinIO
-→ Gold event volume prototype trên MinIO
-→ ClickHouse Gold serving table
+→ Gold prototypes trên MinIO
+→ ClickHouse Gold serving tables
 → Reconciliation check
 ```
 
@@ -28,9 +28,10 @@ Lưu ý:
 
 - Bronze hiện là partitioned Parquet trên MinIO.
 - Silver v1 hiện là Parquet prototype trên MinIO, chưa phải Iceberg.
-- Gold prototype trên MinIO dùng để kiểm chứng aggregate.
-- Gold serving layer chính thức hiện bắt đầu bằng ClickHouse table
-  `bluesky.gold_event_volume_by_type`.
+- Gold prototypes trên MinIO dùng để kiểm chứng aggregate trước khi load serving.
+- Gold serving layer hiện có 2 bảng ClickHouse:
+  - `bluesky.gold_event_volume_by_type`
+  - `bluesky.gold_post_engagement_summary`
 
 ## Chạy local
 
@@ -73,6 +74,12 @@ Kiểm tra Silver v1:
 PYTHONPATH=src python scripts/check_silver_v1.py
 ```
 
+Tạo ClickHouse Gold tables:
+
+```bash
+PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
+```
+
 Build và load Gold event volume:
 
 ```bash
@@ -80,9 +87,19 @@ PYTHONPATH=src python scripts/build_gold_event_volume.py
 PYTHONPATH=src python scripts/load_gold_event_volume_to_clickhouse.py
 ```
 
+Build và load Gold post engagement summary:
+
+```bash
+PYTHONPATH=src python scripts/build_gold_post_engagement_summary.py
+PYTHONPATH=src python scripts/read_gold_post_engagement_summary.py
+PYTHONPATH=src python scripts/load_gold_post_engagement_summary_to_clickhouse.py
+```
+
 Kiểm tra ClickHouse Gold và reconciliation:
 
 ```bash
 PYTHONPATH=src python scripts/check_clickhouse_gold_event_volume.py
 PYTHONPATH=src python scripts/check_gold_reconciliation.py
+PYTHONPATH=src python scripts/check_clickhouse_gold_post_engagement_summary.py
+PYTHONPATH=src python scripts/check_gold_post_engagement_reconciliation.py
 ```
