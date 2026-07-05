@@ -78,6 +78,30 @@ services:
       # Lưu dữ liệu ClickHouse local qua các lần restart container.
       - clickhouse-data:/var/lib/clickhouse
 
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: bluesky-grafana
+    hostname: grafana
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      # Credential local để đăng nhập Grafana.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+      # Cài ClickHouse datasource plugin khi container khởi động.
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+
+    volumes:
+      # Lưu cấu hình Grafana local qua các lần restart container.
+      - grafana-data:/var/lib/grafana
+
+    depends_on:
+      - clickhouse
+
 volumes:
   minio-data:
   clickhouse-data:
+  grafana-data:
