@@ -53,6 +53,7 @@ tồn tại trong repository.
 42. [Tạo Gold serving table trong ClickHouse](#bước-42-tạo-gold-serving-table-trong-clickhouse)
 43. [Load Gold event volume vào ClickHouse](#bước-43-load-gold-event-volume-vào-clickhouse)
 44. [Tự động load Gold event volume vào ClickHouse](#bước-44-tự-động-load-gold-event-volume-vào-clickhouse)
+45. [Kiểm tra Gold serving table trong ClickHouse](#bước-45-kiểm-tra-gold-serving-table-trong-clickhouse)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1696,3 +1697,44 @@ repost          144
 - Khi dùng `urllib`, không nên nhúng `user:password` trực tiếp vào URL nếu parser
   xử lý sai host; dùng HTTP Basic Auth header rõ ràng hơn.
 - Script load tự động là bước đầu của workflow sau này có thể đưa vào Airflow.
+
+## Bước 45: Kiểm tra Gold serving table trong ClickHouse
+
+**Mục tiêu**
+
+Tạo script riêng để query bảng Gold serving trong ClickHouse và xác nhận dữ liệu
+đã load đúng.
+
+**Vì sao cần thực hiện**
+
+Load và verify nên được tách rõ. Script kiểm tra riêng giúp xác nhận serving table
+đang có dữ liệu đúng mà không vô tình reload lại bảng. Đây cũng là bước nền cho
+dashboard hoặc health check sau này.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/check_clickhouse_gold_event_volume.py` query
+`bluesky.gold_event_volume_by_type` và in kết quả:
+
+```text
+deleted_record  29
+follow          67
+like            837
+post            119
+repost          144
+```
+
+**Các file liên quan**
+
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Tách load và check giúp debug dễ hơn: một script thay đổi state, một script chỉ
+  đọc state.
+- ClickHouse serving table là đích phục vụ truy vấn nhanh, còn dữ liệu có thể
+  rebuild từ Silver/Gold prototype.
+- Một kiểm tra nhỏ qua HTTP query là bước đầu trước khi có dashboard Grafana.
