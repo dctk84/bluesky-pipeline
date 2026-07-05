@@ -2366,3 +2366,45 @@ thành công sau refactor.
   layer downstream phụ thuộc.
 - Chuẩn hóa Silver paths là bước chuẩn bị tốt trước khi thay đổi implementation
   storage của Silver ở các milestone sau.
+
+## Bước 63: Chuẩn hóa Bronze paths thành module dùng chung
+
+**Mục tiêu**
+
+Tạo module `src/bluesky_pipeline/bronze_tables.py` để quản lý tập trung các path
+Bronze trên MinIO cho commit, identity và account events.
+
+**Vì sao cần thực hiện**
+
+Bronze paths đang được dùng ở streaming writer, script đọc Bronze, profiler và các
+Silver build scripts. Nếu mỗi nơi tự khai báo path riêng, việc đổi layout Bronze
+hoặc mở rộng thêm event family sẽ dễ gây sai lệch giữa writer và reader.
+
+**Kết quả sau khi hoàn thành**
+
+Các script đọc/ghi Bronze và các Silver build scripts dùng chung metadata từ
+`src/bluesky_pipeline/bronze_tables.py`. Kiểm tra bằng `rg` chỉ còn hard-code
+`s3a://bluesky-lake/bronze/...` trong module này. Các checkpoint
+`read_bronze_parquet.py`, `check_silver_v1.py` và `check_gold_serving_v1.py` đều
+chạy thành công sau refactor.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/bronze_tables.py`
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/read_bronze_parquet.py`
+- `scripts/profile_bronze_commit_events.py`
+- `scripts/build_silver_posts.py`
+- `scripts/build_silver_engagements.py`
+- `scripts/build_silver_follows.py`
+- `scripts/build_silver_deleted_records.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Metadata của Bronze writer và Bronze readers phải nhất quán vì đây là contract
+  đầu vào cho toàn bộ pipeline sau Kafka.
+- Sau khi gom Bronze paths, writer và các batch build scripts cùng nhìn vào một
+  nguồn cấu hình trong code.
+- Refactor path không thay đổi dữ liệu, nhưng vẫn cần checkpoint từ Bronze đến
+  Gold để xác nhận downstream không bị ảnh hưởng.

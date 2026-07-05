@@ -3,14 +3,8 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
 
+from bluesky_pipeline.bronze_tables import BRONZE_EVENT_PATHS
 from bluesky_pipeline.spark_session import create_spark_session
-
-
-BRONZE_PATHS = {
-    "commit": "s3a://bluesky-lake/bronze/bluesky_commit_events",
-    "identity": "s3a://bluesky-lake/bronze/bluesky_identity_events",
-    "account": "s3a://bluesky-lake/bronze/bluesky_account_events",
-}
 
 
 def read_bronze_events(spark: SparkSession, event_kind: str) -> DataFrame:
@@ -19,7 +13,7 @@ def read_bronze_events(spark: SparkSession, event_kind: str) -> DataFrame:
     Input chính là SparkSession và event kind cần đọc.
     Output là DataFrame chứa dữ liệu Bronze tương ứng.
     """
-    return spark.read.parquet(BRONZE_PATHS[event_kind])
+    return spark.read.parquet(BRONZE_EVENT_PATHS[event_kind])
 
 
 def show_bronze_summary(bronze_df: DataFrame, event_kind: str) -> None:
