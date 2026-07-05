@@ -2214,3 +2214,75 @@ cần đối chiếu gồm số dòng, tổng like, tổng repost và tổng eng
   quan trọng của bảng.
 - Chạy lại checkpoint cũ sau khi thêm bảng mới giúp xác nhận thay đổi không làm
   ảnh hưởng luồng Gold đã có.
+
+## Bước 59: Cập nhật README cho luồng Gold serving v1
+
+**Mục tiêu**
+
+Cập nhật `README.md` để phản ánh đầy đủ trạng thái Gold/ClickHouse hiện tại của
+project.
+
+**Vì sao cần thực hiện**
+
+Sau khi thêm `gold_post_engagement_summary`, README cũ chỉ mô tả một Gold serving
+table. README cần thể hiện đúng các lệnh build, load, check và reconciliation cho
+cả hai bảng Gold hiện có để người khác có thể chạy lại luồng local.
+
+**Kết quả sau khi hoàn thành**
+
+README mô tả luồng local end-to-end với 2 Gold prototypes trên MinIO và 2
+ClickHouse serving tables:
+`bluesky.gold_event_volume_by_type` và
+`bluesky.gold_post_engagement_summary`.
+
+**Các file liên quan**
+
+- `README.md`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/build_gold_event_volume.py`
+- `scripts/build_gold_post_engagement_summary.py`
+- `scripts/check_gold_reconciliation.py`
+- `scripts/check_gold_post_engagement_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- README nên phản ánh luồng chạy thực tế, không chỉ kiến trúc dự kiến.
+- Khi thêm serving table mới, cần cập nhật cả build, load, check và reconciliation
+  trong hướng dẫn chạy local.
+- Tài liệu ngắn ở README giúp người đọc nhanh chóng tái hiện trạng thái project.
+
+## Bước 60: Tạo checkpoint tổng hợp Gold serving v1
+
+**Mục tiêu**
+
+Tạo script `scripts/check_gold_serving_v1.py` để chạy một lần toàn bộ checkpoint
+reconciliation cho các bảng Gold serving hiện có.
+
+**Vì sao cần thực hiện**
+
+Khi số lượng Gold serving table tăng lên, việc nhớ chạy từng reconciliation script
+riêng lẻ dễ bị thiếu. Checkpoint tổng hợp cung cấp một entrypoint duy nhất để xác
+nhận Gold serving v1 đang nhất quán trước khi làm dashboard hoặc mở rộng pipeline.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/check_gold_serving_v1.py` chạy thành công và in đủ các kết luận:
+`Gold reconciliation passed`, `Gold post engagement reconciliation passed` và
+`Gold serving v1 check passed`.
+
+**Các file liên quan**
+
+- `scripts/check_gold_serving_v1.py`
+- `scripts/check_gold_reconciliation.py`
+- `scripts/check_gold_post_engagement_reconciliation.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi có nhiều checkpoint con, nên có một checkpoint tổng hợp để giảm thao tác
+  thủ công và giảm khả năng bỏ sót.
+- Checkpoint tổng hợp nên tái sử dụng logic reconciliation đã có thay vì copy lại
+  toàn bộ logic.
+- Một SparkSession dùng chung giúp script tổng hợp nhẹ hơn so với khởi tạo Spark
+  nhiều lần.
