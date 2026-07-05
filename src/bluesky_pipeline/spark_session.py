@@ -10,7 +10,11 @@ S3A_ACCESS_KEY = os.getenv("S3A_ACCESS_KEY", "minioadmin")
 S3A_SECRET_KEY = os.getenv("S3A_SECRET_KEY", "minioadmin")
 
 
-def create_spark_session(app_name: str, extra_packages: list[str] | None = None) -> SparkSession:
+def create_spark_session(
+    app_name: str,
+    extra_packages: list[str] | None = None,
+    extra_configs: dict[str, str] | None = None,
+) -> SparkSession:
     """Tạo SparkSession local đã cấu hình S3A để đọc/ghi MinIO.
 
     Input chính là tên app Spark và danh sách package bổ sung.
@@ -28,6 +32,10 @@ def create_spark_session(app_name: str, extra_packages: list[str] | None = None)
         .master("local[*]")
         .config("spark.jars.packages", ",".join(packages))
     )
+
+    if extra_configs:
+        for key, value in extra_configs.items():
+            builder = builder.config(key, value)
 
     # Cấu hình S3A để Spark đọc/ghi dữ liệu trên MinIO local.
     return (
