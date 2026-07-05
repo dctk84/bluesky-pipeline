@@ -3,15 +3,24 @@
 from pyspark.sql import SparkSession
 
 
-BRONZE_INPUT_PATH = "data/bronze/bluesky_raw_events"
+BRONZE_INPUT_PATH = "s3a://bluesky-lake/bronze/bluesky_raw_events"
 
 
 def create_spark_session() -> SparkSession:
-    """Tạo SparkSession local để đọc dữ liệu Parquet đã ghi ở tầng Bronze."""
+    """Tạo SparkSession local để đọc dữ liệu Parquet Bronze từ MinIO."""
     return (
         SparkSession.builder
         .appName("bluesky-read-bronze-parquet")
         .master("local[*]")
+        .config(
+            "spark.jars.packages",
+            "org.apache.hadoop:hadoop-aws:3.3.4",
+        )
+        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
+        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .getOrCreate()
     )
 

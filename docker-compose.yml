@@ -39,3 +39,26 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
 
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-29T01-20-47Z
+    container_name: bluesky-minio
+    hostname: minio
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    environment:
+      # Credential local để học và chạy trong Docker Compose.
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+    command: server /data --console-address ":9001"
+
+    volumes:
+      # Lưu dữ liệu object storage local qua các lần restart container.
+      - minio-data:/data
+
+volumes:
+  minio-data:
