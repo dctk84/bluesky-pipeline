@@ -186,6 +186,11 @@ Nguyên tắc chung:
   tại.
 - Không để lẫn code reusable với output tạm, dữ liệu local hoặc notebook thử
   nghiệm.
+- Không hard-code lặp lại các metadata có tính contract như path Bronze/Silver/Gold,
+  Kafka topic, table name, namespace, checkpoint path, catalog name hoặc connection
+  config ở nhiều file. Nếu một giá trị sẽ được dùng ở nhiều nơi, hoặc rõ
+  ràng là contract chung giữa các bước pipeline, phải đưa vào module dùng chung
+  ngay từ lúc tạo thay vì viết lặp rồi refactor sau.
 
 Khi số lượng code tăng lên, Codex phải cân nhắc tách thư mục theo các nhóm như:
 

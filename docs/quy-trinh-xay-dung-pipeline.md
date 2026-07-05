@@ -2625,3 +2625,146 @@ hiển thị các trường như `post_preview`, `like_count`, `repost_count` v�
   sánh top-N metric.
 - Khi dữ liệu sample còn nhỏ, metric có thể thấp nhưng luồng serving và dashboard
   vẫn chứng minh được end-to-end analytics path.
+
+## Bước 70: Smoke test Iceberg table trên MinIO
+
+**Mục tiêu**
+
+Kiểm chứng Spark có thể tạo, ghi và đọc một Iceberg table nhỏ trên MinIO bằng
+Hadoop catalog.
+
+**Vì sao cần thực hiện**
+
+Kiến trúc mục tiêu dùng Iceberg từ Silver layer, nhưng trước khi migrate các bảng
+Silver thật cần xác nhận môi trường local đã chạy được Iceberg runtime, Spark SQL
+extensions, catalog config và warehouse path trên MinIO.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/smoke_test_iceberg_minio.py` chạy thành công với
+`iceberg_smoke_count: 3`. Trên MinIO xuất hiện path
+`iceberg/warehouse/smoke/iceberg_smoke_events/`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/spark_session.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `scripts/smoke_test_iceberg_minio.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Iceberg cần Spark runtime package, SQL extensions và catalog config riêng.
+- Hadoop catalog trên MinIO là lựa chọn đơn giản cho local smoke test trước khi
+  thêm catalog phức tạp hơn.
+- Smoke test nhỏ giúp tách lỗi môi trường Iceberg khỏi logic migrate Silver thật.
+
+## Bước 71: Build thử Silver posts bằng Iceberg
+
+**Mục tiêu**
+
+Tạo bảng Iceberg đầu tiên cho Silver layer bằng cách đọc `silver_posts` Parquet v1
+và ghi thử sang `lakehouse.silver_v1.silver_posts`.
+
+**Vì sao cần thực hiện**
+
+Sau khi môi trường Iceberg đã chạy được bằng smoke test, cần thử với một bảng
+Silver thật để kiểm tra schema thực tế, metadata table và layout warehouse trên
+MinIO. Bảng `silver_posts` được chọn trước vì là bảng lõi và đã có count ổn định.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/build_iceberg_silver_posts.py` và `scripts/read_iceberg_silver_posts.py`
+chạy thành công với `iceberg_silver_posts_count: 119`. Trên MinIO xuất hiện path
+`iceberg/warehouse/silver_v1/silver_posts/`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/silver_tables.py`
+- `scripts/build_iceberg_silver_posts.py`
+- `scripts/read_iceberg_silver_posts.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Migrate sang Iceberg nên bắt đầu bằng một bảng thật nhưng phạm vi nhỏ, chưa thay
+  thế ngay toàn bộ Silver Parquet.
+- DataFrameWriterV2 với `.writeTo(...).using("iceberg")` tạo table qua Iceberg
+  catalog thay vì chỉ ghi file Parquet rời.
+- Count bằng nhau là checkpoint đầu tiên, nhưng chưa đủ; cần reconciliation thêm
+  các metric/schema quan trọng.
+
+## Bước 72: Reconcile Silver posts Parquet với Iceberg
+
+**Mục tiêu**
+
+Tạo checkpoint reconciliation giữa `silver_posts` Parquet v1 và bảng Iceberg
+`lakehouse.silver_v1.silver_posts`.
+
+**Vì sao cần thực hiện**
+
+Việc ghi được Iceberg table chưa đủ để khẳng định migrate thử thành công. Cần so
+sánh các metric quan trọng giữa nguồn Parquet hiện tại và bảng Iceberg mới để đảm
+bảo dữ liệu không bị thiếu hoặc biến đổi sai trong quá trình ghi.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/check_iceberg_silver_posts_reconciliation.py` chạy thành công và báo
+`Iceberg Silver posts reconciliation passed`. Các metric như `row_count`,
+`reply_count` và `text_length_sum` khớp giữa Parquet và Iceberg.
+
+**Các file liên quan**
+
+- `scripts/check_iceberg_silver_posts_reconciliation.py`
+- `scripts/build_iceberg_silver_posts.py`
+- `scripts/read_iceberg_silver_posts.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/silver_tables.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Khi migrate table format, reconciliation nên so cả số dòng và các tổng metric
+  có ý nghĩa, không chỉ kiểm tra table đọc được.
+- Iceberg table có metadata riêng, nhưng dữ liệu nghiệp vụ vẫn phải khớp với
+  nguồn rebuild hiện tại.
+- Checkpoint reconciliation là điều kiện tốt trước khi migrate thêm các bảng
+  Silver khác.
+
+## Bước 73: Chuẩn hóa metadata Iceberg Silver table
+
+**Mục tiêu**
+
+Đưa namespace và table name của `silver_posts` Iceberg vào
+`src/bluesky_pipeline/iceberg_config.py` để các script build, read và reconcile
+dùng chung.
+
+**Vì sao cần thực hiện**
+
+Iceberg namespace và table name là contract chung giữa các script thao tác với
+cùng một bảng. Nếu hard-code lặp ở nhiều file, việc đổi catalog, namespace hoặc
+tên bảng sẽ dễ gây lệch giữa build, read và reconciliation.
+
+**Kết quả sau khi hoàn thành**
+
+`ICEBERG_SILVER_NAMESPACE` và `ICEBERG_SILVER_POSTS_TABLE` được khai báo trong
+`src/bluesky_pipeline/iceberg_config.py`. Các script Iceberg Silver posts dùng
+metadata chung và checkpoint read/reconciliation vẫn pass.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/iceberg_config.py`
+- `scripts/build_iceberg_silver_posts.py`
+- `scripts/read_iceberg_silver_posts.py`
+- `scripts/check_iceberg_silver_posts_reconciliation.py`
+- `docs/huong-dan-lam-viec-voi-codex.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Metadata có tính contract như table name, namespace, path, topic hoặc checkpoint
+  phải được gom vào module dùng chung ngay khi tạo nếu sẽ dùng ở nhiều nơi.
+- Refactor metadata Iceberg giúp mở rộng sang các bảng Silver khác theo cùng
+  pattern.
+- Rules làm việc cũng cần được cập nhật khi phát hiện một lỗi quy trình lặp lại.
