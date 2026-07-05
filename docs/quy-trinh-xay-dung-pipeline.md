@@ -92,6 +92,7 @@ tồn tại trong repository.
 81. [Dọn các script prototype đã được thay thế](#bước-81-dọn-các-script-prototype-đã-được-thay-thế)
 82. [Tạo ClickHouse table cho streaming event volume theo phút](#bước-82-tạo-clickhouse-table-cho-streaming-event-volume-theo-phút)
 83. [Stream event volume theo phút từ Kafka vào ClickHouse](#bước-83-stream-event-volume-theo-phút-từ-kafka-vào-clickhouse)
+84. [Kiểm tra streaming event volume bằng CLI và Grafana](#bước-84-kiểm-tra-streaming-event-volume-bằng-cli-và-grafana)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3203,3 +3204,42 @@ ClickHouse trả về nhiều bucket phút như `2026-07-05 23:27:00` và
   cho lát cắt dashboard đầu tiên.
 - Luồng này đang theo semantics at-least-once; nếu Spark ghi ClickHouse xong nhưng
   chưa checkpoint rồi bị restart, micro-batch có thể bị insert lại.
+
+## Bước 84: Kiểm tra streaming event volume bằng CLI và Grafana
+
+**Mục tiêu**
+
+Tạo checkpoint CLI cho bảng streaming event volume và xác nhận Grafana dashboard
+có thể hiển thị dữ liệu mới khi publish event vào Kafka.
+
+**Vì sao cần thực hiện**
+
+Dashboard UI giúp chứng minh luồng end-to-end trực quan, nhưng repo vẫn cần một
+command kiểm chứng được bằng terminal để debug và demo ổn định. Checkpoint CLI
+giúp xác nhận ClickHouse đã nhận dữ liệu realtime trước khi phụ thuộc vào Grafana
+panel và time range.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/check_clickhouse_stream_event_volume.py` in summary của bảng
+`bluesky.gold_event_volume_1m_stream` và các bucket mới nhất theo
+`window_start`/`event_type`. Grafana query đọc được dữ liệu khi time range bao
+đúng khoảng dữ liệu, panel time series hiển thị các event mới sau khi publish vào
+Kafka và bật hoặc bấm lại refresh query.
+
+**Các file liên quan**
+
+- `scripts/check_clickhouse_stream_event_volume.py`
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Với dashboard realtime, cần kiểm tra cả dữ liệu trong serving table và cấu hình
+  time range của Grafana.
+- Query không có `$__timeFilter` giúp phân biệt lỗi dữ liệu với lỗi time picker
+  hoặc timezone trong Grafana.
+- Grafana không tự cập nhật nếu chưa bật auto-refresh; interval refresh nên khớp
+  tương đối với trigger interval của Spark streaming job.

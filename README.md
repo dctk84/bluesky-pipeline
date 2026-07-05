@@ -124,3 +124,50 @@ Chạy checkpoint tổng hợp cho Gold serving v1:
 ```bash
 PYTHONPATH=src:. python scripts/check_gold_serving_v1.py
 ```
+
+## Chạy streaming end-to-end tới Grafana
+
+Tạo ClickHouse tables nếu chưa có:
+
+```bash
+PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
+```
+
+Terminal 1, chạy Spark streaming job ghi event volume realtime vào ClickHouse:
+
+```bash
+PYTHONPATH=src python scripts/stream_event_volume_to_clickhouse.py
+```
+
+Terminal 2, publish live events vào Kafka:
+
+```bash
+PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
+```
+
+Kiểm tra bảng realtime bằng CLI:
+
+```bash
+PYTHONPATH=src python scripts/check_clickhouse_stream_event_volume.py
+```
+
+Query dùng cho Grafana time series:
+
+```sql
+SELECT
+    window_start AS time,
+    event_type AS metric,
+    sum(event_count) AS event_count
+FROM bluesky.gold_event_volume_1m_stream
+WHERE $__timeFilter(window_start)
+GROUP BY
+    time,
+    metric
+ORDER BY
+    time ASC,
+    metric ASC
+```
+
+Nếu query có `$__timeFilter` không trả dữ liệu, kiểm tra trước bằng query không có
+time filter hoặc chỉnh time picker để bao đúng khoảng `window_start` đang có trong
+ClickHouse.
