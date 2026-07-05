@@ -40,6 +40,8 @@ tồn tại trong repository.
 29. [Thiết kế Silver schema v1](#bước-29-thiết-kế-silver-schema-v1)
 30. [Build Silver posts từ Bronze commit events](#bước-30-build-silver-posts-từ-bronze-commit-events)
 31. [Đọc và kiểm chứng Silver posts](#bước-31-đọc-và-kiểm-chứng-silver-posts)
+32. [Build Silver engagements từ Bronze commit events](#bước-32-build-silver-engagements-từ-bronze-commit-events)
+33. [Đọc và kiểm chứng Silver engagements](#bước-33-đọc-và-kiểm-chứng-silver-engagements)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1175,3 +1177,81 @@ is_reply=true: 52
   chỉ kiểm tra file tồn tại.
 - Sau khi có một bảng Silver usable, có thể tiếp tục mở rộng sang engagements,
   follows và deleted records theo cùng cách làm.
+
+## Bước 32: Build Silver engagements từ Bronze commit events
+
+**Mục tiêu**
+
+Tạo bảng `silver_engagements` từ like/repost create events trong Bronze commit
+events.
+
+**Vì sao cần thực hiện**
+
+Like và repost là nhóm engagement activity quan trọng cho các use case như
+engagement volume, engagement velocity và rapid growth. Chuẩn hóa chúng vào một
+bảng Silver chung giúp downstream query theo `engagement_type` thay vì phải đọc
+raw JSON của từng collection.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/build_silver_engagements.py` đọc Bronze commit events,
+lọc `app.bsky.feed.like` và `app.bsky.feed.repost` với operation `create`, tạo các
+cột Silver như `engagement_uri`, `actor_did`, `engagement_type`, `subject_uri` và
+`subject_cid`, rồi ghi ra `s3a://bluesky-lake/silver/silver_engagements`. Kết quả
+chạy hiện tại có `silver_engagements_count: 981`.
+
+**Các file liên quan**
+
+- `scripts/build_silver_engagements.py`
+- `docs/silver-schema-v1.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Like và repost có schema gần nhau vì cùng dùng `record.subject` dạng object gồm
+  `uri` và `cid`.
+- `engagement_type` giúp gom hai collection vào một bảng Silver nhưng vẫn giữ khả
+  năng phân tích riêng like/repost.
+- Delete like/repost chưa đưa vào `silver_engagements`; chúng sẽ đi vào bảng
+  `silver_deleted_records`.
+
+## Bước 33: Đọc và kiểm chứng Silver engagements
+
+**Mục tiêu**
+
+Đọc lại `silver_engagements` từ MinIO để xác nhận bảng engagement đã chuẩn hóa có
+thể dùng cho downstream analytics.
+
+**Vì sao cần thực hiện**
+
+Sau khi ghi Silver engagements, cần kiểm tra không chỉ count tổng mà cả phân bố
+`engagement_type` và tính đầy đủ của `subject_uri`, vì đây là target post phục vụ
+các bài toán engagement analytics.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/read_silver_engagements.py` đọc
+`s3a://bluesky-lake/silver/silver_engagements` và in schema, count cùng thống kê
+cơ bản. Kết quả hiện tại:
+
+```text
+silver_engagements_count: 981
+like: 837
+repost: 144
+has_subject_uri=true: 981
+```
+
+**Các file liên quan**
+
+- `scripts/read_silver_engagements.py`
+- `scripts/build_silver_engagements.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Với engagement events, `subject_uri` là field quan trọng vì nó trỏ tới post được
+  like hoặc repost.
+- Count theo `engagement_type` giúp kiểm tra mapping collection sang business
+  type có đúng không.
+- Kiểm chứng field completeness trước khi làm Gold giúp tránh xây analytics trên
+  dữ liệu thiếu target.
