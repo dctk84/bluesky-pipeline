@@ -38,6 +38,8 @@ tồn tại trong repository.
 27. [Đọc và kiểm chứng ba Bronze event family](#bước-27-đọc-và-kiểm-chứng-ba-bronze-event-family)
 28. [Profile Bronze commit events để chuẩn bị Silver](#bước-28-profile-bronze-commit-events-để-chuẩn-bị-silver)
 29. [Thiết kế Silver schema v1](#bước-29-thiết-kế-silver-schema-v1)
+30. [Build Silver posts từ Bronze commit events](#bước-30-build-silver-posts-từ-bronze-commit-events)
+31. [Đọc và kiểm chứng Silver posts](#bước-31-đọc-và-kiểm-chứng-silver-posts)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1094,3 +1096,82 @@ từ profile, bốn bảng Silver dự kiến và những phần chưa thuộc s
   engagements, follows và deleted records.
 - Những phần như deduplication, quarantine, pseudonymization và Iceberg nên được
   bổ sung sau khi có job Silver đầu tiên được kiểm chứng.
+
+## Bước 30: Build Silver posts từ Bronze commit events
+
+**Mục tiêu**
+
+Tạo Spark batch job đầu tiên để chuẩn hóa post create/update events từ Bronze
+commit events thành bảng `silver_posts`.
+
+**Vì sao cần thực hiện**
+
+Bronze giữ raw JSON để audit và replay, nhưng downstream analytics cần bảng dễ
+query hơn. `silver_posts` là lát cắt Silver đầu tiên, giúp kiểm chứng luồng
+Bronze -> Silver trên MinIO trước khi triển khai thêm engagement, follow và delete
+records.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/build_silver_posts.py` đọc
+`s3a://bluesky-lake/bronze/bluesky_commit_events`, parse envelope JSON, lọc
+`app.bsky.feed.post` với operation `create/update`, tạo các cột Silver v1 như
+`post_uri`, `author_did`, `text_length`, `is_reply`, `reply_root_uri` và ghi ra
+`s3a://bluesky-lake/silver/silver_posts`. Kết quả chạy hiện tại có
+`silver_posts_count: 119`.
+
+**Các file liên quan**
+
+- `scripts/build_silver_posts.py`
+- `docs/silver-schema-v1.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Silver không thay thế Bronze; Silver là dữ liệu đã chuẩn hóa để query và làm
+  nguồn cho analytics.
+- Batch build ở bước này dùng `overwrite` để dễ chạy lại trong local learning,
+  chưa phải chiến lược incremental/idempotent hoàn chỉnh.
+- Chỉ xử lý post create/update trước giúp tạo một vertical slice nhỏ, thay vì cố
+  gắng build toàn bộ Silver schema trong một lần.
+
+## Bước 31: Đọc và kiểm chứng Silver posts
+
+**Mục tiêu**
+
+Đọc lại `silver_posts` từ MinIO để xác nhận bảng Silver đầu tiên có schema và dữ
+liệu usable.
+
+**Vì sao cần thực hiện**
+
+Ghi Silver thành công chưa đủ; cần đọc lại bằng một Spark job khác để kiểm chứng
+dữ liệu downstream có thể sử dụng. Các count theo `operation` và `is_reply` giúp
+xác nhận transform cơ bản từ Bronze sang Silver hoạt động đúng.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/read_silver_posts.py` đọc
+`s3a://bluesky-lake/silver/silver_posts`, in schema, count và một số thống kê cơ
+bản. Kết quả hiện tại:
+
+```text
+silver_posts_count: 119
+create: 118
+update: 1
+is_reply=false: 67
+is_reply=true: 52
+```
+
+**Các file liên quan**
+
+- `scripts/read_silver_posts.py`
+- `scripts/build_silver_posts.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Mọi bảng Silver mới cần có bước đọc ngược để kiểm chứng.
+- Count theo field dẫn xuất như `is_reply` giúp kiểm tra transform logic, không
+  chỉ kiểm tra file tồn tại.
+- Sau khi có một bảng Silver usable, có thể tiếp tục mở rộng sang engagements,
+  follows và deleted records theo cùng cách làm.
