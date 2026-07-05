@@ -55,6 +55,7 @@ tồn tại trong repository.
 44. [Tự động load Gold event volume vào ClickHouse](#bước-44-tự-động-load-gold-event-volume-vào-clickhouse)
 45. [Kiểm tra Gold serving table trong ClickHouse](#bước-45-kiểm-tra-gold-serving-table-trong-clickhouse)
 46. [Tách ClickHouse HTTP helper dùng chung](#bước-46-tách-clickhouse-http-helper-dùng-chung)
+47. [Reconcile Silver v1 với ClickHouse Gold](#bước-47-reconcile-silver-v1-với-clickhouse-gold)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -1774,3 +1775,46 @@ thành công.
 - Config kết nối ClickHouse nên lấy từ environment variables với default local rõ
   ràng.
 - Refactor helper cần được kiểm chứng bằng cả script đọc và script ghi/load.
+
+## Bước 47: Reconcile Silver v1 với ClickHouse Gold
+
+**Mục tiêu**
+
+Tạo data quality check đầu tiên để so sánh aggregate trong ClickHouse Gold với dữ
+liệu nguồn từ Silver v1.
+
+**Vì sao cần thực hiện**
+
+ClickHouse là serving layer có thể rebuild, không phải source of truth duy nhất.
+Vì vậy cần kiểm tra dữ liệu đã load vào ClickHouse có khớp với Silver hay không.
+Reconciliation giúp phát hiện load thiếu, load thừa hoặc serving mart bị stale.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `scripts/check_gold_reconciliation.py` đọc count kỳ vọng từ bốn
+bảng Silver v1 và so sánh với `bluesky.gold_event_volume_by_type` trong
+ClickHouse. Kết quả hiện tại:
+
+```text
+deleted_record  expected=29   actual=29   OK
+follow          expected=67   actual=67   OK
+like            expected=837  actual=837  OK
+post            expected=119  actual=119  OK
+repost          expected=144  actual=144  OK
+Gold reconciliation passed
+```
+
+**Các file liên quan**
+
+- `scripts/check_gold_reconciliation.py`
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Reconciliation là data quality check giữa các layer, không phải unit test code.
+- Serving layer cần được kiểm tra với nguồn rebuild của nó để đảm bảo dashboard
+  không hiển thị số liệu lệch.
+- Check hiện tại mới so sánh count tổng theo event type; các quality check sâu hơn
+  có thể bổ sung sau.
