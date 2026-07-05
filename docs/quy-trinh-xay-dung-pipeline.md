@@ -2179,3 +2179,38 @@ Script load và script check chạy thành công, count trong ClickHouse là
   được từ Gold source.
 - Khi thêm Gold table mới, cần có đủ build, read/check trên MinIO, DDL ClickHouse,
   load ClickHouse và check ClickHouse.
+
+## Bước 58: Reconcile Gold post engagement summary
+
+**Mục tiêu**
+
+Tạo checkpoint reconciliation cho `gold_post_engagement_summary`, so sánh dữ liệu
+Gold Parquet trên MinIO với bảng serving tương ứng trong ClickHouse.
+
+**Vì sao cần thực hiện**
+
+ClickHouse là bản serving được load từ Gold source, nên cần kiểm tra dữ liệu không
+bị thiếu hoặc lệch sau quá trình load. Với bảng post engagement summary, các metric
+cần đối chiếu gồm số dòng, tổng like, tổng repost và tổng engagement.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/check_gold_post_engagement_reconciliation.py` chạy thành công và báo
+`Gold post engagement reconciliation passed`. Checkpoint reconciliation cũ cho
+`gold_event_volume_by_type` cũng vẫn pass.
+
+**Các file liên quan**
+
+- `scripts/check_gold_post_engagement_reconciliation.py`
+- `scripts/check_gold_reconciliation.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Mỗi Gold serving table nên có reconciliation riêng với source có thể rebuild.
+- Reconciliation không chỉ kiểm tra `row_count`; nên kiểm tra thêm các tổng metric
+  quan trọng của bảng.
+- Chạy lại checkpoint cũ sau khi thêm bảng mới giúp xác nhận thay đổi không làm
+  ảnh hưởng luồng Gold đã có.
