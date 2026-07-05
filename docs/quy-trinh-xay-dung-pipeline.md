@@ -88,6 +88,7 @@ tồn tại trong repository.
 77. [Build Gold post engagement từ Silver Iceberg](#bước-77-build-gold-post-engagement-từ-silver-iceberg)
 78. [Load ClickHouse Gold từ Silver Iceberg source](#bước-78-load-clickhouse-gold-từ-silver-iceberg-source)
 79. [Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức](#bước-79-chuẩn-hóa-luồng-gold-từ-silver-iceberg-thành-luồng-chính-thức)
+80. [Tạo entrypoint refresh Gold serving từ Silver Iceberg](#bước-80-tạo-entrypoint-refresh-gold-serving-từ-silver-iceberg)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3034,3 +3035,47 @@ chạy thành công.
   ClickHouse, không phải Gold serving layer cuối cùng.
 - Khi xóa một artifact tạm, cần rà lại import, README và checkpoint để tránh để
   lại reference chết trong repo.
+
+## Bước 80: Tạo entrypoint refresh Gold serving từ Silver Iceberg
+
+**Mục tiêu**
+
+Tạo một script tổng hợp để refresh toàn bộ Gold serving từ Silver Iceberg bằng một
+command duy nhất.
+
+**Vì sao cần thực hiện**
+
+Sau khi luồng `Silver Iceberg -> Gold staging -> ClickHouse` đã chạy ổn, việc phải
+nhớ nhiều command rời dễ gây lỗi thao tác khi demo, debug hoặc rebuild local.
+Một entrypoint tổng hợp giúp biến khả năng refresh ClickHouse từ Silver Iceberg
+thành một workflow rõ ràng, có thể kiểm chứng và sau này dễ chuyển thành Airflow
+DAG.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/refresh_gold_serving_from_iceberg.py` gọi lần lượt các bước build Gold
+staging từ Silver Iceberg, load hai bảng ClickHouse Gold và chạy
+`scripts/check_gold_serving_v1.py`. Script chạy thành công và kết thúc với
+`Gold serving v1 check passed`.
+
+**Các file liên quan**
+
+- `scripts/refresh_gold_serving_from_iceberg.py`
+- `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
+- `scripts/check_gold_serving_v1.py`
+- `README.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Một script orchestration local nên gọi lại các hàm đã có thay vì copy lại logic
+  build/load/check.
+- Entrypoint refresh giúp chứng minh ClickHouse không phải source of truth duy
+  nhất vì có thể được tái tạo từ Silver Iceberg.
+- Trong phiên bản hiện tại, refresh là full refresh: build lại Gold staging,
+  truncate ClickHouse serving table và load lại dữ liệu.
+- Workflow đã chạy ổn trong script local là ứng viên tự nhiên để chuyển thành
+  orchestration bằng Airflow ở milestone sau.
