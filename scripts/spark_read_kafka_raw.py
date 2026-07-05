@@ -4,19 +4,18 @@ from pyspark.sql.functions import col, date_format, from_json, to_date
 from pyspark.sql.types import LongType, MapType, StringType, StructField, StructType
 
 from bluesky_pipeline.bronze_tables import (
+    BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
     BRONZE_ACCOUNT_EVENTS_PATH,
+    BRONZE_COMMIT_CHECKPOINT_LOCATION,
     BRONZE_COMMIT_EVENTS_PATH,
+    BRONZE_IDENTITY_CHECKPOINT_LOCATION,
     BRONZE_IDENTITY_EVENTS_PATH,
 )
-from bluesky_pipeline.spark_session import create_spark_session
 
+from bluesky_pipeline.spark_session import create_spark_session
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 KAFKA_TOPIC = "bluesky.raw.events.v2"
-
-COMMIT_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_commit_events"
-IDENTITY_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_identity_events"
-ACCOUNT_CHECKPOINT_LOCATION = "s3a://bluesky-lake/checkpoints/spark_account_events"
 
 KAFKA_CONNECTOR_PACKAGE = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 
@@ -103,7 +102,7 @@ def main() -> None:
         BRONZE_COMMIT_EVENTS_PATH,
     ).option(
         "checkpointLocation",
-        COMMIT_CHECKPOINT_LOCATION,
+        BRONZE_COMMIT_CHECKPOINT_LOCATION,
     ).partitionBy(
         "ingest_date",
         "ingest_hour",
@@ -116,7 +115,7 @@ def main() -> None:
         BRONZE_IDENTITY_EVENTS_PATH,
     ).option(
         "checkpointLocation",
-        IDENTITY_CHECKPOINT_LOCATION,
+        BRONZE_IDENTITY_CHECKPOINT_LOCATION,
     ).partitionBy(
         "ingest_date",
         "ingest_hour",
@@ -128,7 +127,7 @@ def main() -> None:
         BRONZE_ACCOUNT_EVENTS_PATH,
     ).option(
         "checkpointLocation",
-        ACCOUNT_CHECKPOINT_LOCATION,
+        BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
     ).partitionBy(
         "ingest_date",
         "ingest_hour",

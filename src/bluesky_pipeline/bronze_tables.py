@@ -9,3 +9,13 @@ BRONZE_EVENT_PATHS = {
     "identity": BRONZE_IDENTITY_EVENTS_PATH,
     "account": BRONZE_ACCOUNT_EVENTS_PATH,
 }
+
+BRONZE_COMMIT_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/spark_commit_events"
+)
+BRONZE_IDENTITY_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/spark_identity_events"
+)
+BRONZE_ACCOUNT_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/spark_account_events"
+)
