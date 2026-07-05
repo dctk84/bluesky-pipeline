@@ -47,6 +47,18 @@ Kiểm tra ClickHouse:
 curl 'http://default:clickhouse@localhost:8123/?query=SELECT%201'
 ```
 
+Một số biến môi trường có thể override khi chạy local:
+
+```bash
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_TOPIC=bluesky.raw.events.v2
+SPARK_KAFKA_CONNECTOR_PACKAGE=org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1
+MAX_EVENTS=300
+CLICKHOUSE_URL=http://localhost:8123
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=clickhouse
+```
+
 Chạy Spark Bronze writer:
 
 ```bash
