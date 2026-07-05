@@ -6,6 +6,7 @@ def test_build_event_envelope_adds_expected_metadata_for_create_event():
     raw_event = {
         "did": "did:plc:test",
         "time_us": 123456789,
+        "kind": "commit",
         "commit": {
             "operation": "create",
             "collection": "app.bsky.feed.post",
@@ -26,6 +27,7 @@ def test_build_event_envelope_adds_expected_metadata_for_create_event():
     assert envelope["repository_did"] == "did:plc:test"
     assert envelope["jetstream_time_us"] == 123456789
     assert envelope["payload"] == raw_event
+    assert envelope["event_kind"] == "commit"
 
 
 def test_build_event_envelope_handles_delete_event_without_record():
@@ -64,6 +66,7 @@ def test_build_event_envelope_handles_missing_commit():
     assert envelope["repository_did"] == "did:plc:test"
     assert envelope["jetstream_time_us"] == 123456791
     assert envelope["payload"] == raw_event
+    assert envelope["event_kind"] == "identity"
 
 
 def test_build_event_envelope_handles_empty_event():
@@ -74,6 +77,7 @@ def test_build_event_envelope_handles_empty_event():
 
     assert envelope["schema_version"] == 1
     assert envelope["source"] == "bluesky_jetstream"
+    assert envelope["event_kind"] is None
     assert envelope["collection"] is None
     assert envelope["operation"] is None
     assert envelope["repository_did"] is None

@@ -571,13 +571,14 @@ Grafana hiển thị:
 ### 8.1. Phạm vi nguồn hoàn chỉnh
 
 Project tập trung vào các event công khai chính của Bluesky Jetstream để bao phủ
-ba nhóm tín hiệu:
+bốn nhóm tín hiệu:
 
 - Content activity.
 - Engagement activity.
 - Network activity.
+- Account lifecycle activity.
 
-Các collection thuộc scope hoàn chỉnh:
+Các commit collection thuộc scope hoàn chỉnh:
 
 ```text
 app.bsky.feed.post
@@ -597,6 +598,18 @@ delete
 Không phải collection nào cũng có đủ cả ba operation. Milestone khám phá schema
 phải xác nhận operation thực tế của từng collection trước khi thiết kế Silver.
 
+Ngoài commit event, project cũng đưa vào scope các non-commit event sau:
+
+```text
+identity
+account
+```
+
+Các event này không có `commit.collection` hoặc `commit.operation`, nên không được
+ép vào cùng schema/layout với post, like, repost và follow. Chúng phục vụ nhóm bài
+toán account lifecycle như thay đổi identity, account activation/deactivation và
+tỷ lệ account lifecycle activity so với commit activity.
+
 ### 8.2. Thứ tự triển khai
 
 Triển khai theo thứ tự để tránh xử lý quá nhiều schema cùng lúc:
@@ -605,7 +618,9 @@ Triển khai theo thứ tự để tránh xử lý quá nhiều schema cùng lú
 2. Probe thêm `app.bsky.feed.like`, `app.bsky.feed.repost` và
    `app.bsky.graph.follow`.
 3. Ingest raw multi-collection event vào Kafka/Bronze.
-4. Normalize từng collection trong Spark theo use case.
+4. Bổ sung `event_kind` để phân biệt `commit`, `identity` và `account`.
+5. Tách Bronze output theo event family để mỗi nhóm có schema/layout phù hợp.
+6. Normalize từng collection hoặc event family trong Spark theo use case.
 
 ### 8.3. Derived signals
 
@@ -649,6 +664,13 @@ Network events phục vụ:
 - Network activity trend.
 - Active repositories theo follow activity.
 
+Account lifecycle events phục vụ:
+
+- Identity event volume theo thời gian.
+- Account activation/deactivation volume.
+- Tỷ lệ account lifecycle events so với commit activity.
+- Tín hiệu hỗ trợ governance và audit khi account thay đổi trạng thái.
+
 ---
 
 ## 9. Event envelope
@@ -661,6 +683,7 @@ Ví dụ logic:
 {
   "schema_version": 1,
   "source": "bluesky_jetstream",
+  "event_kind": "commit",
   "received_at": "2026-07-02T12:30:15.123Z",
   "collection": "app.bsky.feed.post",
   "operation": "create",
@@ -677,6 +700,8 @@ Nguyên tắc:
 - Không sửa dữ liệu nguồn trong ingestion gateway.
 - Metadata platform được đặt ngoài `payload`.
 - Envelope có `schema_version`.
+- Envelope có `event_kind` để phân biệt commit event với non-commit event như
+  `identity` và `account`.
 - Timestamp dùng UTC.
 - Không hard-code schema business quá sớm.
 
@@ -839,6 +864,7 @@ Các trường dự kiến:
 raw_payload
 schema_version
 source
+event_kind
 collection
 operation
 repository_did
@@ -851,10 +877,30 @@ ingest_date
 ingest_hour
 ```
 
-Layout dự kiến:
+Layout Bronze được tách theo event family để tránh ép các event không cùng schema
+vào một partition layout duy nhất.
+
+Layout dự kiến cho commit events:
 
 ```text
-s3://bluesky-lake/bronze/events/
+s3://bluesky-lake/bronze/bluesky_commit_events/
+    ingest_date=YYYY-MM-DD/
+        ingest_hour=HH/
+            collection=app.bsky.feed.post/
+```
+
+Layout dự kiến cho identity events:
+
+```text
+s3://bluesky-lake/bronze/bluesky_identity_events/
+    ingest_date=YYYY-MM-DD/
+        ingest_hour=HH/
+```
+
+Layout dự kiến cho account events:
+
+```text
+s3://bluesky-lake/bronze/bluesky_account_events/
     ingest_date=YYYY-MM-DD/
         ingest_hour=HH/
 ```
@@ -864,6 +910,10 @@ Không partition theo:
 - DID.
 - Hashtag.
 - Post URI.
+
+Không dùng `collection=__HIVE_DEFAULT_PARTITION__` như một layout chính thức cho
+`identity/account`. Nếu event family không có collection, cần ghi sang path riêng
+hoặc schema riêng.
 
 ### 14.2. Silver layer
 

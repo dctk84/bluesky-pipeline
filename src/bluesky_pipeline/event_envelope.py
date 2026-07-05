@@ -20,6 +20,7 @@ def build_event_envelope(raw_event: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "source": SOURCE,
+        "event_kind": raw_event.get("kind"),
         "received_at": utc_now_iso(),
         "collection": commit.get("collection"),
         "operation": commit.get("operation"),

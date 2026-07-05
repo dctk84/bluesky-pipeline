@@ -22,7 +22,7 @@ JETSTREAM_URL = (
     + "&".join(f"wantedCollections={collection}" for collection in WANTED_COLLECTIONS)
 )
 
-TOPIC = os.getenv("KAFKA_TOPIC", "bluesky.raw.events.v1")
+TOPIC = os.getenv("KAFKA_TOPIC", "bluesky.raw.events.v2")
 BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "100"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))

@@ -9,7 +9,7 @@ Spark normalization ở các milestone sau.
 
 ## Phạm vi đã quan sát
 
-Các collection đang thuộc phạm vi dự án:
+Các commit collection đang thuộc phạm vi dự án:
 
 ```text
 app.bsky.feed.post
@@ -17,6 +17,18 @@ app.bsky.feed.like
 app.bsky.feed.repost
 app.bsky.graph.follow
 ```
+
+Ngoài commit event, khi đọc dữ liệu từ Kafka/Bronze đã quan sát thêm các event
+không có `commit.collection`:
+
+```text
+identity
+account
+```
+
+Các event này có `kind` ở cấp event nhưng không có `commit`, `collection`,
+`operation` hoặc `record`. Chúng không phải lỗi parse; chúng là một nhóm event
+khác của Jetstream và cần schema/layout riêng nếu đưa vào phân tích.
 
 Trong một lần chạy probe 1000 event, script ghi được sample dạng event envelope
 vào JSONL local.
@@ -107,6 +119,63 @@ commit
 - `time_us`: timestamp từ Jetstream ở đơn vị microsecond.
 - `commit`: thông tin thay đổi trong repository.
 
+Các giá trị `kind` hiện đã quan sát hoặc đưa vào scope:
+
+```text
+commit
+identity
+account
+```
+
+`commit` chứa thay đổi record trong một collection cụ thể. `identity` và
+`account` là non-commit event, dùng để mô tả thay đổi identity hoặc trạng thái
+account/repository.
+
+## Field của non-commit event
+
+### identity
+
+Event `identity` có dạng quan sát được:
+
+```text
+kind
+did
+time_us
+identity.did
+identity.seq
+identity.time
+```
+
+Ý nghĩa ban đầu:
+
+- `identity.did`: DID liên quan tới thay đổi identity.
+- `identity.seq`: sequence number của event.
+- `identity.time`: thời điểm nguồn ghi nhận thay đổi identity.
+
+### account
+
+Event `account` có dạng quan sát được:
+
+```text
+kind
+did
+time_us
+account.did
+account.seq
+account.time
+account.active
+account.status
+```
+
+Ý nghĩa ban đầu:
+
+- `account.active`: trạng thái account đang active hay không.
+- `account.status`: trạng thái bổ sung nếu có, ví dụ `deactivated`.
+- `account.time`: thời điểm nguồn ghi nhận thay đổi trạng thái account.
+
+Các event `identity/account` có thể phục vụ bài toán account lifecycle activity,
+nhưng không nên ghi chung vào Bronze layout partition theo `collection`.
+
 ## Field chung trong commit
 
 Các field thường gặp trong `commit`:
@@ -164,6 +233,7 @@ Các field normalized hiện tại:
 ```text
 schema_version
 source
+event_kind
 received_at
 repository_did
 jetstream_time_us
@@ -183,6 +253,8 @@ raw_event
 
 - `schema_version`: version của envelope schema nội bộ.
 - `source`: nguồn dữ liệu, hiện tại là `bluesky_jetstream`.
+- `event_kind`: loại event cấp cao từ Jetstream, ví dụ `commit`, `identity` hoặc
+  `account`.
 - `received_at`: thời điểm ingestion nhận event theo UTC.
 - `repository_did`: DID của repository phát sinh event.
 - `jetstream_time_us`: timestamp từ Jetstream ở đơn vị microsecond.
@@ -545,6 +617,22 @@ bảng Silver/Gold theo use case.
 
 Bronze cần giữ raw event để audit, replay và reprocess khi schema normalization
 thay đổi.
+
+Với scope mới, Bronze nên tách output theo event family:
+
+```text
+bronze/bluesky_commit_events
+bronze/bluesky_identity_events
+bronze/bluesky_account_events
+```
+
+Lý do:
+
+- Commit events có `collection`, `operation`, `record` và phù hợp partition thêm
+  theo `collection`.
+- Identity/account events không có `collection`, nên nếu ghi chung sẽ tạo
+  `collection=NULL` hoặc `collection=__HIVE_DEFAULT_PARTITION__`.
+- Tách path giúp mỗi nhóm có schema rõ hơn và giảm nhầm lẫn khi đọc downstream.
 
 ## Sample JSONL local
 
