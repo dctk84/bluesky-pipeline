@@ -15,10 +15,16 @@ GOLD_POST_ENGAGEMENT_SUMMARY_CLICKHOUSE_SOURCE_PATH = (
 )
 
 GOLD_EVENT_VOLUME_1M_STREAM_TABLE = "bluesky.gold_event_volume_1m_stream"
-
-GOLD_EVENT_VOLUME_1M_STREAM_CHECKPOINT_LOCATION = (
-    "s3a://bluesky-lake/checkpoints/gold_event_volume_1m_stream"
+GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE = (
+    "bluesky.gold_content_activity_1m_stream"
 )
+GOLD_ENGAGEMENT_1M_STREAM_TABLE = "bluesky.gold_engagement_1m_stream"
+GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE = "bluesky.gold_network_activity_1m_stream"
+
+GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/gold_realtime_metrics_1m_stream"
+)
+
 
 def build_gold_post_engagement_summary_ddl() -> str:
     """Tạo câu DDL cho bảng Gold post engagement summary trong ClickHouse."""
@@ -55,6 +61,7 @@ def build_gold_event_volume_ddl() -> str:
     ORDER BY event_type
     """
 
+
 def build_gold_event_volume_1m_stream_ddl() -> str:
     """Tạo câu DDL cho bảng event volume realtime theo phút trong ClickHouse."""
     # Bảng này phục vụ Grafana time series cho luồng streaming end-to-end.
@@ -69,4 +76,55 @@ def build_gold_event_volume_1m_stream_ddl() -> str:
     )
     ENGINE = SummingMergeTree
     ORDER BY (window_start, event_type, spark_batch_id)
+    """
+
+
+def build_gold_content_activity_1m_stream_ddl() -> str:
+    """Tạo DDL cho bảng content activity realtime theo phút."""
+    # Lưu các hoạt động tạo/xóa/cập nhật nội dung để dashboard query nhanh.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE}
+    (
+        window_start DateTime,
+        content_activity_type String,
+        activity_count UInt64,
+        spark_batch_id UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = SummingMergeTree
+    ORDER BY (window_start, content_activity_type, spark_batch_id)
+    """
+
+
+def build_gold_engagement_1m_stream_ddl() -> str:
+    """Tạo DDL cho bảng engagement realtime theo phút."""
+    # Lưu like/repost/reply để dashboard phân tích mức độ tương tác.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_ENGAGEMENT_1M_STREAM_TABLE}
+    (
+        window_start DateTime,
+        engagement_type String,
+        engagement_count UInt64,
+        spark_batch_id UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = SummingMergeTree
+    ORDER BY (window_start, engagement_type, spark_batch_id)
+    """
+
+
+def build_gold_network_activity_1m_stream_ddl() -> str:
+    """Tạo DDL cho bảng network activity realtime theo phút."""
+    # Lưu follow/unfollow để quan sát biến động social graph.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE}
+    (
+        window_start DateTime,
+        network_activity_type String,
+        activity_count UInt64,
+        spark_batch_id UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = SummingMergeTree
+    ORDER BY (window_start, network_activity_type, spark_batch_id)
     """
