@@ -9,12 +9,14 @@ from bluesky_pipeline.gold_tables import (
     GOLD_EVENT_VOLUME_TABLE,
     GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
     GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
+    GOLD_REALTIME_STREAM_BATCHES_TABLE,
     build_gold_content_activity_1m_stream_ddl,
     build_gold_engagement_1m_stream_ddl,
     build_gold_event_volume_1m_stream_ddl,
     build_gold_event_volume_ddl,
     build_gold_network_activity_1m_stream_ddl,
     build_gold_post_engagement_summary_ddl,
+    build_gold_realtime_stream_batches_ddl,
 )
 
 def create_database() -> None:
@@ -57,6 +59,12 @@ def create_gold_network_activity_1m_stream_table() -> None:
     execute_clickhouse(build_gold_network_activity_1m_stream_ddl())
 
 
+def create_gold_realtime_stream_batches_table() -> None:
+    """Tạo bảng health cho realtime Spark micro-batches nếu chưa tồn tại."""
+    # Bảng này phục vụ dashboard vận hành của fast path.
+    execute_clickhouse(build_gold_realtime_stream_batches_ddl())
+
+
 def main() -> None:
     """Tạo các ClickHouse objects cần thiết cho Gold serving layer."""
     create_database()
@@ -79,6 +87,9 @@ def main() -> None:
 
     create_gold_network_activity_1m_stream_table()
     print(f"created_table: {GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE}")
+
+    create_gold_realtime_stream_batches_table()
+    print(f"created_table: {GOLD_REALTIME_STREAM_BATCHES_TABLE}")
 
 if __name__ == "__main__":
     main()

@@ -6,6 +6,7 @@ from bluesky_pipeline.gold_tables import (
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
     GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
+    GOLD_REALTIME_STREAM_BATCHES_TABLE,
 )
 
 
@@ -76,6 +77,56 @@ def print_realtime_table_summary() -> None:
     )
 
     print("=== realtime_metrics_summary ===")
+    print(result)
+
+
+def print_batch_health_summary() -> None:
+    """In summary vận hành của Spark micro-batches."""
+    # Bảng này cho biết job có batch mới, batch rỗng và duration bất thường không.
+    result = execute_clickhouse(
+        f"""
+        SELECT
+            count() AS total_batches,
+            max(spark_batch_id) AS latest_batch_id,
+            max(batch_finished_at) AS last_batch_finished_at,
+            dateDiff('second', max(batch_finished_at), now())
+                AS seconds_since_last_batch,
+            sum(is_empty) AS empty_batches,
+            round(avg(batch_duration_ms), 2) AS avg_batch_duration_ms,
+            max(batch_duration_ms) AS max_batch_duration_ms,
+            sum(input_rows) AS total_input_rows
+        FROM {GOLD_REALTIME_STREAM_BATCHES_TABLE}
+        FORMAT PrettyCompact
+        """
+    )
+
+    print("=== realtime_batch_health_summary ===")
+    print(result)
+
+
+def print_latest_batch_health() -> None:
+    """In các Spark micro-batches mới nhất của realtime path."""
+    result = execute_clickhouse(
+        f"""
+        SELECT
+            spark_batch_id,
+            batch_started_at,
+            batch_finished_at,
+            batch_duration_ms,
+            input_rows,
+            event_volume_rows,
+            content_activity_rows,
+            engagement_rows,
+            network_activity_rows,
+            is_empty
+        FROM {GOLD_REALTIME_STREAM_BATCHES_TABLE}
+        ORDER BY spark_batch_id DESC
+        LIMIT 20
+        FORMAT PrettyCompact
+        """
+    )
+
+    print("=== latest_realtime_batches ===")
     print(result)
 
 
@@ -251,6 +302,8 @@ def print_network_activity_summary() -> None:
 def main() -> None:
     """Chạy checkpoint cho toàn bộ realtime metrics."""
     print_realtime_table_summary()
+    print_batch_health_summary()
+    print_latest_batch_health()
     print_latest_realtime_metrics()
     print_event_type_share()
     print_engagement_to_post_ratio()
