@@ -95,6 +95,8 @@ tồn tại trong repository.
 84. [Kiểm tra streaming event volume bằng CLI và Grafana](#bước-84-kiểm-tra-streaming-event-volume-bằng-cli-và-grafana)
 85. [Bổ sung Spark batch id cho streaming event volume](#bước-85-bổ-sung-spark-batch-id-cho-streaming-event-volume)
 86. [Chốt kiến trúc fast path và historical path cho dashboard](#bước-86-chốt-kiến-trúc-fast-path-và-historical-path-cho-dashboard)
+87. [Tối ưu fast path bằng stateless micro-batch aggregation](#bước-87-tối-ưu-fast-path-bằng-stateless-micro-batch-aggregation)
+88. [Kiểm chứng realtime dashboard và freshness panel](#bước-88-kiểm-chứng-realtime-dashboard-và-freshness-panel)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3331,3 +3333,91 @@ micro-batch, ClickHouse insert và Grafana refresh.
   exactly-once end-to-end.
 - Dashboard realtime trong data platform thường là near-real-time, không phải
   cập nhật từng event ngay lập tức trên trình duyệt.
+
+## Bước 87: Tối ưu fast path bằng stateless micro-batch aggregation
+
+**Mục tiêu**
+
+Điều chỉnh realtime Spark job để aggregate event volume bên trong từng
+micro-batch `foreachBatch`, thay vì dùng streaming aggregation có state store
+trước khi ghi ClickHouse.
+
+**Vì sao cần thực hiện**
+
+Luồng fast path hiện tại chỉ cần metric đơn giản cho dashboard realtime:
+event count theo phút và event type. Khi dùng `groupBy` trực tiếp trên streaming
+DataFrame, Spark phải duy trì state store và checkpoint state cho window
+aggregation. Trong môi trường local, điều này tạo nhiều log state store và có thể
+làm batch thường xuyên `falling behind`. Với metric append đơn giản, aggregate
+trong từng micro-batch giúp luồng nhẹ hơn và phù hợp hơn với mục tiêu latency của
+fast path.
+
+**Kết quả sau khi hoàn thành**
+
+`scripts/stream_event_volume_to_clickhouse.py` đọc Kafka stream, parse event và
+map `event_type` như trước. DataFrame streaming chưa aggregate được đưa vào
+`foreachBatch`; trong mỗi micro-batch, script group theo
+`window_start` và `event_type`, tạo payload JSONEachRow rồi insert vào
+`bluesky.gold_event_volume_1m_stream`. Sau thay đổi, job vẫn ghi được dữ liệu mới
+vào ClickHouse và không còn cảnh báo `falling behind` lặp liên tục.
+
+**Các file liên quan**
+
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_stream_event_volume.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- `foreachBatch` nhận một DataFrame tĩnh đại diện cho micro-batch hiện tại, nên
+  aggregation bên trong hàm này là batch aggregation bình thường.
+- Với dashboard fast path đơn giản, stateless micro-batch aggregation có thể thực
+  dụng hơn stateful streaming aggregation.
+- Cách này không thay thế các bài toán event-time/stateful nghiêm túc ở Silver
+  hoặc Gold historical path; nó chỉ tối ưu cho realtime serving metric đơn giản.
+- `spark_batch_id` vẫn là metadata debug. Business query trên Grafana phải group
+  theo `window_start` và `event_type`, không group theo `spark_batch_id`.
+
+## Bước 88: Kiểm chứng realtime dashboard và freshness panel
+
+**Mục tiêu**
+
+Kiểm chứng Grafana có thể hiển thị event volume realtime từ ClickHouse và có panel
+freshness để quan sát luồng streaming còn đang cập nhật hay không.
+
+**Vì sao cần thực hiện**
+
+Biểu đồ event count chỉ cho biết có dữ liệu phân tích, nhưng chưa trả lời được
+pipeline có đang sống hay đã đứng. Freshness panel bổ sung một tín hiệu vận hành
+đơn giản: lần ghi gần nhất vào ClickHouse cách hiện tại bao lâu. Đây là bước quan
+trọng để dashboard realtime không chỉ phục vụ business metric mà còn giúp debug
+luồng dữ liệu.
+
+**Kết quả sau khi hoàn thành**
+
+Grafana có time series panel đọc từ
+`bluesky.gold_event_volume_1m_stream`, group theo `window_start` và `event_type`,
+đồng thời bỏ qua `spark_batch_id` để không tách series theo Spark micro-batch.
+Dashboard cũng có freshness stat/table dựa trên `max(loaded_at)` và
+`max(window_start)`. Khi Spark streaming và ingestion/publish chạy, biểu đồ hiển
+thị dữ liệu mới và freshness phản ánh thời điểm ClickHouse được ghi gần nhất.
+
+**Các file liên quan**
+
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_stream_event_volume.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `docker-compose.yml`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Grafana realtime panel vẫn là cơ chế query định kỳ xuống ClickHouse, không phải
+  stream từng event trực tiếp vào trình duyệt.
+- Business query phải aggregate theo business key như `window_start` và
+  `event_type`; metadata như `spark_batch_id` chỉ dùng để debug.
+- Freshness là một chỉ số vận hành quan trọng để phát hiện pipeline dừng, Kafka
+  không có event mới, Spark không ghi được hoặc ClickHouse insert gặp vấn đề.
+- Near-real-time dashboard luôn có độ trễ từ Spark trigger, thời gian ghi
+  ClickHouse và chu kỳ refresh của Grafana.

@@ -21,6 +21,23 @@ def print_table_summary() -> None:
     print("=== streaming_event_volume_summary ===")
     print(result)
 
+def print_freshness_check() -> None:
+    """Kiểm tra lần load mới nhất của bảng streaming event volume.
+
+    Output cho biết dữ liệu realtime có còn được cập nhật gần đây không.
+    """
+    # Dùng loaded_at để đo thời điểm ClickHouse nhận dữ liệu, không phụ thuộc window_start.
+    result = execute_clickhouse(
+        f"""
+        SELECT
+            max(loaded_at) AS last_loaded_at,
+            dateDiff('second', max(loaded_at), now()) AS seconds_since_last_load
+        FROM {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}
+        """
+    )
+
+    print("=== streaming_event_volume_freshness ===")
+    print(result)
 
 def print_latest_event_volume() -> None:
     """In các bucket event volume mới nhất theo phút và event type."""
@@ -52,6 +69,7 @@ def print_latest_event_volume() -> None:
 def main() -> None:
     """Chạy checkpoint đọc bảng streaming event volume từ ClickHouse."""
     print_table_summary()
+    print_freshness_check()
     print_latest_event_volume()
 
 
