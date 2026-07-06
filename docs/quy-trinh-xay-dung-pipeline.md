@@ -94,6 +94,7 @@ tồn tại trong repository.
 83. [Stream event volume theo phút từ Kafka vào ClickHouse](#bước-83-stream-event-volume-theo-phút-từ-kafka-vào-clickhouse)
 84. [Kiểm tra streaming event volume bằng CLI và Grafana](#bước-84-kiểm-tra-streaming-event-volume-bằng-cli-và-grafana)
 85. [Bổ sung Spark batch id cho streaming event volume](#bước-85-bổ-sung-spark-batch-id-cho-streaming-event-volume)
+86. [Chốt kiến trúc fast path và historical path cho dashboard](#bước-86-chốt-kiến-trúc-fast-path-và-historical-path-cho-dashboard)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3284,3 +3285,49 @@ checkpoint CLI chạy thành công.
   đang thử nghiệm.
 - Dashboard nên aggregate theo business key `window_start` và `event_type`; không
   nên tách series theo `spark_batch_id` vì batch id chỉ phục vụ debug.
+
+## Bước 86: Chốt kiến trúc fast path và historical path cho dashboard
+
+**Mục tiêu**
+
+Cập nhật kiến trúc tổng thể để thể hiện rõ dashboard có hai luồng phục vụ song
+song: fast path gần thời gian thực và historical/lakehouse path có khả năng
+rebuild.
+
+**Vì sao cần thực hiện**
+
+Sơ đồ tuyến tính `Kafka -> Spark -> Bronze -> Silver -> Gold -> Grafana` dễ gây
+hiểu nhầm rằng mọi chỉ số dashboard đều phải đi qua Silver Iceberg trước. Trong
+thực tế, project cần một luồng nhanh từ Kafka sang ClickHouse cho chỉ số realtime,
+đồng thời vẫn giữ Silver Iceberg làm source of truth cho dữ liệu lịch sử, kiểm
+tra chất lượng, backfill và rebuild.
+
+**Kết quả sau khi hoàn thành**
+
+`docs/tong-quan-du-an.md` mô tả rõ:
+
+- Fast path: `Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana`.
+- Historical/lakehouse path: `Kafka -> Bronze Parquet -> Silver Iceberg -> ClickHouse historical marts -> Grafana`.
+- Observability path: service metrics được thu thập bởi Prometheus và hiển thị
+  trên Grafana technical dashboard.
+
+Kiến trúc cũng ghi rõ realtime trong project là near-real-time, có độ trễ từ Spark
+micro-batch, ClickHouse insert và Grafana refresh.
+
+**Các file liên quan**
+
+- `docs/tong-quan-du-an.md`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `src/bluesky_pipeline/gold_tables.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Fast path tối ưu cho latency thấp nhưng không thay thế lakehouse source of
+  truth.
+- Historical path tối ưu cho độ tin cậy, backfill, rebuild và reconciliation.
+- ClickHouse là serving layer; các bảng realtime trong ClickHouse phục vụ
+  dashboard và cần được giải thích theo semantics hiện tại, chưa tuyên bố
+  exactly-once end-to-end.
+- Dashboard realtime trong data platform thường là near-real-time, không phải
+  cập nhật từng event ngay lập tức trên trình duyệt.
