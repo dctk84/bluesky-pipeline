@@ -51,18 +51,28 @@ def build_clickhouse_payload(batch_df: DataFrame, batch_id: int) -> str:
 
 
 def write_batch_to_clickhouse(batch_df: DataFrame, batch_id: int) -> None:
-    """Ghi một micro-batch aggregate vào ClickHouse.
+    """Aggregate một micro-batch và ghi kết quả vào ClickHouse.
 
-    Input gồm DataFrame của micro-batch và batch_id do Spark cung cấp.
-    Output là dữ liệu được append vào bảng ClickHouse streaming aggregate.
+    Input là các event đã parse trong một micro-batch Spark.
+    Output là các dòng aggregate theo phút và event_type trong ClickHouse.
     """
     if batch_df.rdd.isEmpty():
         print(f"batch_id={batch_id}: empty batch")
         return
 
-    payload = build_clickhouse_payload(batch_df, batch_id)
+    aggregated_df = batch_df.groupBy(
+        date_trunc("minute", col("event_timestamp")).alias("window_start"),
+        col("event_type"),
+    ).agg(
+        count(lit(1)).alias("event_count")
+    )
 
-    # Insert dạng append; SummingMergeTree sẽ cộng các dòng cùng key khi query/merge.
+    payload = build_clickhouse_payload(aggregated_df, batch_id)
+
+    if not payload:
+        print(f"batch_id={batch_id}: empty aggregate")
+        return
+
     execute_clickhouse(
         f"""
         INSERT INTO {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}
@@ -71,7 +81,7 @@ def write_batch_to_clickhouse(batch_df: DataFrame, batch_id: int) -> None:
         body=payload,
     )
 
-    print(f"batch_id={batch_id}: inserted_rows={batch_df.count()}")
+    print(f"batch_id={batch_id}: inserted_rows={aggregated_df.count()}")
 
 
 def main() -> None:
@@ -124,21 +134,13 @@ def main() -> None:
         col("event_type").isNotNull()
     )
 
-    # Aggregate trong từng micro-batch theo phút ingest Kafka.
-    event_volume_df = typed_events_df.groupBy(
-        date_trunc("minute", col("event_timestamp")).alias("window_start"),
-        col("event_type"),
-    ).agg(
-        count(lit(1)).alias("event_count")
-    )
-
     # Ghi từng micro-batch vào ClickHouse.
     query = (
-        event_volume_df.writeStream
+        typed_events_df.writeStream
         .foreachBatch(write_batch_to_clickhouse)
         .option("checkpointLocation", GOLD_EVENT_VOLUME_1M_STREAM_CHECKPOINT_LOCATION)
-        .outputMode("update")
-        .trigger(processingTime="30 seconds")
+        .outputMode("append")
+        .trigger(processingTime="60 seconds")
         .start()
     )
 
