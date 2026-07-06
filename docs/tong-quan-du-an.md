@@ -217,44 +217,67 @@ Bluesky Jetstream
 │ - Retention                 │
 │ - Consumer groups           │
 │ - Replay                    │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│ Spark Structured Streaming  │
-│                             │
-│ - Parse                     │
-│ - Validate                  │
-│ - Deduplicate               │
-│ - Watermark                 │
-│ - Event-time window         │
-│ - Stateful aggregation      │
-│ - Enrichment                │
-└──────────────┬──────────────┘
-               │
-               │ Raw append data
-               ▼
-┌─────────────────────────────┐
-│ Bronze data lake            │
-│ MinIO + partitioned Parquet │
-└──────────────┬──────────────┘
-               │
-               │ Clean and normalized data
-               ▼
-┌─────────────────────────────┐
-│ Silver Lakehouse            │
-│ MinIO + Apache Iceberg      │
-└──────────────┬──────────────┘
-               │
-               │ Aggregates / rebuild source
-               ▼
-┌─────────────────────────────┐
-│ Gold serving marts          │
-│ ClickHouse                  │
-└──────────────┬──────────────┘
-               │
-               ▼
-            Grafana
+└───────┬─────────────────────┘
+        │
+        ├─────────────────────────────────────────────────────────────┐
+        │                                                             │
+        │ Fast path: near-real-time dashboard                          │
+        ▼                                                             │
+┌─────────────────────────────┐                                       │
+│ Spark Structured Streaming  │                                       │
+│                             │                                       │
+│ - Parse event envelope      │                                       │
+│ - Window aggregation        │                                       │
+│ - Micro-batch checkpoint    │                                       │
+└──────────────┬──────────────┘                                       │
+               │                                                      │
+               ▼                                                      │
+┌─────────────────────────────┐                                       │
+│ ClickHouse realtime marts   │                                       │
+│                             │                                       │
+│ - Event volume by minute    │                                       │
+│ - Low-latency dashboard     │                                       │
+└──────────────┬──────────────┘                                       │
+               │                                                      │
+               ▼                                                      │
+            Grafana                                                   │
+                                                                      │
+        Historical / lakehouse path                                   │
+        ▼                                                             │
+┌─────────────────────────────┐                                       │
+│ Spark Structured Streaming  │                                       │
+│                             │                                       │
+│ - Parse                     │                                       │
+│ - Validate                  │                                       │
+│ - Deduplicate               │                                       │
+│ - Watermark                 │                                       │
+│ - Event-time window         │                                       │
+│ - Stateful aggregation      │                                       │
+│ - Enrichment                │                                       │
+└──────────────┬──────────────┘                                       │
+               │ Raw append data                                      │
+               ▼                                                      │
+┌─────────────────────────────┐                                       │
+│ Bronze data lake            │                                       │
+│ MinIO + partitioned Parquet │                                       │
+└──────────────┬──────────────┘                                       │
+               │ Clean and normalized data                            │
+               ▼                                                      │
+┌─────────────────────────────┐                                       │
+│ Silver Lakehouse            │                                       │
+│ MinIO + Apache Iceberg      │                                       │
+└──────────────┬──────────────┘                                       │
+               │ Aggregates / rebuild source                          │
+               ▼                                                      │
+┌─────────────────────────────┐                                       │
+│ ClickHouse historical marts │                                       │
+│                             │                                       │
+│ - Baseline aggregates       │                                       │
+│ - Rebuildable serving data  │                                       │
+└──────────────┬──────────────┘                                       │
+               │                                                      │
+               ▼                                                      │
+            Grafana                                                   │
 
 ┌─────────────────────────────┐
 │ Apache Airflow              │
@@ -268,6 +291,21 @@ Bluesky Jetstream
 ```
 
 Prometheus thu thập metrics từ các service và cung cấp dữ liệu cho Grafana.
+
+Kiến trúc dashboard có hai luồng phục vụ khác nhau:
+
+- **Fast path** đọc trực tiếp từ Kafka bằng Spark Structured Streaming, aggregate
+  theo micro-batch và ghi vào ClickHouse realtime marts. Luồng này phục vụ các
+  chỉ số cần cập nhật gần thời gian thực trên Grafana. Gần thời gian thực nghĩa là
+  vẫn có độ trễ từ trigger interval của Spark, thời gian ghi ClickHouse và chu kỳ
+  refresh của Grafana.
+- **Historical/lakehouse path** ghi dữ liệu qua Bronze và Silver Iceberg trước
+  khi tạo Gold aggregate và load vào ClickHouse. Luồng này là nền tảng cho
+  backfill, rebuild, reconciliation và các bảng phân tích ổn định hơn.
+- Fast path không thay thế Silver Iceberg. ClickHouse realtime marts là serving
+  table cho dashboard, không phải source of truth duy nhất.
+- Prometheus và Grafana technical dashboard phục vụ observability như lag,
+  freshness, throughput và service health; luồng này tách với business analytics.
 
 ---
 
