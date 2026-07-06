@@ -27,18 +27,21 @@ def print_latest_event_volume() -> None:
     # Dùng sum vì SummingMergeTree có thể có nhiều row cùng key trước khi merge.
     result = execute_clickhouse(
         f"""
-        SELECT
-            window_start,
-            event_type,
-            sum(event_count) AS event_count
-        FROM {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}
-        GROUP BY
-            window_start,
-            event_type
-        ORDER BY
-            window_start DESC,
-            event_type ASC
-        LIMIT 20
+            SELECT
+                window_start,
+                event_type,
+                spark_batch_id,
+                sum(event_count) AS event_count
+            FROM {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}
+            GROUP BY
+                window_start,
+                event_type,
+                spark_batch_id
+            ORDER BY
+                window_start DESC,
+                spark_batch_id DESC,
+                event_type ASC
+            LIMIT 20
         """
     )
 

@@ -93,6 +93,7 @@ tồn tại trong repository.
 82. [Tạo ClickHouse table cho streaming event volume theo phút](#bước-82-tạo-clickhouse-table-cho-streaming-event-volume-theo-phút)
 83. [Stream event volume theo phút từ Kafka vào ClickHouse](#bước-83-stream-event-volume-theo-phút-từ-kafka-vào-clickhouse)
 84. [Kiểm tra streaming event volume bằng CLI và Grafana](#bước-84-kiểm-tra-streaming-event-volume-bằng-cli-và-grafana)
+85. [Bổ sung Spark batch id cho streaming event volume](#bước-85-bổ-sung-spark-batch-id-cho-streaming-event-volume)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3243,3 +3244,43 @@ Kafka và bật hoặc bấm lại refresh query.
   hoặc timezone trong Grafana.
 - Grafana không tự cập nhật nếu chưa bật auto-refresh; interval refresh nên khớp
   tương đối với trigger interval của Spark streaming job.
+
+## Bước 85: Bổ sung Spark batch id cho streaming event volume
+
+**Mục tiêu**
+
+Thêm `spark_batch_id` vào bảng streaming event volume và checkpoint CLI để quan
+sát từng micro-batch Spark đã ghi vào ClickHouse.
+
+**Vì sao cần thực hiện**
+
+`foreachBatch` ghi dữ liệu theo từng micro-batch. Luồng hiện tại chấp nhận
+at-least-once, nên nếu Spark ghi ClickHouse xong nhưng chưa checkpoint rồi bị
+restart, cùng một batch có thể được ghi lại. `spark_batch_id` chưa giải quyết
+idempotency hoàn chỉnh, nhưng giúp debug và giải thích rõ batch nào đã tạo ra dữ
+liệu trong bảng serving.
+
+**Kết quả sau khi hoàn thành**
+
+DDL của `bluesky.gold_event_volume_1m_stream` có thêm cột `spark_batch_id`.
+`scripts/stream_event_volume_to_clickhouse.py` insert `batch_id` do Spark cung cấp
+vào ClickHouse. `scripts/check_clickhouse_stream_event_volume.py` in thêm
+`spark_batch_id` trong phần latest rows. Bảng local được tạo lại với schema mới và
+checkpoint CLI chạy thành công.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_stream_event_volume.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- `batch_id` trong `foreachBatch` là metadata quan trọng để quan sát/reason về
+  micro-batch Spark.
+- Thêm cột vào ClickHouse table bằng `CREATE TABLE IF NOT EXISTS` không tự đổi
+  schema bảng đã tồn tại; với bảng local có thể drop và tạo lại khi schema còn
+  đang thử nghiệm.
+- Dashboard nên aggregate theo business key `window_start` và `event_type`; không
+  nên tách series theo `spark_batch_id` vì batch id chỉ phục vụ debug.
