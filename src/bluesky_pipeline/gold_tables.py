@@ -64,8 +64,9 @@ def build_gold_event_volume_1m_stream_ddl() -> str:
         window_start DateTime,
         event_type String,
         event_count UInt64,
+        spark_batch_id UInt64,
         loaded_at DateTime DEFAULT now()
     )
     ENGINE = SummingMergeTree
-    ORDER BY (window_start, event_type)
+    ORDER BY (window_start, event_type, spark_batch_id)
     """

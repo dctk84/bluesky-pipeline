@@ -20,7 +20,7 @@ from bluesky_pipeline.kafka_config import (
 from bluesky_pipeline.spark_session import create_spark_session
 
 
-def build_clickhouse_payload(batch_df: DataFrame) -> str:
+def build_clickhouse_payload(batch_df: DataFrame, batch_id: int) -> str:
     """Chuyển batch aggregate thành JSONEachRow để insert ClickHouse.
 
     Input chính là DataFrame gồm window_start, event_type và event_count.
@@ -41,6 +41,7 @@ def build_clickhouse_payload(batch_df: DataFrame) -> str:
                     "window_start": window_start,
                     "event_type": row.event_type,
                     "event_count": int(row.event_count),
+                    "spark_batch_id": int(batch_id),
                 },
                 ensure_ascii=False,
             )
@@ -59,7 +60,7 @@ def write_batch_to_clickhouse(batch_df: DataFrame, batch_id: int) -> None:
         print(f"batch_id={batch_id}: empty batch")
         return
 
-    payload = build_clickhouse_payload(batch_df)
+    payload = build_clickhouse_payload(batch_df, batch_id)
 
     # Insert dạng append; SummingMergeTree sẽ cộng các dòng cùng key khi query/merge.
     execute_clickhouse(
