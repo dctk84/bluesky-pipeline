@@ -20,6 +20,7 @@ GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE = (
 )
 GOLD_ENGAGEMENT_1M_STREAM_TABLE = "bluesky.gold_engagement_1m_stream"
 GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE = "bluesky.gold_network_activity_1m_stream"
+GOLD_REALTIME_STREAM_BATCHES_TABLE = "bluesky.gold_realtime_stream_batches"
 
 GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION = (
     "s3a://bluesky-lake/checkpoints/gold_realtime_metrics_1m_stream"
@@ -127,4 +128,27 @@ def build_gold_network_activity_1m_stream_ddl() -> str:
     )
     ENGINE = SummingMergeTree
     ORDER BY (window_start, network_activity_type, spark_batch_id)
+    """
+
+
+def build_gold_realtime_stream_batches_ddl() -> str:
+    """Tạo DDL cho bảng health của realtime Spark micro-batches."""
+    # Bảng này phục vụ dashboard vận hành cho fast path.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_REALTIME_STREAM_BATCHES_TABLE}
+    (
+        spark_batch_id UInt64,
+        batch_started_at DateTime,
+        batch_finished_at DateTime,
+        batch_duration_ms UInt64,
+        input_rows UInt64,
+        event_volume_rows UInt64,
+        content_activity_rows UInt64,
+        engagement_rows UInt64,
+        network_activity_rows UInt64,
+        is_empty UInt8,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY spark_batch_id
     """

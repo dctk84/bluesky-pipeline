@@ -98,6 +98,7 @@ tồn tại trong repository.
 87. [Tối ưu fast path bằng stateless micro-batch aggregation](#bước-87-tối-ưu-fast-path-bằng-stateless-micro-batch-aggregation)
 88. [Kiểm chứng realtime dashboard và freshness panel](#bước-88-kiểm-chứng-realtime-dashboard-và-freshness-panel)
 89. [Build bộ realtime metrics đầy đủ cho fast path](#bước-89-build-bộ-realtime-metrics-đầy-đủ-cho-fast-path)
+90. [Bổ sung batch health cho realtime fast path](#bước-90-bổ-sung-batch-health-cho-realtime-fast-path)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3472,3 +3473,47 @@ các bảng mới có `last_loaded_at` gần hiện tại và có dữ liệu th
   bảng metric khác nhau với ý nghĩa phân tích khác nhau.
 - Các bảng realtime phục vụ dashboard, còn Silver Iceberg vẫn là source of truth
   cho lịch sử, backfill và rebuild.
+
+## Bước 90: Bổ sung batch health cho realtime fast path
+
+**Mục tiêu**
+
+Ghi metadata vận hành của từng Spark micro-batch vào ClickHouse để dashboard và
+CLI có thể quan sát tình trạng realtime job.
+
+**Vì sao cần thực hiện**
+
+Freshness từ `loaded_at` cho biết bảng realtime vừa được ghi gần đây hay không,
+nhưng chưa cho biết mỗi micro-batch mất bao lâu, có bao nhiêu input rows, batch có
+rỗng không và mỗi nhóm metric đã insert bao nhiêu dòng aggregate. Batch health
+giúp phân biệt các tình huống như không có event mới, Spark xử lý chậm, hoặc một
+nhóm metric không ghi ra dữ liệu dù batch vẫn có input.
+
+**Kết quả sau khi hoàn thành**
+
+ClickHouse có bảng `bluesky.gold_realtime_stream_batches` lưu các field như
+`spark_batch_id`, `batch_started_at`, `batch_finished_at`, `batch_duration_ms`,
+`input_rows`, số dòng aggregate đã ghi theo từng nhóm metric và `is_empty`.
+`scripts/stream_event_volume_to_clickhouse.py` ghi một health row cho mỗi
+micro-batch, bao gồm cả batch rỗng. `scripts/check_clickhouse_realtime_metrics.py`
+in thêm `realtime_batch_health_summary` và `latest_realtime_batches`. Checkpoint
+đã xác nhận có batch mới với `input_rows`, `batch_duration_ms` và các row count
+theo từng metric group.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_realtime_metrics.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Realtime dashboard nên có cả business metrics và operational metrics.
+- Batch duration và input rows giúp giải thích vì sao dashboard trễ hoặc không có
+  dữ liệu mới.
+- Empty batch không phải lỗi; nó có thể chỉ nghĩa là Kafka không có event mới
+  trong trigger interval.
+- Batch health hiện phục vụ quan sát và demo local, chưa phải hệ thống alert đầy
+  đủ như Prometheus/Alertmanager.

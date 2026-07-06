@@ -1,8 +1,10 @@
 """Stream các realtime metrics theo phút từ Kafka vào ClickHouse."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from time import perf_counter
 
+from pyspark import StorageLevel
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count, date_trunc, from_json, lit, when
 
@@ -17,6 +19,7 @@ from bluesky_pipeline.gold_tables import (
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
     GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
     GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION,
+    GOLD_REALTIME_STREAM_BATCHES_TABLE,
 )
 from bluesky_pipeline.kafka_config import (
     KAFKA_BOOTSTRAP_SERVERS,
@@ -24,6 +27,15 @@ from bluesky_pipeline.kafka_config import (
     SPARK_KAFKA_CONNECTOR_PACKAGE,
 )
 from bluesky_pipeline.spark_session import create_spark_session
+
+
+def format_clickhouse_datetime(value: datetime) -> str:
+    """Format datetime thành chuỗi ClickHouse DateTime.
+
+    Input là datetime Python.
+    Output là chuỗi dạng YYYY-MM-DD HH:MM:SS.
+    """
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def build_clickhouse_payload(
@@ -44,7 +56,7 @@ def build_clickhouse_payload(
         # ClickHouse DateTime nhận chuỗi dạng YYYY-MM-DD HH:MM:SS.
         window_start = row.window_start
         if isinstance(window_start, datetime):
-            window_start = window_start.strftime("%Y-%m-%d %H:%M:%S")
+            window_start = format_clickhouse_datetime(window_start)
 
         lines.append(
             json.dumps(
@@ -59,6 +71,74 @@ def build_clickhouse_payload(
         )
 
     return "\n".join(lines) + ("\n" if lines else "")
+
+
+def build_batch_health_payload(
+    batch_id: int,
+    batch_started_at: datetime,
+    batch_finished_at: datetime,
+    batch_duration_ms: int,
+    input_rows: int,
+    event_volume_rows: int,
+    content_activity_rows: int,
+    engagement_rows: int,
+    network_activity_rows: int,
+    is_empty: bool,
+) -> str:
+    """Tạo JSONEachRow cho một dòng batch health.
+
+    Input là metadata của Spark micro-batch.
+    Output là HTTP body dùng để insert vào ClickHouse.
+    """
+    row = {
+        "spark_batch_id": int(batch_id),
+        "batch_started_at": format_clickhouse_datetime(batch_started_at),
+        "batch_finished_at": format_clickhouse_datetime(batch_finished_at),
+        "batch_duration_ms": int(batch_duration_ms),
+        "input_rows": int(input_rows),
+        "event_volume_rows": int(event_volume_rows),
+        "content_activity_rows": int(content_activity_rows),
+        "engagement_rows": int(engagement_rows),
+        "network_activity_rows": int(network_activity_rows),
+        "is_empty": 1 if is_empty else 0,
+    }
+
+    return json.dumps(row, ensure_ascii=False) + "\n"
+
+
+def insert_batch_health_to_clickhouse(
+    batch_id: int,
+    batch_started_at: datetime,
+    batch_finished_at: datetime,
+    batch_duration_ms: int,
+    input_rows: int,
+    event_volume_rows: int,
+    content_activity_rows: int,
+    engagement_rows: int,
+    network_activity_rows: int,
+    is_empty: bool,
+) -> None:
+    """Insert metadata của một Spark micro-batch vào ClickHouse."""
+    payload = build_batch_health_payload(
+        batch_id=batch_id,
+        batch_started_at=batch_started_at,
+        batch_finished_at=batch_finished_at,
+        batch_duration_ms=batch_duration_ms,
+        input_rows=input_rows,
+        event_volume_rows=event_volume_rows,
+        content_activity_rows=content_activity_rows,
+        engagement_rows=engagement_rows,
+        network_activity_rows=network_activity_rows,
+        is_empty=is_empty,
+    )
+
+    execute_clickhouse(
+        f"""
+        INSERT INTO {GOLD_REALTIME_STREAM_BATCHES_TABLE}
+        FORMAT JSONEachRow
+        """,
+        body=payload,
+    )
 
 
 def insert_aggregate_to_clickhouse(
@@ -248,56 +328,100 @@ def write_batch_to_clickhouse(batch_df: DataFrame, batch_id: int) -> None:
     Input là các event đã parse trong một micro-batch Spark.
     Output là các dòng aggregate theo phút trong các bảng ClickHouse realtime.
     """
-    if batch_df.rdd.isEmpty():
-        print(f"batch_id={batch_id}: empty batch")
-        return
+    batch_started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    started_timer = perf_counter()
 
-    event_volume_rows = insert_aggregate_to_clickhouse(
-        batch_df=build_event_volume_aggregate(batch_df),
-        table_name=GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
-        metric_column="event_type",
-        count_column="event_count",
-        batch_id=batch_id,
-    )
+    cached_batch_df = batch_df.persist(StorageLevel.MEMORY_AND_DISK)
 
-    content_activity_rows = insert_aggregate_to_clickhouse(
-        batch_df=build_content_activity_aggregate(batch_df),
-        table_name=GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
-        metric_column="content_activity_type",
-        count_column="activity_count",
-        batch_id=batch_id,
-    )
+    try:
+        input_rows = cached_batch_df.count()
 
-    engagement_rows = insert_aggregate_to_clickhouse(
-        batch_df=build_engagement_aggregate(batch_df),
-        table_name=GOLD_ENGAGEMENT_1M_STREAM_TABLE,
-        metric_column="engagement_type",
-        count_column="engagement_count",
-        batch_id=batch_id,
-    )
+        if input_rows == 0:
+            batch_finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            batch_duration_ms = int((perf_counter() - started_timer) * 1000)
+            insert_batch_health_to_clickhouse(
+                batch_id=batch_id,
+                batch_started_at=batch_started_at,
+                batch_finished_at=batch_finished_at,
+                batch_duration_ms=batch_duration_ms,
+                input_rows=0,
+                event_volume_rows=0,
+                content_activity_rows=0,
+                engagement_rows=0,
+                network_activity_rows=0,
+                is_empty=True,
+            )
+            print(
+                f"batch_id={batch_id}: input_rows=0 "
+                f"batch_duration_ms={batch_duration_ms} empty_batch=1"
+            )
+            return
 
-    network_activity_rows = insert_aggregate_to_clickhouse(
-        batch_df=build_network_activity_aggregate(batch_df),
-        table_name=GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
-        metric_column="network_activity_type",
-        count_column="activity_count",
-        batch_id=batch_id,
-    )
+        event_volume_rows = insert_aggregate_to_clickhouse(
+            batch_df=build_event_volume_aggregate(cached_batch_df),
+            table_name=GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
+            metric_column="event_type",
+            count_column="event_count",
+            batch_id=batch_id,
+        )
 
-    print(
-        f"batch_id={batch_id}: "
-        f"event_volume_rows={event_volume_rows} "
-        f"content_activity_rows={content_activity_rows} "
-        f"engagement_rows={engagement_rows} "
-        f"network_activity_rows={network_activity_rows}"
-    )
+        content_activity_rows = insert_aggregate_to_clickhouse(
+            batch_df=build_content_activity_aggregate(cached_batch_df),
+            table_name=GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
+            metric_column="content_activity_type",
+            count_column="activity_count",
+            batch_id=batch_id,
+        )
+
+        engagement_rows = insert_aggregate_to_clickhouse(
+            batch_df=build_engagement_aggregate(cached_batch_df),
+            table_name=GOLD_ENGAGEMENT_1M_STREAM_TABLE,
+            metric_column="engagement_type",
+            count_column="engagement_count",
+            batch_id=batch_id,
+        )
+
+        network_activity_rows = insert_aggregate_to_clickhouse(
+            batch_df=build_network_activity_aggregate(cached_batch_df),
+            table_name=GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
+            metric_column="network_activity_type",
+            count_column="activity_count",
+            batch_id=batch_id,
+        )
+
+        batch_finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        batch_duration_ms = int((perf_counter() - started_timer) * 1000)
+        insert_batch_health_to_clickhouse(
+            batch_id=batch_id,
+            batch_started_at=batch_started_at,
+            batch_finished_at=batch_finished_at,
+            batch_duration_ms=batch_duration_ms,
+            input_rows=input_rows,
+            event_volume_rows=event_volume_rows,
+            content_activity_rows=content_activity_rows,
+            engagement_rows=engagement_rows,
+            network_activity_rows=network_activity_rows,
+            is_empty=False,
+        )
+
+        print(
+            f"batch_id={batch_id}: "
+            f"input_rows={input_rows} "
+            f"event_volume_rows={event_volume_rows} "
+            f"content_activity_rows={content_activity_rows} "
+            f"engagement_rows={engagement_rows} "
+            f"network_activity_rows={network_activity_rows} "
+            f"batch_duration_ms={batch_duration_ms}"
+        )
+    finally:
+        cached_batch_df.unpersist()
 
 
 def main() -> None:
     """Đọc Kafka stream, aggregate realtime metrics và ghi vào ClickHouse."""
     # Tạo SparkSession có Kafka connector.
     spark = create_spark_session(
-        "bluesky-stream-event-volume-clickhouse",
+        "bluesky-stream-realtime-metrics-clickhouse",
         extra_packages=[SPARK_KAFKA_CONNECTOR_PACKAGE],
     )
     spark.sparkContext.setLogLevel("WARN")
