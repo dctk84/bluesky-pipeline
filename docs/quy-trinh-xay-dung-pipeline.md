@@ -97,6 +97,7 @@ tồn tại trong repository.
 86. [Chốt kiến trúc fast path và historical path cho dashboard](#bước-86-chốt-kiến-trúc-fast-path-và-historical-path-cho-dashboard)
 87. [Tối ưu fast path bằng stateless micro-batch aggregation](#bước-87-tối-ưu-fast-path-bằng-stateless-micro-batch-aggregation)
 88. [Kiểm chứng realtime dashboard và freshness panel](#bước-88-kiểm-chứng-realtime-dashboard-và-freshness-panel)
+89. [Build bộ realtime metrics đầy đủ cho fast path](#bước-89-build-bộ-realtime-metrics-đầy-đủ-cho-fast-path)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3421,3 +3422,53 @@ thị dữ liệu mới và freshness phản ánh thời điểm ClickHouse đư
   không có event mới, Spark không ghi được hoặc ClickHouse insert gặp vấn đề.
 - Near-real-time dashboard luôn có độ trễ từ Spark trigger, thời gian ghi
   ClickHouse và chu kỳ refresh của Grafana.
+
+## Bước 89: Build bộ realtime metrics đầy đủ cho fast path
+
+**Mục tiêu**
+
+Mở rộng fast path từ một metric event volume sang bộ realtime metrics đầy đủ hơn
+cho dashboard: event volume, content activity, engagement và network activity.
+
+**Vì sao cần thực hiện**
+
+Event volume chỉ cho biết tổng quan dòng sự kiện đang chảy qua hệ thống. Dashboard
+phân tích cần thêm các góc nhìn business như lượng post/reply, mức tương tác
+like/repost/reply, biến động follow/unfollow và các metric dẫn xuất như tỷ trọng
+event type, engagement/post ratio hoặc net follow. Các metric này vẫn dùng cùng
+luồng Kafka và Spark streaming, nên nên ghi trong một realtime job chung thay vì
+tạo nhiều job đọc Kafka trùng nhau.
+
+**Kết quả sau khi hoàn thành**
+
+ClickHouse có thêm các realtime marts:
+
+- `bluesky.gold_content_activity_1m_stream`
+- `bluesky.gold_engagement_1m_stream`
+- `bluesky.gold_network_activity_1m_stream`
+
+`scripts/stream_event_volume_to_clickhouse.py` ghi nhiều nhóm metric trong cùng
+một `foreachBatch`: event volume, content activity, engagement và network
+activity. `scripts/check_clickhouse_realtime_metrics.py` kiểm tra summary,
+freshness, latest metrics và các metric dẫn xuất như event type share,
+engagement/post ratio và net follow. Checkpoint chạy thành công với dữ liệu live,
+các bảng mới có `last_loaded_at` gần hiện tại và có dữ liệu theo window mới nhất.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/check_clickhouse_realtime_metrics.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Một fast path có thể ghi nhiều realtime marts trong cùng một Spark micro-batch
+  nếu các metric cùng đọc từ một stream và có cùng trigger/checkpoint.
+- Không phải metric nào cũng cần lưu thành bảng riêng. Các metric như share,
+  ratio hoặc net follow có thể là query dẫn xuất từ các bảng aggregate gốc.
+- Reply vừa là content activity vừa là engagement, nên có thể xuất hiện trong hai
+  bảng metric khác nhau với ý nghĩa phân tích khác nhau.
+- Các bảng realtime phục vụ dashboard, còn Silver Iceberg vẫn là source of truth
+  cho lịch sử, backfill và rebuild.

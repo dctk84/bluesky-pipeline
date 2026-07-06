@@ -3,11 +3,17 @@
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 from bluesky_pipeline.gold_tables import (
     CLICKHOUSE_DATABASE,
+    GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
+    GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_TABLE,
+    GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
     GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
+    build_gold_content_activity_1m_stream_ddl,
+    build_gold_engagement_1m_stream_ddl,
     build_gold_event_volume_1m_stream_ddl,
     build_gold_event_volume_ddl,
+    build_gold_network_activity_1m_stream_ddl,
     build_gold_post_engagement_summary_ddl,
 )
 
@@ -32,6 +38,25 @@ def create_gold_event_volume_1m_stream_table() -> None:
     # Bảng streaming aggregate dùng cho dashboard time series.
     execute_clickhouse(build_gold_event_volume_1m_stream_ddl())
 
+
+def create_gold_content_activity_1m_stream_table() -> None:
+    """Tạo bảng Gold content activity realtime theo phút nếu chưa tồn tại."""
+    # Bảng này phục vụ dashboard hoạt động tạo nội dung realtime.
+    execute_clickhouse(build_gold_content_activity_1m_stream_ddl())
+
+
+def create_gold_engagement_1m_stream_table() -> None:
+    """Tạo bảng Gold engagement realtime theo phút nếu chưa tồn tại."""
+    # Bảng này phục vụ dashboard tương tác realtime.
+    execute_clickhouse(build_gold_engagement_1m_stream_ddl())
+
+
+def create_gold_network_activity_1m_stream_table() -> None:
+    """Tạo bảng Gold network activity realtime theo phút nếu chưa tồn tại."""
+    # Bảng này phục vụ dashboard follow/unfollow realtime.
+    execute_clickhouse(build_gold_network_activity_1m_stream_ddl())
+
+
 def main() -> None:
     """Tạo các ClickHouse objects cần thiết cho Gold serving layer."""
     create_database()
@@ -45,6 +70,15 @@ def main() -> None:
 
     create_gold_event_volume_1m_stream_table()
     print(f"created_table: {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}")
+
+    create_gold_content_activity_1m_stream_table()
+    print(f"created_table: {GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE}")
+
+    create_gold_engagement_1m_stream_table()
+    print(f"created_table: {GOLD_ENGAGEMENT_1M_STREAM_TABLE}")
+
+    create_gold_network_activity_1m_stream_table()
+    print(f"created_table: {GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE}")
 
 if __name__ == "__main__":
     main()
