@@ -7,6 +7,7 @@ Tài liệu kỹ thuật chi tiết:
 
 - [Tổng quan dự án](docs/tong-quan-du-an.md)
 - [Hướng dẫn làm việc với Codex](docs/huong-dan-lam-viec-voi-codex.md)
+- [Script inventory](docs/script-inventory.md)
 
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
 dashboard:
