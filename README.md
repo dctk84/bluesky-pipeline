@@ -79,7 +79,7 @@ CLICKHOUSE_PASSWORD=clickhouse
 Chạy Spark Bronze writer:
 
 ```bash
-PYTHONPATH=src python scripts/spark_read_kafka_raw.py
+PYTHONPATH=src python scripts/ingestion/spark_read_kafka_raw.py
 ```
 
 Ở terminal khác, chạy ingestion gateway để publish live events vào Kafka:
@@ -91,7 +91,7 @@ PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
 Tạo ClickHouse Gold/realtime tables nếu chưa có:
 
 ```bash
-PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
+PYTHONPATH=src python scripts/platform/create_clickhouse_gold_tables.py
 ```
 
 ## Historical/lakehouse path
@@ -99,7 +99,7 @@ PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
 Chạy toàn bộ historical path:
 
 ```bash
-PYTHONPATH=src:. python scripts/run_historical_lakehouse_path.py
+PYTHONPATH=src:. python scripts/historical/run_lakehouse_path.py
 ```
 
 Lệnh này thực hiện theo thứ tự:
@@ -112,18 +112,18 @@ Lệnh này thực hiện theo thứ tự:
 Kiểm tra historical path hiện có mà không build/refresh lại dữ liệu:
 
 ```bash
-PYTHONPATH=src:. python scripts/check_historical_lakehouse_path.py
+PYTHONPATH=src:. python scripts/historical/check_lakehouse_path.py
 ```
 
 Các script con vẫn có thể chạy riêng khi cần debug từng tầng:
 
 ```bash
-PYTHONPATH=src python scripts/build_iceberg_silver_v1.py
-PYTHONPATH=src python scripts/check_iceberg_silver_v1.py
-PYTHONPATH=src:. python scripts/refresh_gold_serving_from_iceberg.py
-PYTHONPATH=src python scripts/check_gold_reconciliation.py
-PYTHONPATH=src python scripts/check_gold_post_engagement_reconciliation.py
-PYTHONPATH=src:. python scripts/check_gold_serving_v1.py
+PYTHONPATH=src python scripts/historical/build_iceberg_silver_v1.py
+PYTHONPATH=src python scripts/historical/check_iceberg_silver_v1.py
+PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
+PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
+PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py
+PYTHONPATH=src:. python scripts/gold/check_serving_v1.py
 ```
 
 ## Realtime fast path
@@ -131,7 +131,7 @@ PYTHONPATH=src:. python scripts/check_gold_serving_v1.py
 Terminal 1, chạy Spark streaming job ghi realtime metrics vào ClickHouse:
 
 ```bash
-PYTHONPATH=src python scripts/stream_realtime_metrics_to_clickhouse.py
+PYTHONPATH=src python scripts/realtime/stream_metrics_to_clickhouse.py
 ```
 
 Terminal 2, publish live events vào Kafka:
@@ -143,7 +143,7 @@ PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
 Kiểm tra bảng realtime bằng CLI:
 
 ```bash
-PYTHONPATH=src python scripts/check_clickhouse_realtime_metrics.py
+PYTHONPATH=src python scripts/realtime/check_clickhouse_metrics.py
 ```
 
 Ví dụ query dùng cho Grafana time series:

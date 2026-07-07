@@ -134,8 +134,8 @@ thể là reply nếu có `record.reply`.
 
 **Các file liên quan**
 
-- `scripts/jetstream_probe.py`
-- `scripts/analyze_sample.py`
+- `scripts/discovery/jetstream_probe.py`
+- `scripts/discovery/analyze_sample.py`
 - `docs/jetstream-schema-notes.md`
 - `data/probe/jetstream_sample.jsonl`
 
@@ -170,7 +170,7 @@ các event không có collection/operation, giúp Bronze tách đúng event fami
 
 - `src/bluesky_pipeline/event_envelope.py`
 - `src/bluesky_pipeline/normalize_event.py`
-- `scripts/normalize_sample.py`
+- `scripts/discovery/normalize_sample.py`
 - `tests/test_event_envelope.py`
 - `docs/jetstream-schema-notes.md`
 
@@ -205,8 +205,8 @@ batch sample vào topic `bluesky.raw.events.v2`. Message key dùng
 
 - `docker-compose.yml`
 - `src/bluesky_pipeline/kafka_config.py`
-- `scripts/publish_sample_to_kafka.py`
-- `scripts/publish_sample_batch_to_kafka.py`
+- `scripts/ingestion/publish_sample_to_kafka.py`
+- `scripts/ingestion/publish_sample_batch_to_kafka.py`
 - `data/probe/jetstream_sample.jsonl`
 
 **Kiến thức cần ghi nhớ**
@@ -272,7 +272,7 @@ Spark session được cấu hình dùng chung.
 
 **Các file liên quan**
 
-- `scripts/spark_read_kafka_raw.py`
+- `scripts/ingestion/spark_read_kafka_raw.py`
 - `src/bluesky_pipeline/spark_session.py`
 - `src/bluesky_pipeline/bronze_schemas.py`
 - `src/bluesky_pipeline/kafka_config.py`
@@ -306,8 +306,8 @@ cần. Script đọc Bronze kiểm chứng được counts, schema và các even
 
 **Các file liên quan**
 
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/read_bronze_parquet.py`
+- `scripts/ingestion/spark_read_kafka_raw.py`
+- `scripts/discovery/read_bronze_parquet.py`
 - `src/bluesky_pipeline/bronze_tables.py`
 - `src/bluesky_pipeline/spark_session.py`
 - `docker-compose.yml`
@@ -347,10 +347,10 @@ từng bảng.
 **Các file liên quan**
 
 - `docs/silver-schema-v1.md`
-- `scripts/profile_bronze_commit_events.py`
+- `scripts/discovery/profile_bronze_commit_events.py`
 - `src/bluesky_pipeline/silver_transformations.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `scripts/check_iceberg_silver_v1.py`
+- `scripts/historical/build_iceberg_silver_v1.py`
+- `scripts/historical/check_iceberg_silver_v1.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -421,14 +421,14 @@ reconciliation và Grafana datasource/panels cho Gold serving v1.
 
 **Các file liên quan**
 
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `scripts/check_gold_reconciliation.py`
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `scripts/check_gold_serving_v1.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `scripts/gold/build_event_volume_from_iceberg.py`
+- `scripts/gold/build_post_engagement_summary_from_iceberg.py`
+- `scripts/gold/load_event_volume_to_clickhouse.py`
+- `scripts/gold/load_post_engagement_summary_to_clickhouse.py`
+- `scripts/gold/check_event_volume_reconciliation.py`
+- `scripts/gold/check_post_engagement_reconciliation.py`
+- `scripts/gold/check_serving_v1.py`
 - `docker-compose.yml`
 
 **Kiến thức cần ghi nhớ**
@@ -459,9 +459,9 @@ với expected metrics được tính lại từ Bronze. Các script Silver Parq
 
 **Các file liên quan**
 
-- `scripts/smoke_test_iceberg_minio.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `scripts/check_iceberg_silver_v1.py`
+- `scripts/discovery/smoke_test_iceberg_minio.py`
+- `scripts/historical/build_iceberg_silver_v1.py`
+- `scripts/historical/check_iceberg_silver_v1.py`
 - `src/bluesky_pipeline/silver_transformations.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/spark_session.py`
@@ -507,11 +507,11 @@ Silver Iceberg, refresh Gold serving và check Gold serving.
 
 **Các file liên quan**
 
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/refresh_gold_serving_from_iceberg.py`
-- `scripts/run_historical_lakehouse_path.py`
-- `scripts/check_gold_serving_v1.py`
+- `scripts/gold/build_event_volume_from_iceberg.py`
+- `scripts/gold/build_post_engagement_summary_from_iceberg.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/historical/run_lakehouse_path.py`
+- `scripts/gold/check_serving_v1.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
@@ -551,11 +551,11 @@ có mà không build hoặc refresh lại dữ liệu.
 
 **Các file liên quan**
 
-- `scripts/check_iceberg_silver_v1.py`
-- `scripts/check_gold_reconciliation.py`
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `scripts/check_gold_serving_v1.py`
-- `scripts/check_historical_lakehouse_path.py`
+- `scripts/historical/check_iceberg_silver_v1.py`
+- `scripts/gold/check_event_volume_reconciliation.py`
+- `scripts/gold/check_post_engagement_reconciliation.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/historical/check_lakehouse_path.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -601,8 +601,8 @@ tách biệt.
 
 - `docs/tong-quan-du-an.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/refresh_gold_serving_from_iceberg.py`
+- `scripts/realtime/stream_metrics_to_clickhouse.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -629,7 +629,7 @@ nhật nhanh hơn mà không chờ Silver/Gold batch refresh.
 
 **Kết quả sau khi hoàn thành**
 
-Project có entrypoint `scripts/stream_realtime_metrics_to_clickhouse.py` ghi các
+Project có entrypoint `scripts/realtime/stream_metrics_to_clickhouse.py` ghi các
 realtime marts:
 
 - `gold_event_volume_1m_stream`
@@ -645,9 +645,9 @@ có backlog.
 
 **Các file liên quan**
 
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/check_clickhouse_realtime_metrics.py`
+- `scripts/realtime/stream_metrics_to_clickhouse.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `scripts/realtime/check_clickhouse_metrics.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `src/bluesky_pipeline/kafka_config.py`
 
@@ -692,7 +692,7 @@ theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chư
 **Các file liên quan**
 
 - `docker-compose.yml`
-- `scripts/check_clickhouse_realtime_metrics.py`
+- `scripts/realtime/check_clickhouse_metrics.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
@@ -736,10 +736,10 @@ và orchestration/monitoring nếu milestone yêu cầu.
 - `docs/tong-quan-du-an.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 - `README.md`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/refresh_gold_serving_from_iceberg.py`
-- `scripts/check_clickhouse_realtime_metrics.py`
-- `scripts/check_gold_serving_v1.py`
+- `scripts/realtime/stream_metrics_to_clickhouse.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/realtime/check_clickhouse_metrics.py`
+- `scripts/gold/check_serving_v1.py`
 
 **Kiến thức cần ghi nhớ**
 

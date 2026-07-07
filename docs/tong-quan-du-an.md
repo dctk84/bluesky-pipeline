@@ -441,10 +441,12 @@ bluesky-pipeline/
 │       ├── normalize_event.py
 │       └── ...
 ├── scripts/
-│   ├── jetstream_probe.py
-│   ├── analyze_sample.py
-│   ├── normalize_sample.py
-│   └── ...
+│   ├── discovery/
+│   ├── ingestion/
+│   ├── historical/
+│   ├── gold/
+│   ├── realtime/
+│   └── platform/
 ├── tests/
 │   └── test_*.py
 ├── data/
@@ -457,7 +459,8 @@ bluesky-pipeline/
 Vai trò:
 
 - `src/bluesky_pipeline/`: code Python có thể dùng lại trong pipeline.
-- `scripts/`: script chạy tay phục vụ discovery, probe hoặc thao tác local.
+- `scripts/`: entrypoint và script chạy tay, được tách theo vai trò như
+  discovery, ingestion, historical, gold, realtime và platform.
 - `tests/`: test cho các module có logic đáng kiểm chứng.
 - `docs/`: tài liệu thiết kế, phạm vi dự án, ghi chú schema và quyết định kỹ
   thuật.
