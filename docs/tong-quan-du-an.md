@@ -119,6 +119,17 @@ Spark Structured Streaming được sử dụng để:
 Spark phải được chạy ở chế độ multi-worker Spark Standalone bằng Docker Compose,
 không chỉ chạy bằng `local[*]`.
 
+Trong historical/lakehouse path, Spark là compute engine chính cho cả hai đoạn xử
+lý dữ liệu:
+
+```text
+Bronze / raw lake -> Spark -> Silver Iceberg
+Silver Iceberg -> Spark -> Gold aggregate -> ClickHouse
+```
+
+ClickHouse không xử lý dữ liệu gốc thay Spark; ClickHouse nhận các bảng aggregate
+hoặc mart đã được Spark chuẩn bị để phục vụ truy vấn dashboard có độ trễ thấp.
+
 ### 4.4. Storage architecture
 
 MinIO được sử dụng làm S3-compatible object storage trong môi trường local.
