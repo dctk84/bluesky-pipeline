@@ -1,3558 +1,727 @@
 # Quy trình xây dựng pipeline
 
-Tài liệu này tổng hợp các bước chính đã thực sự hoàn thành trong project
+Tài liệu này tổng hợp các mốc chính đã thực sự hoàn thành trong project
 `bluesky-pipeline`.
 
 Mục tiêu của tài liệu là phục vụ học tập và ôn phỏng vấn Data Engineer, không phải
-nhật ký thao tác chi tiết. Nội dung chỉ ghi lại các mốc đã có file hoặc cấu hình
-tồn tại trong repository.
+nhật ký thao tác chi tiết. Vì vậy tài liệu chỉ giữ lại các bước có ý nghĩa về
+kiến trúc, data contract, tầng xử lý hoặc khả năng kiểm chứng của pipeline. Các
+bước thử nghiệm nhỏ, refactor cơ học hoặc prototype đã được thay thế được gom vào
+bài học của bước lớn tương ứng.
 
 ## Mục lục
 
-1. [Xác định mục tiêu, phạm vi và nguyên tắc làm việc](#bước-1-xác-định-mục-tiêu-phạm-vi-và-nguyên-tắc-làm-việc)
-2. [Thiết lập cấu trúc repository và môi trường Python cơ bản](#bước-2-thiết-lập-cấu-trúc-repository-và-môi-trường-python-cơ-bản)
+1. [Xác định mục tiêu và kiến trúc tổng thể](#bước-1-xác-định-mục-tiêu-và-kiến-trúc-tổng-thể)
+2. [Thiết lập nền tảng repository và cấu hình dùng chung](#bước-2-thiết-lập-nền-tảng-repository-và-cấu-hình-dùng-chung)
 3. [Khám phá dữ liệu Bluesky Jetstream](#bước-3-khám-phá-dữ-liệu-bluesky-jetstream)
-4. [Tạo event envelope cho raw event](#bước-4-tạo-event-envelope-cho-raw-event)
-5. [Profile schema từ sample Jetstream](#bước-5-profile-schema-từ-sample-jetstream)
-6. [Normalize event sample thành record phẳng](#bước-6-normalize-event-sample-thành-record-phẳng)
-7. [Dựng Kafka local và raw event topic](#bước-7-dựng-kafka-local-và-raw-event-topic)
-8. [Publish sample event vào Kafka](#bước-8-publish-sample-event-vào-kafka)
-9. [Xây dựng live ingestion gateway ban đầu](#bước-9-xây-dựng-live-ingestion-gateway-ban-đầu)
-10. [Bổ sung cấu hình, logging và reliability cơ bản cho gateway](#bước-10-bổ-sung-cấu-hình-logging-và-reliability-cơ-bản-cho-gateway)
-11. [Duy trì tài liệu kỹ thuật theo tiến độ pipeline](#bước-11-duy-trì-tài-liệu-kỹ-thuật-theo-tiến-độ-pipeline)
-12. [Kiểm chứng Spark đọc raw event từ Kafka](#bước-12-kiểm-chứng-spark-đọc-raw-event-từ-kafka)
-13. [Parse event envelope JSON trong Spark](#bước-13-parse-event-envelope-json-trong-spark)
-14. [Ghi Bronze Parquet local bằng Spark streaming](#bước-14-ghi-bronze-parquet-local-bằng-spark-streaming)
-15. [Đọc lại Bronze Parquet để kiểm chứng dữ liệu usable](#bước-15-đọc-lại-bronze-parquet-để-kiểm-chứng-dữ-liệu-usable)
-16. [Partition Bronze local theo collection](#bước-16-partition-bronze-local-theo-collection)
-17. [Giữ raw JSON gốc trong Bronze local](#bước-17-giữ-raw-json-gốc-trong-bronze-local)
-18. [Partition Bronze local theo thời gian ingest](#bước-18-partition-bronze-local-theo-thời-gian-ingest)
-19. [Dựng MinIO local làm S3-compatible object storage](#bước-19-dựng-minio-local-làm-s3-compatible-object-storage)
-20. [Tạo bucket Bronze trên MinIO](#bước-20-tạo-bucket-bronze-trên-minio)
-21. [Ghi Bronze Parquet lên MinIO bằng Spark S3A](#bước-21-ghi-bronze-parquet-lên-minio-bằng-spark-s3a)
-22. [Đọc lại Bronze Parquet từ MinIO](#bước-22-đọc-lại-bronze-parquet-từ-minio)
-23. [Tách cấu hình Spark S3A dùng chung](#bước-23-tách-cấu-hình-spark-s3a-dùng-chung)
-24. [Bổ sung event kind vào event envelope](#bước-24-bổ-sung-event-kind-vào-event-envelope)
-25. [Ghi Bronze raw events có event kind lên MinIO](#bước-25-ghi-bronze-raw-events-có-event-kind-lên-minio)
-26. [Tách Bronze output theo event family](#bước-26-tách-bronze-output-theo-event-family)
-27. [Đọc và kiểm chứng ba Bronze event family](#bước-27-đọc-và-kiểm-chứng-ba-bronze-event-family)
-28. [Profile Bronze commit events để chuẩn bị Silver](#bước-28-profile-bronze-commit-events-để-chuẩn-bị-silver)
-29. [Thiết kế Silver schema v1](#bước-29-thiết-kế-silver-schema-v1)
-30. [Build Silver posts từ Bronze commit events](#bước-30-build-silver-posts-từ-bronze-commit-events)
-31. [Đọc và kiểm chứng Silver posts](#bước-31-đọc-và-kiểm-chứng-silver-posts)
-32. [Build Silver engagements từ Bronze commit events](#bước-32-build-silver-engagements-từ-bronze-commit-events)
-33. [Đọc và kiểm chứng Silver engagements](#bước-33-đọc-và-kiểm-chứng-silver-engagements)
-34. [Build Silver follows từ Bronze commit events](#bước-34-build-silver-follows-từ-bronze-commit-events)
-35. [Đọc và kiểm chứng Silver follows](#bước-35-đọc-và-kiểm-chứng-silver-follows)
-36. [Build Silver deleted records từ Bronze commit events](#bước-36-build-silver-deleted-records-từ-bronze-commit-events)
-37. [Đọc và kiểm chứng Silver deleted records](#bước-37-đọc-và-kiểm-chứng-silver-deleted-records)
-38. [Kiểm tra tổng quan Silver v1](#bước-38-kiểm-tra-tổng-quan-silver-v1)
-39. [Build Gold event volume prototype từ Silver v1](#bước-39-build-gold-event-volume-prototype-từ-silver-v1)
-40. [Đọc và kiểm chứng Gold event volume prototype](#bước-40-đọc-và-kiểm-chứng-gold-event-volume-prototype)
-41. [Dựng ClickHouse local cho Gold serving layer](#bước-41-dựng-clickhouse-local-cho-gold-serving-layer)
-42. [Tạo Gold serving table trong ClickHouse](#bước-42-tạo-gold-serving-table-trong-clickhouse)
-43. [Load Gold event volume vào ClickHouse](#bước-43-load-gold-event-volume-vào-clickhouse)
-44. [Tự động load Gold event volume vào ClickHouse](#bước-44-tự-động-load-gold-event-volume-vào-clickhouse)
-45. [Kiểm tra Gold serving table trong ClickHouse](#bước-45-kiểm-tra-gold-serving-table-trong-clickhouse)
-46. [Tách ClickHouse HTTP helper dùng chung](#bước-46-tách-clickhouse-http-helper-dùng-chung)
-47. [Reconcile Silver v1 với ClickHouse Gold](#bước-47-reconcile-silver-v1-với-clickhouse-gold)
-48. [Tách Bronze schema dùng chung cho Spark jobs](#bước-48-tách-bronze-schema-dùng-chung-cho-spark-jobs)
-49. [Refactor Silver posts dùng Bronze schema chung](#bước-49-refactor-silver-posts-dùng-bronze-schema-chung)
-50. [Refactor Silver engagements dùng Bronze schema chung](#bước-50-refactor-silver-engagements-dùng-bronze-schema-chung)
-51. [Refactor Silver follows dùng Bronze schema chung](#bước-51-refactor-silver-follows-dùng-bronze-schema-chung)
-52. [Refactor Silver deleted records dùng Bronze schema chung](#bước-52-refactor-silver-deleted-records-dùng-bronze-schema-chung)
-53. [Kiểm chứng downstream sau refactor Bronze schema chung](#bước-53-kiểm-chứng-downstream-sau-refactor-bronze-schema-chung)
-54. [Chuẩn hóa ClickHouse Gold DDL thành script trong repo](#bước-54-chuẩn-hóa-clickhouse-gold-ddl-thành-script-trong-repo)
-55. [Refactor metadata Gold table dùng chung](#bước-55-refactor-metadata-gold-table-dùng-chung)
-56. [Tạo Gold post engagement summary trên MinIO](#bước-56-tạo-gold-post-engagement-summary-trên-minio)
-57. [Load Gold post engagement summary vào ClickHouse](#bước-57-load-gold-post-engagement-summary-vào-clickhouse)
-58. [Reconcile Gold post engagement summary](#bước-58-reconcile-gold-post-engagement-summary)
-59. [Cập nhật README cho luồng Gold serving v1](#bước-59-cập-nhật-readme-cho-luồng-gold-serving-v1)
-60. [Tạo checkpoint tổng hợp Gold serving v1](#bước-60-tạo-checkpoint-tổng-hợp-gold-serving-v1)
-61. [Hiển thị lỗi chi tiết từ ClickHouse HTTP API](#bước-61-hiển-thị-lỗi-chi-tiết-từ-clickhouse-http-api)
-62. [Chuẩn hóa Silver table paths thành module dùng chung](#bước-62-chuẩn-hóa-silver-table-paths-thành-module-dùng-chung)
-63. [Chuẩn hóa Bronze paths thành module dùng chung](#bước-63-chuẩn-hóa-bronze-paths-thành-module-dùng-chung)
-64. [Chuẩn hóa Bronze checkpoint paths](#bước-64-chuẩn-hóa-bronze-checkpoint-paths)
-65. [Chuẩn hóa Kafka config dùng chung](#bước-65-chuẩn-hóa-kafka-config-dùng-chung)
-66. [Cập nhật README với cấu hình local có thể override](#bước-66-cập-nhật-readme-với-cấu-hình-local-có-thể-override)
-67. [Kiểm tra compile và checkpoint sau refactor metadata](#bước-67-kiểm-tra-compile-và-checkpoint-sau-refactor-metadata)
-68. [Thêm Grafana và kết nối ClickHouse datasource](#bước-68-thêm-grafana-và-kết-nối-clickhouse-datasource)
-69. [Tạo Grafana panels cho Gold post engagement](#bước-69-tạo-grafana-panels-cho-gold-post-engagement)
-70. [Smoke test Iceberg table trên MinIO](#bước-70-smoke-test-iceberg-table-trên-minio)
-71. [Build thử Silver posts bằng Iceberg](#bước-71-build-thử-silver-posts-bằng-iceberg)
-72. [Reconcile Silver posts Parquet với Iceberg](#bước-72-reconcile-silver-posts-parquet-với-iceberg)
-73. [Chuẩn hóa metadata Iceberg Silver table](#bước-73-chuẩn-hóa-metadata-iceberg-silver-table)
-74. [Build và reconcile Silver engagements bằng Iceberg](#bước-74-build-và-reconcile-silver-engagements-bằng-iceberg)
-75. [Build và reconcile toàn bộ Silver v1 bằng Iceberg](#bước-75-build-và-reconcile-toàn-bộ-silver-v1-bằng-iceberg)
-76. [Build Gold event volume từ Silver Iceberg](#bước-76-build-gold-event-volume-từ-silver-iceberg)
-77. [Build Gold post engagement từ Silver Iceberg](#bước-77-build-gold-post-engagement-từ-silver-iceberg)
-78. [Load ClickHouse Gold từ Silver Iceberg source](#bước-78-load-clickhouse-gold-từ-silver-iceberg-source)
-79. [Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức](#bước-79-chuẩn-hóa-luồng-gold-từ-silver-iceberg-thành-luồng-chính-thức)
-80. [Tạo entrypoint refresh Gold serving từ Silver Iceberg](#bước-80-tạo-entrypoint-refresh-gold-serving-từ-silver-iceberg)
-81. [Dọn các script prototype đã được thay thế](#bước-81-dọn-các-script-prototype-đã-được-thay-thế)
-82. [Tạo ClickHouse table cho streaming event volume theo phút](#bước-82-tạo-clickhouse-table-cho-streaming-event-volume-theo-phút)
-83. [Stream event volume theo phút từ Kafka vào ClickHouse](#bước-83-stream-event-volume-theo-phút-từ-kafka-vào-clickhouse)
-84. [Kiểm tra streaming event volume bằng CLI và Grafana](#bước-84-kiểm-tra-streaming-event-volume-bằng-cli-và-grafana)
-85. [Bổ sung Spark batch id cho streaming event volume](#bước-85-bổ-sung-spark-batch-id-cho-streaming-event-volume)
-86. [Chốt kiến trúc fast path và historical path cho dashboard](#bước-86-chốt-kiến-trúc-fast-path-và-historical-path-cho-dashboard)
-87. [Tối ưu fast path bằng stateless micro-batch aggregation](#bước-87-tối-ưu-fast-path-bằng-stateless-micro-batch-aggregation)
-88. [Kiểm chứng realtime dashboard và freshness panel](#bước-88-kiểm-chứng-realtime-dashboard-và-freshness-panel)
-89. [Build bộ realtime metrics đầy đủ cho fast path](#bước-89-build-bộ-realtime-metrics-đầy-đủ-cho-fast-path)
-90. [Bổ sung batch health cho realtime fast path](#bước-90-bổ-sung-batch-health-cho-realtime-fast-path)
-91. [Kiểm chứng Grafana operational health panels](#bước-91-kiểm-chứng-grafana-operational-health-panels)
+4. [Thiết kế event envelope và normalization contract](#bước-4-thiết-kế-event-envelope-và-normalization-contract)
+5. [Dựng Kafka local và kiểm chứng publish/consume](#bước-5-dựng-kafka-local-và-kiểm-chứng-publishconsume)
+6. [Xây dựng live ingestion gateway](#bước-6-xây-dựng-live-ingestion-gateway)
+7. [Kết nối Spark Structured Streaming với Kafka](#bước-7-kết-nối-spark-structured-streaming-với-kafka)
+8. [Xây dựng Bronze raw data lake trên MinIO](#bước-8-xây-dựng-bronze-raw-data-lake-trên-minio)
+9. [Thiết kế và build Silver v1](#bước-9-thiết-kế-và-build-silver-v1)
+10. [Chuẩn hóa metadata và schema dùng chung](#bước-10-chuẩn-hóa-metadata-và-schema-dùng-chung)
+11. [Xây dựng ClickHouse Gold serving layer](#bước-11-xây-dựng-clickhouse-gold-serving-layer)
+12. [Migrate Silver sang Apache Iceberg](#bước-12-migrate-silver-sang-apache-iceberg)
+13. [Chuẩn hóa Gold refresh từ Silver Iceberg](#bước-13-chuẩn-hóa-gold-refresh-từ-silver-iceberg)
+14. [Bổ sung reconciliation và checkpoint chất lượng](#bước-14-bổ-sung-reconciliation-và-checkpoint-chất-lượng)
+15. [Chốt hai serving paths: realtime và historical](#bước-15-chốt-hai-serving-paths-realtime-và-historical)
+16. [Xây dựng realtime fast path vào ClickHouse](#bước-16-xây-dựng-realtime-fast-path-vào-clickhouse)
+17. [Hoàn thiện Grafana realtime dashboard và operational health](#bước-17-hoàn-thiện-grafana-realtime-dashboard-và-operational-health)
+18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
 
-## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
+## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
 **Mục tiêu**
 
-Xác định project sẽ xây dựng một streaming data pipeline từ Bluesky Jetstream,
-dùng Kafka làm event backbone và chuẩn bị cho các tầng xử lý tiếp theo như Spark,
-Data Lake, Iceberg và ClickHouse.
+Xác định project là một streaming analytics lakehouse từ Bluesky Jetstream, dùng
+Kafka làm event backbone, Spark làm compute layer, MinIO/Iceberg làm lakehouse và
+ClickHouse/Grafana làm serving/dashboard layer.
 
 **Vì sao cần thực hiện**
 
-Một data pipeline dễ bị phình scope nếu không xác định rõ mục tiêu, công nghệ và
-ranh giới từng milestone. Bước này giúp phân biệt phần đã triển khai trong local
-với kiến trúc dài hạn, tránh mô tả môi trường học tập như production-scale.
+Một project Data Engineering dễ bị phình scope nếu bắt đầu bằng công nghệ thay vì
+bài toán. Bước này giúp xác định rõ project cần chứng minh các năng lực mà project
+batch Data Warehouse trước đó chưa có: streaming ingestion, event log, distributed
+processing, lakehouse, analytical serving và observability.
 
 **Kết quả sau khi hoàn thành**
 
-Repository có tài liệu chính thức mô tả mục tiêu dự án, phạm vi dữ liệu, kiến trúc
-định hướng, tech stack, nguyên tắc thiết kế và cách làm việc với Codex.
+Repository có tài liệu nền tảng mô tả mục tiêu, phạm vi MVP, tech stack, milestone
+và nguyên tắc thiết kế. Kiến trúc tổng thể cũng phân biệt rõ local learning
+environment với hệ thống production-scale.
 
 **Các file liên quan**
 
 - `AGENTS.md`
-- `docs/tong-quan-du-an.md`
 - `docs/huong-dan-lam-viec-voi-codex.md`
+- `docs/tong-quan-du-an.md`
 - `README.md`
 
 **Kiến thức cần ghi nhớ**
 
-- Data pipeline nên bắt đầu từ bài toán và phạm vi dữ liệu, không bắt đầu bằng
-  việc dựng thật nhiều công nghệ.
-- Kiến trúc tổng thể là định hướng dài hạn; mỗi milestone chỉ triển khai phần cần
-  thiết để tạo ra một luồng dữ liệu có thể kiểm chứng.
-- Trong phỏng vấn, cần nói rõ đâu là thành phần đã chạy được, đâu là thiết kế tiếp
-  theo, và đâu là giới hạn của môi trường local.
+- Kiến trúc tổng thể là định hướng dài hạn, không phải yêu cầu triển khai đồng
+  thời tất cả thành phần.
+- Mỗi milestone nên tạo ra một luồng dữ liệu chạy được và kiểm chứng được.
+- Khi trình bày project, cần nói rõ đâu là thành phần đã chạy local, đâu là giới
+  hạn hiện tại và đâu là hướng mở rộng.
 
-## Bước 2: Thiết lập cấu trúc repository và môi trường Python cơ bản
+## Bước 2: Thiết lập nền tảng repository và cấu hình dùng chung
 
 **Mục tiêu**
 
-Tạo nền tảng project Python có cấu trúc rõ ràng, tách code pipeline, script chạy
-tay, test, docs và dữ liệu local.
+Thiết lập cấu trúc Python project, tách code pipeline dùng lại, scripts thao tác
+local, tests, docs và dữ liệu local.
 
 **Vì sao cần thực hiện**
 
-Một data project thực tế sẽ tăng nhanh số lượng file. Nếu không tách sớm vai trò
-của từng nhóm file, logic pipeline, script thử nghiệm, dữ liệu local và tài liệu
-sẽ bị lẫn vào nhau.
+Data project sẽ tăng nhanh số lượng file. Nếu không tách vai trò từ sớm, logic
+pipeline, script thử nghiệm, dữ liệu local và tài liệu sẽ bị lẫn vào nhau, gây khó
+debug và khó trình bày.
 
 **Kết quả sau khi hoàn thành**
 
-Repository có cấu trúc hiện tại:
-
-- `src/bluesky_pipeline/` cho logic pipeline dùng lại.
-- `scripts/` cho script discovery và thao tác local.
-- `tests/` cho test.
-- `docs/` cho tài liệu kỹ thuật.
-- `data/` cho dữ liệu local không commit.
-
-Project cũng có dependency Python cơ bản cho WebSocket, Kafka client và pytest.
+Project có package chính dưới `src/bluesky_pipeline/`, scripts thao tác local dưới
+`scripts/`, tài liệu dưới `docs/`, tests dưới `tests/` và dữ liệu local không
+commit dưới `data/`. Các metadata dùng chung như Kafka topic, Bronze/Silver/Gold
+paths, ClickHouse table names và Spark/S3 config được tách dần vào module dùng
+chung khi chúng trở thành contract giữa nhiều bước.
 
 **Các file liên quan**
 
 - `.gitignore`
 - `requirements.txt`
-- `src/bluesky_pipeline/event_envelope.py`
-- `src/bluesky_pipeline/normalize_event.py`
-- `src/bluesky_pipeline/ingestion_gateway.py`
-- `scripts/jetstream_probe.py`
-- `scripts/analyze_sample.py`
-- `scripts/normalize_sample.py`
-- `tests/test_event_envelope.py`
-- `docs/tong-quan-du-an.md`
+- `src/bluesky_pipeline/kafka_config.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `src/bluesky_pipeline/bronze_tables.py`
+- `src/bluesky_pipeline/silver_tables.py`
+- `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
 
-- `src/` nên chứa logic có thể dùng lại, không chứa dữ liệu sample.
-- `scripts/` phù hợp cho thao tác discovery, kiểm chứng local hoặc utility tạm.
-- `data/` là dữ liệu sinh ra khi chạy, không nên commit.
-- Cấu trúc repo nên tiến hóa theo độ phức tạp, không cần tạo trước mọi thư mục cho
-  các milestone tương lai.
+- `src/` nên chứa logic hoặc contract có thể dùng lại; `scripts/` phù hợp cho
+  entrypoint local, probe và checkpoint.
+- Không hard-code lặp lại các contract như topic, table, path hoặc checkpoint ở
+  nhiều nơi.
+- Refactor metadata nhỏ không phải milestone riêng, nhưng là điều kiện để project
+  không bị rối khi số lượng job tăng lên.
 
 ## Bước 3: Khám phá dữ liệu Bluesky Jetstream
 
 **Mục tiêu**
 
-Kết nối tới Bluesky Jetstream, thu thập sample event thật và xác định các
-collection nằm trong scope hiện tại.
+Kết nối tới Bluesky Jetstream, thu sample event thật và quan sát các collection
+trong scope hiện tại.
 
 **Vì sao cần thực hiện**
 
-Trước khi thiết kế Kafka topic, Bronze layout hoặc Spark schema, cần quan sát dữ
-liệu thật để hiểu event shape, operation, field thiếu và khác biệt giữa các
-collection.
+Nguồn streaming thường có schema bán cấu trúc, field thiếu và shape khác nhau theo
+loại event. Trước khi thiết kế Kafka message, Bronze layout hoặc Silver schema,
+cần quan sát dữ liệu thật thay vì giả định schema lý tưởng.
 
 **Kết quả sau khi hoàn thành**
 
-Project có script probe đọc các collection:
+Project có sample/probe để quan sát các collection chính:
 
 - `app.bsky.feed.post`
 - `app.bsky.feed.like`
 - `app.bsky.feed.repost`
 - `app.bsky.graph.follow`
 
-Script ghi sample event envelope vào JSONL local và tài liệu schema đã ghi lại các
-quan sát chính về collection, operation, record type và `subject` shape.
+Tài liệu schema notes ghi lại các quan sát quan trọng như delete event thiếu
+`record`, `record.subject` có shape khác nhau giữa like/repost/follow, và post có
+thể là reply nếu có `record.reply`.
 
 **Các file liên quan**
 
 - `scripts/jetstream_probe.py`
-- `data/probe/jetstream_sample.jsonl`
+- `scripts/analyze_sample.py`
 - `docs/jetstream-schema-notes.md`
-- `requirements.txt`
+- `data/probe/jetstream_sample.jsonl`
 
 **Kiến thức cần ghi nhớ**
 
-- Với nguồn streaming bên ngoài, nên có bước discovery trước khi chốt schema.
-- Không nên giả định mọi event đều có cùng shape; cùng một field như `subject` có
-  thể là object, string hoặc null tùy collection.
-- Delete event có thể thiếu `record`, nên mọi logic parse/normalize phải xử lý
-  missing field.
+- Schema profiling là bước thiết kế, không chỉ là thao tác debug.
+- Delete event cần xử lý missing field cẩn thận.
+- Cùng tên field như `subject` có thể mang nghĩa và kiểu dữ liệu khác nhau tùy
+  collection.
 
-## Bước 4: Tạo event envelope cho raw event
+## Bước 4: Thiết kế event envelope và normalization contract
 
 **Mục tiêu**
 
-Bọc raw Jetstream event bằng một envelope nội bộ có metadata ổn định để dùng cho
-ingestion và Kafka raw topic.
+Bọc raw Jetstream event vào event envelope nội bộ và chuẩn bị logic normalize
+sample thành record phẳng để downstream dễ xử lý.
 
 **Vì sao cần thực hiện**
 
 Raw event từ nguồn bên ngoài không nên được publish trực tiếp mà không có metadata
-nội bộ. Envelope giúp pipeline biết event đến từ đâu, nhận lúc nào, thuộc
-collection nào, operation gì và vẫn giữ payload gốc để audit/replay.
+nội bộ. Event envelope giúp pipeline giữ thông tin như source, thời điểm nhận,
+event kind, collection, operation, repository DID và raw payload. Normalization
+giúp kiểm chứng cách trích các field quan trọng trước khi đưa vào Spark/Silver.
 
 **Kết quả sau khi hoàn thành**
 
-Project có module tạo event envelope với các field như `schema_version`, `source`,
-`received_at`, `collection`, `operation`, `repository_did`, `jetstream_time_us` và
-`payload`. Test hiện tại kiểm tra các case create, delete, missing commit và event
-rỗng.
+Project có event envelope contract và test cho các case create/delete/missing
+field. Sau này envelope được bổ sung `event_kind` để phân biệt commit events với
+các event không có collection/operation, giúp Bronze tách đúng event family.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/event_envelope.py`
-- `tests/test_event_envelope.py`
-- `scripts/jetstream_probe.py`
-- `docs/jetstream-schema-notes.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Event envelope là contract dữ liệu nội bộ giữa ingestion và các tầng downstream.
-- Giữ raw payload trong envelope giúp replay và reprocess khi logic normalize thay
-  đổi.
-- Không nên tuyên bố exactly-once chỉ vì có Kafka hoặc envelope; cần chứng minh
-  toàn bộ end-to-end mới được nói đến guarantee đó.
-
-## Bước 5: Profile schema từ sample Jetstream
-
-**Mục tiêu**
-
-Đọc sample JSONL đã thu thập để thống kê collection, operation, record type,
-`subject` shape và danh sách field xuất hiện theo từng collection.
-
-**Vì sao cần thực hiện**
-
-Schema profiling giúp chuyển từ quan sát thủ công sang thống kê có hệ thống. Đây
-là nền tảng để thiết kế normalization và Silver schema sau này.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script phân tích sample và tài liệu ghi lại các kết quả quan sát như
-like/post/repost/follow counts, delete event thiếu record và sự khác nhau của
-`record.subject`.
-
-**Các file liên quan**
-
-- `scripts/analyze_sample.py`
-- `data/probe/jetstream_sample.jsonl`
-- `docs/jetstream-schema-notes.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Schema của event streaming thường là semi-structured và thay đổi theo loại
-  event.
-- Việc profile dữ liệu thật giúp tránh thiết kế schema quá sớm hoặc quá lý tưởng.
-- Với data pipeline, tài liệu schema observation là một phần quan trọng của thiết
-  kế, không chỉ là ghi chú phụ.
-
-## Bước 6: Normalize event sample thành record phẳng
-
-**Mục tiêu**
-
-Biến event envelope lồng nhau thành một record phẳng hơn để dễ quan sát và chuẩn
-bị cho Spark normalization/Silver schema sau này.
-
-**Vì sao cần thực hiện**
-
-Kafka raw topic nên giữ dữ liệu gần nguồn, nhưng các tầng xử lý tiếp theo cần
-record dễ đọc, dễ validate và dễ query hơn. Normalize sample giúp kiểm chứng cách
-trích field quan trọng trước khi đưa vào Spark.
-
-**Kết quả sau khi hoàn thành**
-
-Project có module `normalize_event()` tạo record phẳng với các field như
-`repository_did`, `collection`, `operation`, `rkey`, `cid`, `record_type`,
-`record_created_at`, `text`, `subject_uri`, `subject_cid` và `raw_event`.
-
-Script local tạo file normalized JSONL để kiểm tra kết quả.
-
-**Các file liên quan**
-
 - `src/bluesky_pipeline/normalize_event.py`
 - `scripts/normalize_sample.py`
-- `data/probe/jetstream_normalized_sample.jsonl`
+- `tests/test_event_envelope.py`
 - `docs/jetstream-schema-notes.md`
 
 **Kiến thức cần ghi nhớ**
 
-- Normalize không đồng nghĩa với bỏ raw data; raw event vẫn cần giữ để audit và
-  replay.
-- Một schema phẳng ban đầu có thể hữu ích cho discovery, nhưng chưa phải Silver
-  schema cuối cùng.
-- Field `subject_uri` hiện có thể là AT URI hoặc DID tùy collection; khi thiết kế
-  Silver có thể cần tách nghĩa rõ hơn.
+- Event envelope là contract giữa ingestion và downstream, nên thay đổi envelope
+  phải có test hoặc checkpoint.
+- Giữ raw payload giúp audit, replay và reprocess khi normalization thay đổi.
+- Envelope không tạo ra exactly-once guarantee; guarantee phải xét toàn bộ
+  end-to-end path.
 
-## Bước 7: Dựng Kafka local và raw event topic
+## Bước 5: Dựng Kafka local và kiểm chứng publish/consume
 
 **Mục tiêu**
 
-Dựng Kafka local bằng Docker Compose và chuẩn bị raw topic để làm buffer giữa
-Jetstream gateway và các consumer downstream.
+Dựng Kafka local, tạo raw event topic và kiểm chứng producer/consumer bằng sample
+event.
 
 **Vì sao cần thực hiện**
 
-Kafka giúp tách ingestion khỏi compute engine, tạo event log ngắn hạn, hỗ trợ
-partitioning, replay theo offset và consumer group. Đây là một năng lực cốt lõi
-của streaming data platform.
+Kafka là buffer/event log giữa ingestion gateway và compute layer. Trước khi nối
+live Jetstream, cần kiểm chứng topic, bootstrap server, message key/value và khả
+năng replay/consume bằng sample nhỏ.
 
 **Kết quả sau khi hoàn thành**
 
-Repository có Docker Compose chạy Kafka local bằng image `apache/kafka:3.7.0`.
-Topic raw event được tài liệu hóa là `bluesky.raw.events.v1` với 3 partition và
-replication factor 1 trong local.
+Docker Compose chạy Kafka local. Project có script publish một event và publish
+batch sample vào topic `bluesky.raw.events.v2`. Message key dùng
+`repository_did` để giữ ordering tương đối theo repository.
 
 **Các file liên quan**
 
 - `docker-compose.yml`
-- `requirements.txt`
-- `docs/jetstream-schema-notes.md`
+- `src/bluesky_pipeline/kafka_config.py`
+- `scripts/publish_sample_to_kafka.py`
+- `scripts/publish_sample_batch_to_kafka.py`
+- `data/probe/jetstream_sample.jsonl`
 
 **Kiến thức cần ghi nhớ**
 
 - Kafka trong local không phải production Kafka cluster.
-- Replication factor 1 phù hợp local nhưng không có khả năng chịu lỗi broker.
-- Phân biệt listener dùng trong Docker network và listener dùng từ host là điểm
-  quan trọng khi debug Kafka local.
-- Kafka là buffer/event backbone, không phải kho lưu trữ lịch sử dài hạn của
-  project.
+- Replication factor 1 phù hợp local nhưng không chịu lỗi broker.
+- Producer có buffer nội bộ, nên cần flush khi muốn đảm bảo message đã được gửi
+  trước khi process kết thúc.
 
-## Bước 8: Publish sample event vào Kafka
+## Bước 6: Xây dựng live ingestion gateway
 
 **Mục tiêu**
 
-Kiểm chứng Python producer có thể publish event envelope từ sample JSONL vào Kafka
-raw topic và consumer có thể đọc lại.
+Kết nối live tới Bluesky Jetstream, bọc event bằng envelope và publish vào Kafka
+raw topic.
 
 **Vì sao cần thực hiện**
 
-Trước khi nối live Jetstream vào Kafka, cần kiểm chứng từng phần nhỏ: producer
-client, Kafka connectivity, topic, message key và message value.
+Đây là lát cắt streaming ingestion đầu tiên của project:
+
+`Bluesky Jetstream -> Python ingestion gateway -> Kafka`.
+
+Gateway cần giữ trách nhiệm mỏng: kết nối nguồn, retry/reconnect, thêm metadata
+ingestion và publish event. Business transform sâu nên để downstream xử lý.
 
 **Kết quả sau khi hoàn thành**
 
-Project có script publish một event và script publish batch nhỏ từ
-`data/probe/jetstream_sample.jsonl` vào topic `bluesky.raw.events.v1`. Tài liệu đã
-ghi lại luồng kiểm chứng:
-
-`sample JSONL -> Python Producer -> Kafka topic -> Kafka Console Consumer`.
-
-**Các file liên quan**
-
-- `scripts/publish_sample_to_kafka.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `data/probe/jetstream_sample.jsonl`
-- `docs/jetstream-schema-notes.md`
-- `requirements.txt`
-
-**Kiến thức cần ghi nhớ**
-
-- Nên kiểm chứng Kafka bằng sample nhỏ trước khi nối live stream.
-- Message key hiện tại là `repository_did` để giữ ordering tương đối trong phạm vi
-  repository.
-- Producer có buffer nội bộ, nên cần `flush()` khi muốn đảm bảo message đã được
-  gửi trước khi process kết thúc.
-
-## Bước 9: Xây dựng live ingestion gateway ban đầu
-
-**Mục tiêu**
-
-Kết nối live tới Bluesky Jetstream, bọc event bằng envelope và publish trực tiếp
-vào Kafka raw topic.
-
-**Vì sao cần thực hiện**
-
-Đây là lát cắt streaming ingestion đầu tiên của project. Nó thay thế việc publish
-từ sample local bằng luồng dữ liệu live:
-
-`Jetstream WebSocket -> Python ingestion gateway -> Kafka raw topic`.
-
-**Kết quả sau khi hoàn thành**
-
-Project có ingestion gateway đọc 4 collection trong scope, tạo event envelope và
-publish message vào `bluesky.raw.events.v1`. Gateway dùng `repository_did` làm
-Kafka key và event envelope JSON làm message value.
+Ingestion gateway đọc các collection trong scope, publish envelope JSON vào Kafka,
+có cấu hình qua environment variables, structured logging, bounded retry và
+graceful shutdown cơ bản.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/ingestion_gateway.py`
 - `src/bluesky_pipeline/event_envelope.py`
-- `docker-compose.yml`
-- `docs/jetstream-schema-notes.md`
-- `requirements.txt`
-
-**Kiến thức cần ghi nhớ**
-
-- Gateway chỉ nên vận chuyển và thêm metadata ingestion, không nên làm business
-  aggregation hoặc normalize sâu theo từng collection.
-- Giữ gateway mỏng giúp tách trách nhiệm giữa ingestion, Kafka và Spark.
-- Live streaming ingestion cần được kiểm chứng bằng hành vi thật: event đi vào
-  Kafka và consumer đọc được.
-
-## Bước 10: Bổ sung cấu hình, logging và reliability cơ bản cho gateway
-
-**Mục tiêu**
-
-Làm gateway tiến gần hơn tới process chạy dài hạn bằng cách đưa cấu hình ra
-environment variable, thêm structured logging, retry hữu hạn và graceful shutdown
-cơ bản.
-
-**Vì sao cần thực hiện**
-
-Streaming gateway không nên phụ thuộc vào giá trị hard-code trong code. Nó cũng
-cần log rõ ràng, retry khi WebSocket lỗi tạm thời và flush producer trước khi
-thoát để giảm rủi ro mất message đang nằm trong buffer.
-
-**Kết quả sau khi hoàn thành**
-
-Gateway hiện có các biến cấu hình như `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC`,
-`MAX_EVENTS`, `MAX_RETRIES` và `RETRY_BACKOFF_SECONDS`. Gateway có logging cơ bản,
-bounded retry khi WebSocket lỗi và graceful shutdown cơ bản. Khi process bị
-interrupt hoặc task bị cancel, gateway đi qua nhánh kết thúc để flush Kafka
-producer trước khi thoát.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/ingestion_gateway.py`
-- `docs/jetstream-schema-notes.md`
-- `docs/tong-quan-du-an.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Config theo môi trường nên đi qua environment variable; secret và credential
-  không được hard-code.
-- Retry cần có giới hạn để tránh loop vô hạn khi nguồn lỗi liên tục.
-- Graceful shutdown trong producer-based app thường cần flush buffer trước khi
-  thoát.
-- `KeyboardInterrupt` và `asyncio.CancelledError` là tín hiệu dừng chủ động, nên
-  cần được xử lý khác với lỗi kết nối hoặc lỗi Kafka thật.
-- Structured logging giúp quan sát process tốt hơn `print`, nhưng chưa thay thế
-  metrics/monitoring đầy đủ.
-
-## Bước 11: Duy trì tài liệu kỹ thuật theo tiến độ pipeline
-
-**Mục tiêu**
-
-Duy trì tài liệu vừa phục vụ thiết kế, vừa phục vụ học tập và phỏng vấn.
-
-**Vì sao cần thực hiện**
-
-Data Engineering project không chỉ là code. Người làm cần giải thích được lý do
-chọn kiến trúc, giới hạn hiện tại, dữ liệu đi qua từng tầng thế nào và bài học nào
-có thể áp dụng cho dự án khác.
-
-**Kết quả sau khi hoàn thành**
-
-Repository có các tài liệu mô tả tổng quan dự án, quy tắc làm việc, ghi chú schema
-Jetstream và quy trình xây dựng pipeline. Từ thời điểm tài liệu này được tạo, mỗi
-bước chính đã được xác nhận hoàn thành cần được cập nhật vào tài liệu trước khi
-chuyển sang bước tiếp theo.
-
-**Các file liên quan**
-
-- `AGENTS.md`
-- `docs/huong-dan-lam-viec-voi-codex.md`
-- `docs/tong-quan-du-an.md`
-- `docs/jetstream-schema-notes.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Tài liệu quy trình không phải nhật ký command; nó là bản tóm tắt các quyết định
-  và mốc kiến trúc đã hoàn thành.
-- Khi phỏng vấn, cách trình bày tốt là đi theo luồng dữ liệu và lý do kỹ thuật:
-  nguồn dữ liệu, ingestion, Kafka, xử lý, lưu trữ, phục vụ truy vấn và vận hành.
-- Chỉ ghi những gì đã hoàn thành và kiểm chứng; không biến kế hoạch tương lai
-  thành thành quả hiện tại.
-
-## Bước 12: Kiểm chứng Spark đọc raw event từ Kafka
-
-**Mục tiêu**
-
-Tạo lát cắt Spark Structured Streaming đầu tiên đọc trực tiếp từ Kafka raw topic
-và in dữ liệu ra console để kiểm chứng kết nối.
-
-**Vì sao cần thực hiện**
-
-Sau khi ingestion gateway đã publish event vào Kafka, cần chứng minh tầng compute
-có thể consume cùng topic đó. Đây là cầu nối đầu tiên giữa message broker và Spark,
-trước khi parse schema, validate dữ liệu hoặc ghi Bronze.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script Spark local đọc topic `bluesky.raw.events.v1`, cast Kafka
-`key` và `value` từ binary sang string, rồi in các cột raw ra console. Script đã
-chạy được sau khi cài Java, thêm `pyspark==3.5.1` và cấu hình Kafka connector
-`spark-sql-kafka-0-10_2.12:3.5.1`.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `requirements.txt`
+- `src/bluesky_pipeline/kafka_config.py`
 - `docker-compose.yml`
 
 **Kiến thức cần ghi nhớ**
 
-- PySpark cần Java để khởi động Spark engine; lỗi `JAVA_GATEWAY_EXITED` thường là
-  dấu hiệu cần kiểm tra Java trước.
-- Spark core không tự có Kafka data source; muốn dùng `.format("kafka")` cần thêm
-  package `spark-sql-kafka-0-10`.
-- Kafka message trong Spark có `key` và `value` dạng binary, nên thường cần cast
-  sang string trước khi parse JSON.
-- Checkpoint là bắt buộc với streaming query nghiêm túc, kể cả khi bước hiện tại
-  mới in ra console để kiểm chứng.
+- Gateway chạy dài hạn phải xử lý reconnect và flush producer khi dừng.
+- WebSocket public có thể bị đóng không sạch; retry là hành vi bình thường nếu có
+  giới hạn.
+- Không hard-code credential hoặc endpoint nhạy cảm trong code.
 
-## Bước 13: Parse event envelope JSON trong Spark
+## Bước 7: Kết nối Spark Structured Streaming với Kafka
 
 **Mục tiêu**
 
-Chuyển `message_value` từ JSON string thành các cột có schema trong Spark
-Structured Streaming.
+Kiểm chứng Spark đọc được raw events từ Kafka, parse event envelope JSON và tạo
+DataFrame có các field cần thiết.
 
 **Vì sao cần thực hiện**
 
-Kafka chỉ lưu message dạng byte. Để Spark có thể validate, transform, partition
-và ghi xuống Bronze/Silver ở các bước sau, raw JSON cần được parse thành cột có
-kiểu dữ liệu rõ ràng thay vì chỉ là một chuỗi dài.
+Sau khi Kafka đã nhận event, tầng compute phải chứng minh đọc được cùng topic đó.
+Đây là cầu nối giữa message broker và các tầng Bronze/Silver/Gold.
 
 **Kết quả sau khi hoàn thành**
 
-Script Spark đọc topic `bluesky.raw.events.v1`, parse envelope JSON bằng
-`from_json` và in ra console các cột như `schema_version`, `source`,
-`received_at`, `collection`, `operation`, `repository_did` và
-`jetstream_time_us`.
+Project có Spark entrypoint đọc Kafka raw topic, cast Kafka value thành string,
+parse event envelope bằng schema Spark và in/kiểm tra dữ liệu. Kafka connector và
+Spark session được cấu hình dùng chung.
 
 **Các file liên quan**
 
-- `scripts/spark_read_kafka_raw.py`
-- `requirements.txt`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- `from_json` cần schema tường minh để Spark biết cách chuyển JSON string thành
-  struct column.
-- Schema ở bước này mới là envelope schema tối thiểu, chưa phải schema đầy đủ cho
-  từng collection bên trong `payload`.
-- Parse thành cột giúp các bước sau dễ filter, partition, validate và ghi dữ liệu
-  ra storage hơn nhiều so với xử lý một chuỗi JSON thô.
-- Console sink chỉ dùng để kiểm chứng; sink thật của Bronze sẽ là Parquet.
-
-## Bước 14: Ghi Bronze Parquet local bằng Spark streaming
-
-**Mục tiêu**
-
-Đổi Spark sink từ console sang Parquet để tạo tầng Bronze local đầu tiên.
-
-**Vì sao cần thực hiện**
-
-Console sink chỉ chứng minh Spark đọc và parse được dữ liệu. Pipeline cần một
-storage sink để lưu lịch sử raw/envelope event phục vụ audit, replay và các bước
-xử lý tiếp theo. Ở giai đoạn này, ghi local Parquet giúp kiểm chứng logic Spark
-file sink trước khi đưa MinIO vào.
-
-**Kết quả sau khi hoàn thành**
-
-Spark Structured Streaming đọc topic `bluesky.raw.events.v1`, parse envelope JSON
-và ghi dữ liệu ra `data/bronze/bluesky_raw_events` dưới dạng Parquet. Khi publish
-sample batch vào Kafka, thư mục Bronze local sinh ra các file `.parquet` và metadata
-của Spark file sink.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `data/bronze/bluesky_raw_events`
-- `data/checkpoints/spark_read_kafka_raw`
-
-**Kiến thức cần ghi nhớ**
-
-- Bronze là tầng dữ liệu gần nguồn, ưu tiên append, audit và replay.
-- Với Spark Structured Streaming file sink, output path và checkpoint path là một
-  cặp trạng thái phải nhất quán với nhau.
-- Không nên xóa riêng `_spark_metadata` hoặc riêng checkpoint trong lúc test. Nếu
-  muốn chạy lại sạch ở local discovery, cần xóa cả output path và checkpoint path
-  cùng lúc.
-- Local Parquet chỉ là bước kiểm chứng sink; thiết kế chính thức của project sẽ
-  đưa Bronze lên MinIO theo kiến trúc S3-compatible object storage.
-
-## Bước 15: Đọc lại Bronze Parquet để kiểm chứng dữ liệu usable
-
-**Mục tiêu**
-
-Đọc ngược dữ liệu Bronze Parquet đã ghi để xác nhận output của Spark streaming có
-thể được sử dụng bởi job Spark khác.
-
-**Vì sao cần thực hiện**
-
-Một pipeline không chỉ cần ghi file thành công, mà còn cần chứng minh dữ liệu ghi
-ra có schema đọc được và có record thực tế. Bước này kiểm tra chất lượng tối thiểu
-của sink trước khi tiếp tục tối ưu layout hoặc chuyển sang MinIO.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script đọc `data/bronze/bluesky_raw_events`, in schema, hiển thị một số
-record mẫu và in `bronze_count`. Kết quả chạy cho thấy dữ liệu Bronze local đọc lại
-được bằng Spark.
-
-**Các file liên quan**
-
-- `scripts/read_bronze_parquet.py`
-- `data/bronze/bluesky_raw_events`
-- `scripts/spark_read_kafka_raw.py`
-
-**Kiến thức cần ghi nhớ**
-
-- Ghi được file chưa đủ; cần đọc lại để kiểm chứng schema và dữ liệu.
-- Parquet là định dạng columnar phù hợp cho tầng Bronze vì Spark đọc/ghi hiệu quả
-  và giữ được schema.
-- Script đọc kiểm chứng nên tách khỏi streaming writer để tránh trộn trách nhiệm
-  giữa ghi dữ liệu và quan sát dữ liệu.
-
-## Bước 16: Partition Bronze local theo collection
-
-**Mục tiêu**
-
-Tổ chức dữ liệu Bronze Parquet local theo `collection` để dễ quan sát và đọc theo
-từng loại event.
-
-**Vì sao cần thực hiện**
-
-Bluesky Jetstream có nhiều collection như post, like, repost và follow. Nếu tất cả
-event nằm chung một layout phẳng, các job sau sẽ khó đọc chọn lọc theo loại event.
-Partition theo `collection` là bước đơn giản nhưng có giá trị rõ ràng cho truy vấn,
-debug và các transform downstream.
-
-**Kết quả sau khi hoàn thành**
-
-Bronze writer ghi dữ liệu xuống `data/bronze/bluesky_raw_events` với layout thư
-mục dạng `collection=...`. Khi publish sample batch, output sinh ra các thư mục
-như `collection=app.bsky.feed.like` và `collection=app.bsky.feed.post`.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `data/bronze/bluesky_raw_events`
-- `data/checkpoints/spark_read_kafka_raw`
-
-**Kiến thức cần ghi nhớ**
-
-- Partition column nên là cột thường được dùng để filter hoặc phân tách luồng xử
-  lý downstream.
-- Partition quá ít thì chưa tận dụng được pruning; partition quá nhiều dễ tạo
-  nhiều file/thư mục nhỏ. Ở bước này `collection` là lựa chọn hợp lý vì số lượng
-  collection trong scope còn nhỏ.
-- Khi thay đổi partition layout của file sink streaming, cần reset cả output path
-  và checkpoint path trong môi trường local test.
-
-## Bước 17: Giữ raw JSON gốc trong Bronze local
-
-**Mục tiêu**
-
-Bổ sung cột `message_value` vào Bronze Parquet local để mỗi record đã parse vẫn
-giữ lại raw Kafka message gốc.
-
-**Vì sao cần thực hiện**
-
-Bronze là tầng gần nguồn, phục vụ audit, replay và reprocess. Nếu Bronze chỉ lưu
-các cột metadata đã parse mà bỏ raw JSON, pipeline sẽ khó xử lý lại dữ liệu khi
-schema downstream thay đổi hoặc logic parse ban đầu có lỗi.
-
-**Kết quả sau khi hoàn thành**
-
-Spark writer giữ lại `message_value` cùng với Kafka metadata và các field envelope
-đã parse. Sau khi reset output/checkpoint local, chạy lại writer và publish sample
-batch, script đọc Bronze hiển thị raw JSON trong output và in được
-`bronze_count: 9405`.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/read_bronze_parquet.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `data/bronze/bluesky_raw_events`
-- `data/checkpoints/spark_read_kafka_raw`
-
-**Kiến thức cần ghi nhớ**
-
-- Bronze nên giữ dữ liệu gần nguồn nhất có thể để phục vụ audit và replay.
-- Parse JSON thành cột giúp query và partition dễ hơn, nhưng không nên thay thế
-  hoàn toàn raw payload ở tầng Bronze.
-- Khi thay đổi schema output của Spark streaming file sink trong local test, cần
-  reset đồng thời output path và checkpoint path để tránh lẫn schema cũ và mới.
-
-## Bước 18: Partition Bronze local theo thời gian ingest
-
-**Mục tiêu**
-
-Bổ sung các cột `kafka_timestamp`, `ingest_date` và `ingest_hour`, sau đó tổ chức
-Bronze Parquet local theo layout thời gian ingest kết hợp với `collection`.
-
-**Vì sao cần thực hiện**
-
-Bronze cần layout dễ đọc theo khoảng thời gian vì hầu hết thao tác audit, replay,
-backfill và kiểm tra dữ liệu đều bắt đầu từ một khoảng ngày/giờ cụ thể. Partition
-theo thời gian ingest là lựa chọn ổn định hơn so với các key có cardinality cao
-như DID, post URI hoặc hashtag.
-
-**Kết quả sau khi hoàn thành**
-
-Spark writer ghi dữ liệu xuống `data/bronze/bluesky_raw_events` với layout dạng
-`ingest_date=.../ingest_hour=.../collection=...`. Script đọc Bronze hiển thị dữ
-liệu đã ghi, bao gồm raw JSON trong `message_value`, các field envelope đã parse
-và các cột thời gian ingest.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/read_bronze_parquet.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `data/bronze/bluesky_raw_events`
-- `data/checkpoints/spark_read_kafka_raw`
-
-**Kiến thức cần ghi nhớ**
-
-- Partition theo ngày/giờ giúp các job sau đọc chọn lọc dữ liệu theo khoảng thời
-  gian, giảm số file cần scan.
-- `kafka_timestamp` là thời điểm Kafka ghi nhận message, khác với `received_at`
-  của gateway và `jetstream_time_us` từ nguồn.
-- Không nên partition Bronze theo key có quá nhiều giá trị như DID hoặc URI vì dễ
-  tạo nhiều thư mục/file nhỏ và làm layout khó quản lý.
-
-## Bước 19: Dựng MinIO local làm S3-compatible object storage
-
-**Mục tiêu**
-
-Bổ sung MinIO vào Docker Compose để project có object storage local, chuẩn bị cho
-Bronze Data Lake theo kiến trúc S3-compatible.
-
-**Vì sao cần thực hiện**
-
-Bronze local filesystem chỉ phù hợp để kiểm chứng Spark file sink ban đầu. Data
-Lake thực tế cần tách compute khỏi storage, lưu dữ liệu ở object storage và dùng
-đường dẫn S3-compatible để Spark, các job backfill và các tầng downstream có thể
-đọc lại dữ liệu ổn định hơn.
-
-**Kết quả sau khi hoàn thành**
-
-Docker Compose có service `minio` chạy bằng image version cụ thể, expose API port
-`9000` và console port `9001`. Container `bluesky-minio` chạy thành công cùng với
-Kafka trong môi trường local.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- MinIO là object storage local tương thích S3 API, không phải S3 thật trên cloud.
-- Credential `minioadmin/minioadmin` chỉ dùng cho môi trường học local, không được
-  xem là cấu hình production.
-- Dựng MinIO mới là chuẩn bị hạ tầng storage; cần tạo bucket và cấu hình Spark S3A
-  trước khi thật sự ghi Bronze lên MinIO.
-
-## Bước 20: Tạo bucket Bronze trên MinIO
-
-**Mục tiêu**
-
-Tạo bucket `bluesky-lake` trong MinIO để làm namespace lưu dữ liệu Data Lake local.
-
-**Vì sao cần thực hiện**
-
-Spark không thể ghi dữ liệu vào object storage nếu bucket chưa tồn tại. Bucket là
-đơn vị chứa object ở tầng S3-compatible, tương tự thư mục gốc của lake trong môi
-trường local.
-
-**Kết quả sau khi hoàn thành**
-
-MinIO có bucket `bluesky-lake`, sẵn sàng nhận dữ liệu Bronze ở đường dẫn như
-`s3a://bluesky-lake/bronze/bluesky_raw_events`.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Bucket phải tồn tại trước khi Spark ghi object vào MinIO.
-- `s3a://` là scheme Hadoop/Spark dùng để truy cập storage tương thích S3.
-- Trong local, bucket MinIO thay thế vai trò của S3 bucket trên cloud nhưng không
-  phải môi trường production.
-
-## Bước 21: Ghi Bronze Parquet lên MinIO bằng Spark S3A
-
-**Mục tiêu**
-
-Chuyển Spark Bronze writer từ local filesystem sang MinIO bằng đường dẫn `s3a://`.
-
-**Vì sao cần thực hiện**
-
-Milestone Bronze Data Lake cần chứng minh Spark có thể ghi dữ liệu ra object
-storage thay vì chỉ ghi vào ổ đĩa local. Đây là bước chuyển từ kiểm chứng file sink
-cục bộ sang kiến trúc S3-compatible đúng định hướng của project.
-
-**Kết quả sau khi hoàn thành**
-
-Spark Structured Streaming ghi Bronze Parquet và checkpoint vào bucket
-`bluesky-lake` trên MinIO. MinIO Console hiển thị object dưới các prefix như
-`bronze/bluesky_raw_events/` và `checkpoints/spark_read_kafka_raw/`.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Spark dùng Hadoop S3A connector để đọc/ghi object storage tương thích S3.
-- Với MinIO local, cần bật path-style access và trỏ endpoint về
-  `http://localhost:9000`.
-- Checkpoint cũng cần nằm trên storage ổn định tương ứng với output sink để Spark
-  có thể quản lý tiến độ streaming query.
-
-## Bước 22: Đọc lại Bronze Parquet từ MinIO
-
-**Mục tiêu**
-
-Đọc ngược dữ liệu Bronze Parquet từ MinIO để xác nhận object đã ghi có thể được
-Spark job khác sử dụng.
-
-**Vì sao cần thực hiện**
-
-Ghi object thành công chưa đủ để coi Bronze usable. Pipeline cần chứng minh dữ
-liệu trên MinIO có schema đọc được, có record thực tế và có thể dùng làm input cho
-các bước downstream như validation, normalization hoặc replay.
-
-**Kết quả sau khi hoàn thành**
-
-Script đọc Bronze trỏ tới `s3a://bluesky-lake/bronze/bluesky_raw_events`, cấu hình
-S3A connector cho MinIO local và in được schema cùng sample rows từ dữ liệu đã ghi.
-
-**Các file liên quan**
-
-- `scripts/read_bronze_parquet.py`
-- `scripts/spark_read_kafka_raw.py`
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Mỗi job Spark đọc/ghi MinIO cần có cấu hình S3A endpoint, credential, path-style
-  access và implementation class.
-- Kiểm chứng đọc lại là bước bắt buộc để tránh nhầm giữa “ghi file/object thành
-  công” và “dữ liệu downstream thật sự dùng được”.
-- Bronze trên MinIO là source để các job Spark tiếp theo đọc lại, không phụ thuộc
-  vào dữ liệu local trong `data/`.
-
-## Bước 23: Tách cấu hình Spark S3A dùng chung
-
-**Mục tiêu**
-
-Tách logic tạo `SparkSession` có cấu hình S3A sang module dùng chung để writer và
-reader không lặp lại cấu hình MinIO.
-
-**Vì sao cần thực hiện**
-
-Khi nhiều Spark script cùng đọc/ghi MinIO, việc lặp endpoint, credential, package
-và S3A options ở từng file dễ gây sai lệch cấu hình. Module dùng chung giúp các
-script Spark dùng cùng một cách kết nối object storage.
-
-**Kết quả sau khi hoàn thành**
-
-Project có module `src/bluesky_pipeline/spark_session.py` tạo SparkSession local
-đã cấu hình S3A. `scripts/spark_read_kafka_raw.py` và
-`scripts/read_bronze_parquet.py` dùng lại helper này. Script đọc Bronze từ MinIO
-đã chạy thành công khi đặt `PYTHONPATH=src`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/spark_session.py`
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/read_bronze_parquet.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Cấu hình kết nối storage là phần dùng chung, nên tách ra khi nhiều job Spark
-  cùng cần sử dụng.
-- `PYTHONPATH=src` giúp Python tìm package local khi chạy script trực tiếp từ repo
-  mà chưa cài project dưới dạng package.
-- Tách helper chỉ nên làm sau khi có duplication thật và đã kiểm chứng hành vi
-  trước đó chạy đúng.
-
-## Bước 24: Bổ sung event kind vào event envelope
-
-**Mục tiêu**
-
-Bổ sung `event_kind` vào event envelope để phân biệt commit event với các
-non-commit event như `identity` và `account`.
-
-**Vì sao cần thực hiện**
-
-Trước đó pipeline chủ yếu dựa vào `collection` và `operation`, nhưng hai field này
-chỉ tồn tại với commit event. Khi đưa `identity/account` vào scope phân tích,
-pipeline cần một field cấp envelope để phân loại event family trước khi ghi Bronze
-hoặc normalize downstream.
-
-**Kết quả sau khi hoàn thành**
-
-`build_event_envelope()` lấy `event_kind` từ `raw_event["kind"]`. Test envelope đã
-kiểm chứng create commit event có `event_kind = "commit"`, identity event không có
-commit vẫn giữ `event_kind = "identity"`, và event rỗng có `event_kind = None`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/event_envelope.py`
-- `tests/test_event_envelope.py`
-- `docs/tong-quan-du-an.md`
-- `docs/jetstream-schema-notes.md`
-
-**Kiến thức cần ghi nhớ**
-
-- `collection` là metadata của commit event, không phải mọi Jetstream event đều có
-  field này.
-- `event_kind` là field phân loại cấp event, phù hợp để route dữ liệu sang các
-  Bronze path khác nhau.
-- Khi mở rộng contract envelope, cần cập nhật test để khóa hành vi cho cả event
-  commit và non-commit.
-
-## Bước 25: Ghi Bronze raw events có event kind lên MinIO
-
-**Mục tiêu**
-
-Cập nhật Spark Bronze writer để parse và ghi `event_kind` xuống MinIO, giúp phân
-biệt `commit`, `identity` và `account` ở tầng Bronze.
-
-**Vì sao cần thực hiện**
-
-Khi scope mở rộng sang account lifecycle events, `collection` không còn đủ để phân
-loại mọi event. `event_kind` cho phép Bronze giữ cả commit và non-commit event mà
-vẫn đọc được theo từng event family.
-
-**Kết quả sau khi hoàn thành**
-
-Spark writer đọc topic schema mới, parse được `event_kind` và ghi dữ liệu lên
-MinIO với layout có các partition `event_kind=commit`, `event_kind=identity` và
-`event_kind=account`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/event_envelope.py`
-- `src/bluesky_pipeline/ingestion_gateway.py`
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi schema của message envelope thay đổi, dữ liệu cũ trong Kafka topic có thể
-  không có field mới. Với local learning, tạo topic version mới là cách rõ ràng để
-  tránh lẫn schema cũ và mới.
-- `event_kind` là partition có cardinality thấp, phù hợp để đọc chọn lọc theo
-  nhóm event.
-- Đây vẫn là bước chuyển tiếp; layout sạch hơn sẽ tách commit, identity và account
-  sang các Bronze path riêng.
-
-## Bước 26: Tách Bronze output theo event family
-
-**Mục tiêu**
-
-Tách Spark Bronze writer thành ba output path riêng cho commit, identity và account
-events.
-
-**Vì sao cần thực hiện**
-
-Commit events có `collection`, `operation` và record payload, trong khi
-identity/account events không có collection. Nếu ghi chung một path, Bronze dễ có
-partition `collection=NULL` hoặc layout khó hiểu. Tách theo event family giúp mỗi
-nhóm có schema và partition phù hợp hơn.
-
-**Kết quả sau khi hoàn thành**
-
-MinIO bucket `bluesky-lake` có ba prefix Bronze:
-
-```text
-bronze/bluesky_commit_events/
-bronze/bluesky_identity_events/
-bronze/bluesky_account_events/
-```
-
-Commit events được partition theo `ingest_date`, `ingest_hour` và `collection`.
-Identity/account events được partition theo `ingest_date` và `ingest_hour`.
-
-**Các file liên quan**
-
-- `scripts/spark_read_kafka_raw.py`
-- `src/bluesky_pipeline/event_envelope.py`
-- `src/bluesky_pipeline/ingestion_gateway.py`
-- `docs/tong-quan-du-an.md`
-- `docs/jetstream-schema-notes.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Không phải mọi event từ Jetstream đều là commit event có collection.
-- Bronze layout nên phản ánh bản chất dữ liệu thay vì ép các event khác schema vào
-  cùng một partition tree.
-- Tách path theo event family giúp downstream đọc đúng nguồn dữ liệu cho từng bài
-  toán phân tích.
-
-## Bước 27: Đọc và kiểm chứng ba Bronze event family
-
-**Mục tiêu**
-
-Cập nhật script đọc Bronze để đọc riêng commit, identity và account events từ ba
-path khác nhau trên MinIO.
-
-**Vì sao cần thực hiện**
-
-Sau khi tách writer thành nhiều output path, cần chứng minh từng path đều đọc lại
-được bằng Spark. Đây là bước kiểm chứng rằng layout Bronze mới không chỉ sinh
-object trên MinIO mà còn usable cho downstream jobs.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/read_bronze_parquet.py` đọc được ba path:
-
-```text
-s3a://bluesky-lake/bronze/bluesky_commit_events
-s3a://bluesky-lake/bronze/bluesky_identity_events
-s3a://bluesky-lake/bronze/bluesky_account_events
-```
-
-Script in schema, sample rows và count riêng cho từng event family. Với commit
-events, script cũng in count theo `collection`.
-
-**Các file liên quan**
-
-- `scripts/read_bronze_parquet.py`
 - `scripts/spark_read_kafka_raw.py`
 - `src/bluesky_pipeline/spark_session.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `src/bluesky_pipeline/kafka_config.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Mỗi output path mới cần có bước đọc ngược để kiểm chứng dữ liệu có thể dùng
-  được.
-- Reader kiểm chứng nên phản ánh đúng layout storage hiện tại thay vì đọc một path
-  cũ đã bị thay thế.
-- Count theo event family và collection là kiểm tra tối thiểu trước khi xây các
-  bước Silver/analytics phía sau.
+- Spark Structured Streaming đọc Kafka theo micro-batch, không phải từng event
+  cập nhật UI ngay lập tức.
+- Schema Spark nên được tách ra module dùng chung khi nhiều job cùng parse cùng
+  contract.
+- Cần phân biệt Kafka timestamp, source event time và ingestion time.
 
-## Bước 28: Profile Bronze commit events để chuẩn bị Silver
+## Bước 8: Xây dựng Bronze raw data lake trên MinIO
 
 **Mục tiêu**
 
-Profile dữ liệu `bronze/bluesky_commit_events` để hiểu phân bố collection,
-operation và các field nested quan trọng trước khi thiết kế Silver schema.
+Ghi raw event envelope từ Kafka vào Bronze Parquet trên MinIO, giữ raw JSON gốc và
+partition dữ liệu để dễ quan sát/replay.
 
 **Vì sao cần thực hiện**
 
-Silver là contract dữ liệu sạch hơn Bronze, nên không nên chốt schema chỉ bằng
-cảm giác hoặc nhìn vài JSON sample thủ công. Profile bằng Spark giúp xác nhận
-field nào xuất hiện theo từng collection và operation, đặc biệt là khác biệt giữa
-create/update/delete.
+Bronze là tầng lưu dữ liệu gần nguồn, phục vụ audit, replay và reprocess khi logic
+Silver thay đổi. Giai đoạn đầu dùng Parquet partitioned để đơn giản, dễ inspect
+trên MinIO và phù hợp append-only.
 
 **Kết quả sau khi hoàn thành**
 
-Project có script profile Bronze commit events. Kết quả hiện tại cho thấy dữ liệu
-có đủ like, post, repost và follow; create event thường có `cid`, `record_type` và
-`record_created_at`, còn delete event chủ yếu chỉ có `rkey`. Post có `text`, một
-phần post là reply có `reply_root_uri`; like/repost có `subject_uri`; follow cần
-parse riêng vì `record.subject` là string.
+Bronze được ghi lên MinIO theo event family, bao gồm commit events và các nhóm
+khác. Layout có partition theo `event_kind`, `collection` và thời gian ingest khi
+cần. Script đọc Bronze kiểm chứng được counts, schema và các event family.
 
 **Các file liên quan**
 
+- `scripts/spark_read_kafka_raw.py`
+- `scripts/read_bronze_parquet.py`
+- `src/bluesky_pipeline/bronze_tables.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `docker-compose.yml`
+
+**Kiến thức cần ghi nhớ**
+
+- Bronze nên giữ raw payload để không mất khả năng audit/replay.
+- Không phải mọi event đều có `collection`; `event_kind` giúp tránh gom nhầm
+  non-commit events vào partition `null`.
+- Bronze chưa cần Iceberg ngay nếu mục tiêu chính là append và quan sát raw data.
+
+## Bước 9: Thiết kế và build Silver v1
+
+**Mục tiêu**
+
+Chuẩn hóa Bronze commit events thành các Silver datasets có schema rõ ràng:
+posts, engagements, follows và deleted records.
+
+**Vì sao cần thực hiện**
+
+Bronze giữ dữ liệu gần nguồn nên chưa tối ưu cho phân tích. Silver tách dữ liệu
+theo domain và chuẩn hóa field để downstream có thể build Gold aggregate ổn định.
+
+**Kết quả sau khi hoàn thành**
+
+Silver v1 có các datasets:
+
+- `silver_posts`
+- `silver_engagements`
+- `silver_follows`
+- `silver_deleted_records`
+
+Các script build/read/check kiểm chứng count, schema, reply/non-reply,
+subject URI và delete records. `docs/silver-schema-v1.md` ghi lại schema và ý
+nghĩa từng bảng.
+
+**Các file liên quan**
+
+- `docs/silver-schema-v1.md`
 - `scripts/profile_bronze_commit_events.py`
-- `scripts/spark_read_kafka_raw.py`
-- `src/bluesky_pipeline/spark_session.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Bronze profile là bước nối giữa raw storage và Silver design.
-- Delete event không nên bị ép vào cùng bảng create/update nếu payload không đủ
-  field; nên có bảng deleted records riêng.
-- Cùng field `record.subject` có shape khác nhau giữa collection, nên Silver cần
-  xử lý theo từng nhóm event.
-
-## Bước 29: Thiết kế Silver schema v1
-
-**Mục tiêu**
-
-Ghi lại thiết kế Silver schema ban đầu cho commit events trước khi viết Spark job
-tạo Silver.
-
-**Vì sao cần thực hiện**
-
-Silver schema là contract quan trọng giữa Bronze raw data và các bước analytics
-phía sau. Việc ghi docs trước giúp xác định rõ bảng nào xử lý post, engagement,
-follow và delete, đồng thời tránh đưa quá nhiều yêu cầu như deduplication,
-watermark hoặc Iceberg vào bước đầu.
-
-**Kết quả sau khi hoàn thành**
-
-Repository có `docs/silver-schema-v1.md`, mô tả nguồn dữ liệu Bronze, các quan sát
-từ profile, bốn bảng Silver dự kiến và những phần chưa thuộc scope Silver v1.
-
-**Các file liên quan**
-
-- `docs/silver-schema-v1.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-- `scripts/profile_bronze_commit_events.py`
-
-**Kiến thức cần ghi nhớ**
-
-- Silver v1 nên bắt đầu bằng schema đơn giản và chạy được, chưa cần xử lý toàn bộ
-  yêu cầu lakehouse nâng cao.
-- Tách bảng theo bản chất event giúp downstream dễ query hơn: posts,
-  engagements, follows và deleted records.
-- Những phần như deduplication, quarantine, pseudonymization và Iceberg nên được
-  bổ sung sau khi có job Silver đầu tiên được kiểm chứng.
-
-## Bước 30: Build Silver posts từ Bronze commit events
-
-**Mục tiêu**
-
-Tạo Spark batch job đầu tiên để chuẩn hóa post create/update events từ Bronze
-commit events thành bảng `silver_posts`.
-
-**Vì sao cần thực hiện**
-
-Bronze giữ raw JSON để audit và replay, nhưng downstream analytics cần bảng dễ
-query hơn. `silver_posts` là lát cắt Silver đầu tiên, giúp kiểm chứng luồng
-Bronze -> Silver trên MinIO trước khi triển khai thêm engagement, follow và delete
-records.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/build_silver_posts.py` đọc
-`s3a://bluesky-lake/bronze/bluesky_commit_events`, parse envelope JSON, lọc
-`app.bsky.feed.post` với operation `create/update`, tạo các cột Silver v1 như
-`post_uri`, `author_did`, `text_length`, `is_reply`, `reply_root_uri` và ghi ra
-`s3a://bluesky-lake/silver/silver_posts`. Kết quả chạy hiện tại có
-`silver_posts_count: 119`.
-
-**Các file liên quan**
-
-- `scripts/build_silver_posts.py`
-- `docs/silver-schema-v1.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Silver không thay thế Bronze; Silver là dữ liệu đã chuẩn hóa để query và làm
-  nguồn cho analytics.
-- Batch build ở bước này dùng `overwrite` để dễ chạy lại trong local learning,
-  chưa phải chiến lược incremental/idempotent hoàn chỉnh.
-- Chỉ xử lý post create/update trước giúp tạo một vertical slice nhỏ, thay vì cố
-  gắng build toàn bộ Silver schema trong một lần.
-
-## Bước 31: Đọc và kiểm chứng Silver posts
-
-**Mục tiêu**
-
-Đọc lại `silver_posts` từ MinIO để xác nhận bảng Silver đầu tiên có schema và dữ
-liệu usable.
-
-**Vì sao cần thực hiện**
-
-Ghi Silver thành công chưa đủ; cần đọc lại bằng một Spark job khác để kiểm chứng
-dữ liệu downstream có thể sử dụng. Các count theo `operation` và `is_reply` giúp
-xác nhận transform cơ bản từ Bronze sang Silver hoạt động đúng.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/read_silver_posts.py` đọc
-`s3a://bluesky-lake/silver/silver_posts`, in schema, count và một số thống kê cơ
-bản. Kết quả hiện tại:
-
-```text
-silver_posts_count: 119
-create: 118
-update: 1
-is_reply=false: 67
-is_reply=true: 52
-```
-
-**Các file liên quan**
-
-- `scripts/read_silver_posts.py`
-- `scripts/build_silver_posts.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Mọi bảng Silver mới cần có bước đọc ngược để kiểm chứng.
-- Count theo field dẫn xuất như `is_reply` giúp kiểm tra transform logic, không
-  chỉ kiểm tra file tồn tại.
-- Sau khi có một bảng Silver usable, có thể tiếp tục mở rộng sang engagements,
-  follows và deleted records theo cùng cách làm.
-
-## Bước 32: Build Silver engagements từ Bronze commit events
-
-**Mục tiêu**
-
-Tạo bảng `silver_engagements` từ like/repost create events trong Bronze commit
-events.
-
-**Vì sao cần thực hiện**
-
-Like và repost là nhóm engagement activity quan trọng cho các use case như
-engagement volume, engagement velocity và rapid growth. Chuẩn hóa chúng vào một
-bảng Silver chung giúp downstream query theo `engagement_type` thay vì phải đọc
-raw JSON của từng collection.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/build_silver_engagements.py` đọc Bronze commit events,
-lọc `app.bsky.feed.like` và `app.bsky.feed.repost` với operation `create`, tạo các
-cột Silver như `engagement_uri`, `actor_did`, `engagement_type`, `subject_uri` và
-`subject_cid`, rồi ghi ra `s3a://bluesky-lake/silver/silver_engagements`. Kết quả
-chạy hiện tại có `silver_engagements_count: 981`.
-
-**Các file liên quan**
-
-- `scripts/build_silver_engagements.py`
-- `docs/silver-schema-v1.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Like và repost có schema gần nhau vì cùng dùng `record.subject` dạng object gồm
-  `uri` và `cid`.
-- `engagement_type` giúp gom hai collection vào một bảng Silver nhưng vẫn giữ khả
-  năng phân tích riêng like/repost.
-- Delete like/repost chưa đưa vào `silver_engagements`; chúng sẽ đi vào bảng
-  `silver_deleted_records`.
-
-## Bước 33: Đọc và kiểm chứng Silver engagements
-
-**Mục tiêu**
-
-Đọc lại `silver_engagements` từ MinIO để xác nhận bảng engagement đã chuẩn hóa có
-thể dùng cho downstream analytics.
-
-**Vì sao cần thực hiện**
-
-Sau khi ghi Silver engagements, cần kiểm tra không chỉ count tổng mà cả phân bố
-`engagement_type` và tính đầy đủ của `subject_uri`, vì đây là target post phục vụ
-các bài toán engagement analytics.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/read_silver_engagements.py` đọc
-`s3a://bluesky-lake/silver/silver_engagements` và in schema, count cùng thống kê
-cơ bản. Kết quả hiện tại:
-
-```text
-silver_engagements_count: 981
-like: 837
-repost: 144
-has_subject_uri=true: 981
-```
-
-**Các file liên quan**
-
-- `scripts/read_silver_engagements.py`
-- `scripts/build_silver_engagements.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Với engagement events, `subject_uri` là field quan trọng vì nó trỏ tới post được
-  like hoặc repost.
-- Count theo `engagement_type` giúp kiểm tra mapping collection sang business
-  type có đúng không.
-- Kiểm chứng field completeness trước khi làm Gold giúp tránh xây analytics trên
-  dữ liệu thiếu target.
-
-## Bước 34: Build Silver follows từ Bronze commit events
-
-**Mục tiêu**
-
-Tạo bảng `silver_follows` từ follow create events trong Bronze commit events.
-
-**Vì sao cần thực hiện**
-
-Follow events đại diện cho network activity. Việc chuẩn hóa follow create thành
-Silver giúp project có dữ liệu phục vụ các phân tích như follow volume, network
-activity trend và active repositories theo follow activity.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/build_silver_follows.py` đọc Bronze commit events, lọc
-`app.bsky.graph.follow` với operation `create`, parse `record.subject` dạng string
-thành `target_actor_did`, rồi ghi ra `s3a://bluesky-lake/silver/silver_follows`.
-Kết quả hiện tại có `silver_follows_count: 67` và toàn bộ record có
-`target_actor_did`.
-
-**Các file liên quan**
-
-- `scripts/build_silver_follows.py`
-- `docs/silver-schema-v1.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Follow khác like/repost ở chỗ `record.subject` là string DID, không phải object
-  có `uri` và `cid`.
-- Cùng tên field trong raw JSON có thể có schema khác nhau theo collection, nên
-  Silver job cần parse theo từng event family.
-- `target_actor_did` là field chính để phân tích network activity.
-
-## Bước 35: Đọc và kiểm chứng Silver follows
-
-**Mục tiêu**
-
-Đọc lại `silver_follows` từ MinIO để xác nhận bảng follow đã chuẩn hóa có thể dùng
-cho downstream analytics.
-
-**Vì sao cần thực hiện**
-
-`silver_follows` chỉ có giá trị phân tích nếu field target của follow được parse
-đúng. Kiểm tra `target_actor_did` giúp xác nhận Spark job đã xử lý đúng shape
-string của `record.subject` trong follow events.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/read_silver_follows.py` đọc
-`s3a://bluesky-lake/silver/silver_follows` và in schema, count cùng kiểm tra field
-target. Kết quả hiện tại:
-
-```text
-silver_follows_count: 67
-has_target_actor_did=true: 67
-```
-
-**Các file liên quan**
-
-- `scripts/read_silver_follows.py`
-- `scripts/build_silver_follows.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Kiểm chứng field chính của từng bảng Silver quan trọng hơn chỉ kiểm tra tổng số
-  dòng.
-- Với network activity, `actor_did` và `target_actor_did` là cặp field cốt lõi.
-- Cách build/read/check này có thể lặp lại cho các bảng Silver tiếp theo.
-
-## Bước 36: Build Silver deleted records từ Bronze commit events
-
-**Mục tiêu**
-
-Tạo bảng `silver_deleted_records` từ delete events của các commit collection trong
-scope.
-
-**Vì sao cần thực hiện**
-
-Delete events thường không có record payload đầy đủ, nên không phù hợp ghi chung
-vào các bảng Silver create/update như posts, engagements hoặc follows. Một bảng
-deleted records riêng giúp downstream biết record nào đã bị xóa và có thể xử lý
-rebuild, reconciliation hoặc serving layer chính xác hơn.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/build_silver_deleted_records.py` đọc Bronze commit
-events, lọc operation `delete`, dựng `record_uri` từ `repository_did`, `collection`
-và `rkey`, rồi ghi ra `s3a://bluesky-lake/silver/silver_deleted_records`. Kết quả
-hiện tại có `silver_deleted_records_count: 29` với phân bố:
-
-```text
-app.bsky.feed.post: 6
-app.bsky.feed.like: 11
-app.bsky.feed.repost: 2
-app.bsky.graph.follow: 10
-```
-
-**Các file liên quan**
-
-- `scripts/build_silver_deleted_records.py`
-- `docs/silver-schema-v1.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Delete event là một loại lifecycle event quan trọng, không nên bỏ qua chỉ vì
-  thiếu record payload.
-- Tách delete sang bảng riêng giúp các bảng create/update giữ schema rõ ràng hơn.
-- `record_uri` là key tự nhiên giúp nhận diện record bị xóa trong từng collection.
-
-## Bước 37: Đọc và kiểm chứng Silver deleted records
-
-**Mục tiêu**
-
-Đọc lại `silver_deleted_records` từ MinIO để xác nhận bảng delete lifecycle đã
-chuẩn hóa có thể dùng cho downstream processing.
-
-**Vì sao cần thực hiện**
-
-Delete records ảnh hưởng tới tính đúng đắn của serving layer và rebuild sau này.
-Kiểm tra `record_uri` giúp xác nhận mỗi delete event có định danh record bị xóa,
-không chỉ có count tổng.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/read_silver_deleted_records.py` đọc
-`s3a://bluesky-lake/silver/silver_deleted_records`, in schema, count theo
-collection và kiểm tra `record_uri`. Kết quả hiện tại:
-
-```text
-silver_deleted_records_count: 29
-app.bsky.feed.like: 11
-app.bsky.feed.post: 6
-app.bsky.feed.repost: 2
-app.bsky.graph.follow: 10
-has_record_uri=true: 29
-```
-
-**Các file liên quan**
-
-- `scripts/read_silver_deleted_records.py`
-- `scripts/build_silver_deleted_records.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Delete records cần được kiểm chứng riêng vì chúng có payload nghèo hơn create
-  events.
-- `record_uri` là field quan trọng để downstream biết record nào cần loại bỏ hoặc
-  đánh dấu deleted.
-- Kiểm chứng delete lifecycle sớm giúp tránh xây dashboard chỉ dựa trên create
-  events và bỏ qua thay đổi trạng thái dữ liệu.
-
-## Bước 38: Kiểm tra tổng quan Silver v1
-
-**Mục tiêu**
-
-Tạo một script kiểm tra tổng quan toàn bộ các bảng Silver v1 đã build trên MinIO.
-
-**Vì sao cần thực hiện**
-
-Sau khi có nhiều bảng Silver riêng lẻ, cần một bước kiểm tra chung để xác nhận tất
-cả bảng đều tồn tại, đọc được và có count khớp với các bước build trước đó. Đây là
-mốc xác nhận Silver v1 đã hình thành một lớp dữ liệu usable trước khi chuyển sang
-Gold analytics hoặc data quality.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/check_silver_v1.py` đọc bốn bảng Silver:
-
-```text
-silver_posts
-silver_engagements
-silver_follows
-silver_deleted_records
-```
-
-Kết quả kiểm tra hiện tại:
-
-```text
-silver_posts_count: 119
-silver_engagements_count: 981
-silver_follows_count: 67
-silver_deleted_records_count: 29
-```
-
-**Các file liên quan**
-
-- `scripts/check_silver_v1.py`
-- `scripts/read_silver_posts.py`
-- `scripts/read_silver_engagements.py`
-- `scripts/read_silver_follows.py`
-- `scripts/read_silver_deleted_records.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi số lượng bảng tăng lên, cần có script kiểm tra lớp dữ liệu ở cấp layer thay
-  vì chỉ kiểm tra từng bảng rời rạc.
-- Count tổng không thay thế data quality đầy đủ, nhưng là checkpoint tối thiểu để
-  xác nhận Silver layer có dữ liệu usable.
-- Silver v1 hiện vẫn là Parquet trên MinIO, chưa phải Iceberg và chưa có
-  deduplication/quarantine/pseudonymization.
-
-## Bước 39: Build Gold event volume prototype từ Silver v1
-
-**Mục tiêu**
-
-Tạo aggregate Gold prototype đầu tiên từ các bảng Silver v1 để đếm event volume
-theo loại event business.
-
-**Vì sao cần thực hiện**
-
-Sau khi có Silver v1, project cần chứng minh dữ liệu đã chuẩn hóa có thể tạo ra
-aggregate phục vụ analytics. Bước này nối Silver sang Gold ở mức prototype, trước
-khi đưa Gold serving marts vào ClickHouse theo kiến trúc chính thức.
-
-**Kết quả sau khi hoàn thành**
-
-Project đã có logic đọc các bảng Silver `silver_posts`, `silver_engagements`,
-`silver_follows` và `silver_deleted_records`, tạo aggregate theo `event_type`,
-rồi ghi ra `s3a://bluesky-lake/gold/gold_event_volume_by_type`. Sau khi Silver
-Iceberg trở thành nguồn chính, logic build hiện tại nằm ở
-`scripts/build_gold_event_volume_from_iceberg.py`.
-
-**Các file liên quan**
-
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/check_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Đây là Gold prototype trên MinIO, chưa phải Gold serving layer chính thức bằng
-  ClickHouse.
-- Gold aggregate nên được rebuild từ Silver, không phụ thuộc trực tiếp vào raw
-  Bronze.
-- Bắt đầu bằng aggregate đơn giản giúp kiểm chứng luồng Silver -> Gold trước khi
-  thêm ClickHouse và dashboard.
-
-## Bước 40: Đọc và kiểm chứng Gold event volume prototype
-
-**Mục tiêu**
-
-Đọc lại Gold event volume prototype từ MinIO để xác nhận aggregate đã ghi có thể
-được query bằng Spark.
-
-**Vì sao cần thực hiện**
-
-Tương tự Bronze và Silver, ghi Gold thành công chưa đủ; cần đọc lại để xác nhận
-schema và giá trị aggregate. Bước này giúp kiểm tra các count tổng theo event type
-trước khi chuyển Gold sang ClickHouse.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/read_gold_event_volume.py` đọc
-`s3a://bluesky-lake/gold/gold_event_volume_by_type` và in aggregate:
-
-```text
-deleted_record: 29
-follow: 67
-like: 837
-post: 119
-repost: 144
-```
-
-**Các file liên quan**
-
-- `scripts/read_gold_event_volume.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Gold prototype là bước kiểm chứng logic aggregate, không thay thế ClickHouse.
-- Count trong Gold phải giải thích được từ các bảng Silver nguồn.
-- Khi thêm ClickHouse, dữ liệu Gold serving marts phải có khả năng rebuild từ
-  Silver hoặc Gold prototype tương ứng.
-
-## Bước 41: Dựng ClickHouse local cho Gold serving layer
-
-**Mục tiêu**
-
-Bổ sung ClickHouse vào Docker Compose để bắt đầu triển khai Gold serving layer
-theo kiến trúc chính thức.
-
-**Vì sao cần thực hiện**
-
-Gold prototype trên MinIO chỉ kiểm chứng logic aggregate. Theo kiến trúc dự án,
-Gold serving marts cần nằm trong ClickHouse để phục vụ truy vấn phân tích độ trễ
-thấp và dashboard sau này.
-
-**Kết quả sau khi hoàn thành**
-
-Docker Compose có service `clickhouse` dùng image version cụ thể
-`clickhouse/clickhouse-server:24.8`, expose HTTP port `8123` và native port host
-`9002`. ClickHouse chạy thành công với credential local `default/clickhouse`, và
-HTTP query `SELECT 1` trả về `1`.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- ClickHouse là serving database cho Gold marts, không phải source of truth duy
-  nhất của pipeline.
-- Dữ liệu trong ClickHouse phải có thể rebuild từ Silver hoặc Gold prototype.
-- Port native của ClickHouse được map ra `9002` trên host để tránh trùng với MinIO
-  đang dùng port `9000`.
-
-## Bước 42: Tạo Gold serving table trong ClickHouse
-
-**Mục tiêu**
-
-Tạo database và table đầu tiên trong ClickHouse để chứa Gold event volume serving
-mart.
-
-**Vì sao cần thực hiện**
-
-ClickHouse cần schema table rõ ràng trước khi load dữ liệu aggregate. Bảng Gold
-serving này là điểm bắt đầu để chuyển từ Gold prototype trên MinIO sang serving
-layer có thể query nhanh và dùng cho dashboard.
-
-**Kết quả sau khi hoàn thành**
-
-ClickHouse có database `bluesky` và table
-`bluesky.gold_event_volume_by_type` với các cột `event_type`, `event_count` và
-`loaded_at`. Lệnh `SHOW TABLES FROM bluesky` trả về
-`gold_event_volume_by_type`.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Với ClickHouse HTTP interface, các query ghi như `CREATE DATABASE` hoặc
-  `CREATE TABLE` cần gửi bằng method POST, không dùng GET readonly.
-- `MergeTree` là engine cơ bản cho bảng lưu dữ liệu phân tích trong ClickHouse.
-- Bảng Gold serving phải có thể nạp lại từ dữ liệu đã build ở Silver/Gold
-  prototype.
-
-## Bước 43: Load Gold event volume vào ClickHouse
-
-**Mục tiêu**
-
-Nạp dữ liệu aggregate `gold_event_volume_by_type` vào bảng Gold serving trong
-ClickHouse và query kiểm chứng kết quả.
-
-**Vì sao cần thực hiện**
-
-Gold prototype trên MinIO chỉ chứng minh logic aggregate. Để đi đúng kiến trúc
-serving, dữ liệu aggregate cần được đưa vào ClickHouse để phục vụ truy vấn nhanh
-và dashboard sau này.
-
-**Kết quả sau khi hoàn thành**
-
-Dữ liệu event volume được insert vào
-`bluesky.gold_event_volume_by_type`. Query từ ClickHouse trả về:
-
-```text
-deleted_record  29
-follow          67
-like            837
-post            119
-repost          144
-```
-
-**Các file liên quan**
-
-- `docker-compose.yml`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/read_gold_event_volume.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- ClickHouse Gold serving mart là nơi phục vụ query/dashboard, không phải source
-  of truth duy nhất.
-- Dữ liệu ClickHouse phải có thể truncate và load lại từ Silver/Gold prototype.
-- CSV thủ công chỉ là bước kiểm chứng ban đầu; bước tiếp theo nên tự động hóa load
-  từ dữ liệu đã build.
-
-## Bước 44: Tự động load Gold event volume vào ClickHouse
-
-**Mục tiêu**
-
-Tạo script tự động đọc Gold event volume prototype từ MinIO và load vào ClickHouse
-serving table.
-
-**Vì sao cần thực hiện**
-
-Load thủ công bằng CSV chỉ phù hợp để kiểm chứng kết nối ban đầu. Pipeline cần một
-bước có thể chạy lại để rebuild ClickHouse Gold serving mart từ dữ liệu đã build,
-đúng nguyên tắc ClickHouse không phải source of truth duy nhất.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/load_gold_event_volume_to_clickhouse.py` đọc
-`s3a://bluesky-lake/gold/gold_event_volume_by_type`, truncate bảng
-`bluesky.gold_event_volume_by_type`, insert dữ liệu qua ClickHouse HTTP API và
-query kiểm chứng kết quả:
-
-```text
-deleted_record  29
-follow          67
-like            837
-post            119
-repost          144
-```
-
-**Các file liên quan**
-
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Rebuild ClickHouse bằng truncate + insert từ Gold prototype là cách đơn giản cho
-  local learning; production cần chiến lược idempotent và kiểm soát lỗi tốt hơn.
-- Khi dùng `urllib`, không nên nhúng `user:password` trực tiếp vào URL nếu parser
-  xử lý sai host; dùng HTTP Basic Auth header rõ ràng hơn.
-- Script load tự động là bước đầu của workflow sau này có thể đưa vào Airflow.
-
-## Bước 45: Kiểm tra Gold serving table trong ClickHouse
-
-**Mục tiêu**
-
-Tạo script riêng để query bảng Gold serving trong ClickHouse và xác nhận dữ liệu
-đã load đúng.
-
-**Vì sao cần thực hiện**
-
-Load và verify nên được tách rõ. Script kiểm tra riêng giúp xác nhận serving table
-đang có dữ liệu đúng mà không vô tình reload lại bảng. Đây cũng là bước nền cho
-dashboard hoặc health check sau này.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/check_clickhouse_gold_event_volume.py` query
-`bluesky.gold_event_volume_by_type` và in kết quả:
-
-```text
-deleted_record  29
-follow          67
-like            837
-post            119
-repost          144
-```
-
-**Các file liên quan**
-
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Tách load và check giúp debug dễ hơn: một script thay đổi state, một script chỉ
-  đọc state.
-- ClickHouse serving table là đích phục vụ truy vấn nhanh, còn dữ liệu có thể
-  rebuild từ Silver/Gold prototype.
-- Một kiểm tra nhỏ qua HTTP query là bước đầu trước khi có dashboard Grafana.
-
-## Bước 46: Tách ClickHouse HTTP helper dùng chung
-
-**Mục tiêu**
-
-Tách logic gọi ClickHouse HTTP API sang helper dùng chung trong package
-`bluesky_pipeline`.
-
-**Vì sao cần thực hiện**
-
-Sau khi có nhiều script cần query hoặc load ClickHouse, việc lặp URL, Basic Auth
-và HTTP request ở từng script dễ gây sai lệch cấu hình. Helper dùng chung giúp các
-script ClickHouse sử dụng cùng một cách kết nối.
-
-**Kết quả sau khi hoàn thành**
-
-Project có module `src/bluesky_pipeline/clickhouse_client.py` chứa
-`execute_clickhouse()`. Hai script `scripts/check_clickhouse_gold_event_volume.py`
-và `scripts/load_gold_event_volume_to_clickhouse.py` dùng helper này và đã chạy
-thành công.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi một logic kết nối được dùng ở nhiều script, nên tách helper để giảm lặp và
-  giảm rủi ro cấu hình lệch nhau.
-- Config kết nối ClickHouse nên lấy từ environment variables với default local rõ
-  ràng.
-- Refactor helper cần được kiểm chứng bằng cả script đọc và script ghi/load.
-
-## Bước 47: Reconcile Silver v1 với ClickHouse Gold
-
-**Mục tiêu**
-
-Tạo data quality check đầu tiên để so sánh aggregate trong ClickHouse Gold với dữ
-liệu nguồn từ Silver v1.
-
-**Vì sao cần thực hiện**
-
-ClickHouse là serving layer có thể rebuild, không phải source of truth duy nhất.
-Vì vậy cần kiểm tra dữ liệu đã load vào ClickHouse có khớp với Silver hay không.
-Reconciliation giúp phát hiện load thiếu, load thừa hoặc serving mart bị stale.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script `scripts/check_gold_reconciliation.py` đọc count kỳ vọng từ bốn
-bảng Silver v1 và so sánh với `bluesky.gold_event_volume_by_type` trong
-ClickHouse. Kết quả hiện tại:
-
-```text
-deleted_record  expected=29   actual=29   OK
-follow          expected=67   actual=67   OK
-like            expected=837  actual=837  OK
-post            expected=119  actual=119  OK
-repost          expected=144  actual=144  OK
-Gold reconciliation passed
-```
-
-**Các file liên quan**
-
-- `scripts/check_gold_reconciliation.py`
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `src/bluesky_pipeline/spark_session.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Reconciliation là data quality check giữa các layer, không phải unit test code.
-- Serving layer cần được kiểm tra với nguồn rebuild của nó để đảm bảo dashboard
-  không hiển thị số liệu lệch.
-- Check hiện tại mới so sánh count tổng theo event type; các quality check sâu hơn
-  có thể bổ sung sau.
-
-## Bước 48: Tách Bronze schema dùng chung cho Spark jobs
-
-**Mục tiêu**
-
-Tạo module dùng chung chứa Spark schema để parse Bronze event envelope trong các
-job Spark.
-
-**Vì sao cần thực hiện**
-
-Các script Silver và profiling đang lặp nhiều schema giống nhau. Nếu tiếp tục thêm
-Iceberg hoặc nhiều job downstream, việc sửa schema sẽ dễ bị lệch giữa các file.
-Tách schema dùng chung giúp giảm duplication trước khi mở rộng kiến trúc.
-
-**Kết quả sau khi hoàn thành**
-
-Project có module `src/bluesky_pipeline/bronze_schemas.py` chứa các schema như
-`POST_RECORD_SCHEMA`, `ENGAGEMENT_RECORD_SCHEMA`, `FOLLOW_RECORD_SCHEMA` và helper
-`build_commit_envelope_schema()`. Import module này đã được kiểm chứng thành công.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Schema parse Bronze là contract dùng chung giữa nhiều job Spark.
-- Refactor dùng chung nên làm khi duplication đã xuất hiện thật, không tạo
-  abstraction quá sớm.
-- Trước khi chuyển sang Iceberg, nên giảm các điểm lặp dễ gây lỗi schema.
-
-## Bước 49: Refactor Silver posts dùng Bronze schema chung
-
-**Mục tiêu**
-
-Refactor `scripts/build_silver_posts.py` để dùng schema chung thay vì tự định
-nghĩa toàn bộ envelope schema trong script.
-
-**Vì sao cần thực hiện**
-
-`silver_posts` là job Silver đầu tiên, nên refactor nó trước giúp kiểm chứng module
-schema dùng chung không làm thay đổi output. Đây là cách giảm rủi ro trước khi áp
-dụng cùng pattern cho engagements, follows và deleted records.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_silver_posts.py` dùng `POST_RECORD_SCHEMA` và
-`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
-Chạy lại build/read/check vẫn giữ `silver_posts_count: 119` và Silver v1 vẫn có đủ
-count các bảng.
-
-**Các file liên quan**
-
-- `scripts/build_silver_posts.py`
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `scripts/check_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Refactor phải được kiểm chứng bằng output tương đương trước và sau thay đổi.
-- Bắt đầu refactor từ một job giúp debug dễ hơn so với sửa tất cả script cùng lúc.
-- `check_silver_v1.py` là checkpoint nhanh để xác nhận refactor không làm hỏng
-  layer Silver.
-
-## Bước 50: Refactor Silver engagements dùng Bronze schema chung
-
-**Mục tiêu**
-
-Refactor `scripts/build_silver_engagements.py` để dùng Bronze schema module chung.
-
-**Vì sao cần thực hiện**
-
-Like/repost jobs cũng đang parse cùng envelope structure như các Silver jobs khác.
-Dùng schema chung giúp đảm bảo cách parse envelope nhất quán, đồng thời giảm số
-lượng schema duplicate trước khi mở rộng sang Iceberg hoặc các transform mới.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_silver_engagements.py` dùng `ENGAGEMENT_RECORD_SCHEMA` và
-`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
-Chạy lại build/read/check vẫn giữ `silver_engagements_count: 981` và Silver v1 vẫn
-đủ count các bảng.
-
-**Các file liên quan**
-
-- `scripts/build_silver_engagements.py`
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `scripts/read_silver_engagements.py`
-- `scripts/check_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Các event cùng nhóm schema như like/repost có thể dùng chung record schema.
-- Sau mỗi refactor schema, cần chạy lại cả build script và read/check script.
-- Refactor lặp từng job giúp giữ phạm vi lỗi nhỏ và dễ rollback nếu cần.
-
-## Bước 51: Refactor Silver follows dùng Bronze schema chung
-
-**Mục tiêu**
-
-Refactor `scripts/build_silver_follows.py` để dùng Bronze schema module chung.
-
-**Vì sao cần thực hiện**
-
-Follow events có shape riêng vì `record.subject` là string DID. Việc đưa
-`FOLLOW_RECORD_SCHEMA` vào module chung giúp giữ sự khác biệt schema này ở một nơi
-rõ ràng, thay vì lặp trong từng script.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_silver_follows.py` dùng `FOLLOW_RECORD_SCHEMA` và
-`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
-Chạy lại build/read/check vẫn giữ `silver_follows_count: 67` và Silver v1 vẫn đủ
-count các bảng.
-
-**Các file liên quan**
-
-- `scripts/build_silver_follows.py`
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `scripts/read_silver_follows.py`
-- `scripts/check_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Schema dùng chung vẫn cần biểu diễn được khác biệt giữa collection, không ép mọi
-  event về cùng một shape.
-- Follow target là DID string, khác với like/repost subject object.
-- Refactor theo từng job giúp kiểm chứng output không đổi sau mỗi bước nhỏ.
-
-## Bước 52: Refactor Silver deleted records dùng Bronze schema chung
-
-**Mục tiêu**
-
-Refactor `scripts/build_silver_deleted_records.py` để dùng Bronze schema module
-chung.
-
-**Vì sao cần thực hiện**
-
-Deleted records chỉ cần commit metadata như `collection`, `operation` và `rkey`,
-không cần parse `record`. Dùng `build_commit_envelope_schema()` không truyền
-record schema giúp thể hiện rõ yêu cầu tối thiểu của delete event và giảm schema
-duplicate trong script.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_silver_deleted_records.py` dùng
-`build_commit_envelope_schema()` từ `src/bluesky_pipeline/bronze_schemas.py`.
-Chạy lại build/read/check vẫn giữ `silver_deleted_records_count: 29` và Silver v1
-vẫn đủ count các bảng.
-
-**Các file liên quan**
-
-- `scripts/build_silver_deleted_records.py`
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `scripts/read_silver_deleted_records.py`
-- `scripts/check_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Không phải mọi transform cần parse toàn bộ payload; parse tối thiểu giúp schema
-  đơn giản hơn.
-- Delete event có payload nghèo hơn create event, nên dùng schema metadata là đủ
-  cho Silver v1.
-- Sau khi refactor toàn bộ Silver build scripts, module schema chung trở thành
-  điểm quản lý contract parse Bronze chính của project.
-
-## Bước 53: Kiểm chứng downstream sau refactor Bronze schema chung
-
-**Mục tiêu**
-
-Chạy lại checkpoint tổng hợp cho Silver v1 và reconciliation giữa Silver với
-ClickHouse Gold sau khi toàn bộ Silver build scripts đã dùng schema chung.
-
-**Vì sao cần thực hiện**
-
-Refactor schema không nên làm thay đổi ý nghĩa dữ liệu đầu ra. Vì Gold aggregate
-và ClickHouse serving phụ thuộc vào các bảng Silver, cần kiểm chứng lại cả layer
-Silver và kết quả reconcile downstream trước khi tiếp tục mở rộng pipeline.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/check_silver_v1.py` chạy thành công và xác nhận các bảng Silver chính vẫn
-đọc được. `scripts/check_gold_reconciliation.py` chạy thành công và xác nhận count
-giữa Silver v1 và ClickHouse Gold vẫn khớp.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `scripts/check_silver_v1.py`
-- `scripts/check_gold_reconciliation.py`
 - `scripts/build_silver_posts.py`
 - `scripts/build_silver_engagements.py`
 - `scripts/build_silver_follows.py`
 - `scripts/build_silver_deleted_records.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `scripts/check_silver_v1.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Sau refactor, cần kiểm chứng không chỉ script vừa sửa mà cả các tầng phụ thuộc.
-- Reconciliation là cách đơn giản để phát hiện dữ liệu bị thiếu, bị nhân đôi hoặc
-  bị lệch khi chuyển từ Lakehouse sang serving database.
-- Khi checkpoint tổng hợp vẫn pass, refactor có thể xem là an toàn để commit và
-  tiếp tục phát triển tính năng mới.
+- Silver là nơi chuẩn hóa nghĩa của field, không chỉ đổi định dạng lưu trữ.
+- Reply có thể được nhận diện từ `record.reply.root.uri`.
+- Delete event cần bảng riêng vì thường thiếu `record` đầy đủ nhưng vẫn quan trọng
+  cho phân tích churn/moderation.
 
-## Bước 54: Chuẩn hóa ClickHouse Gold DDL thành script trong repo
-
-**Mục tiêu**
-
-Tạo script `scripts/create_clickhouse_gold_tables.py` để tự động tạo database và
-bảng Gold serving trong ClickHouse local.
-
-**Vì sao cần thực hiện**
-
-Trước đó database và table ClickHouse có thể được tạo bằng lệnh thủ công. Đưa DDL
-vào script giúp luồng setup dễ chạy lại, dễ review và giảm rủi ro sai khác giữa
-các lần dựng môi trường local.
-
-**Kết quả sau khi hoàn thành**
-
-Project có script tạo `bluesky` database và bảng
-`bluesky.gold_event_volume_by_type` bằng `CREATE ... IF NOT EXISTS`. Script có thể
-chạy nhiều lần mà không xóa dữ liệu hiện có.
-
-**Các file liên quan**
-
-- `scripts/create_clickhouse_gold_tables.py`
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/check_gold_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- DDL của serving layer nên được version trong repository thay vì chỉ chạy thủ
-  công trên terminal.
-- `CREATE ... IF NOT EXISTS` giúp script setup có tính idempotent trong môi trường
-  local.
-- Chuẩn hóa setup ClickHouse là bước nhỏ nhưng quan trọng trước khi mở rộng thêm
-  Gold tables hoặc dashboard.
-
-## Bước 55: Refactor metadata Gold table dùng chung
+## Bước 10: Chuẩn hóa metadata và schema dùng chung
 
 **Mục tiêu**
 
-Tạo module `src/bluesky_pipeline/gold_tables.py` để quản lý tập trung tên database,
-tên bảng, path Gold trên MinIO và DDL của bảng Gold event volume.
+Tách các schema, table paths, ClickHouse table names, Kafka config và helper HTTP
+vào module dùng chung.
 
 **Vì sao cần thực hiện**
 
-Các script create, load, check và reconciliation đều cần dùng cùng một contract
-cho bảng `bluesky.gold_event_volume_by_type`. Nếu mỗi script tự khai báo table
-name hoặc DDL riêng, pipeline dễ bị lệch khi đổi tên bảng, đổi path hoặc mở rộng
-schema.
+Khi số lượng script tăng lên, nếu mỗi script tự hard-code path/table/schema thì
+repo rất dễ lệch contract. Chuẩn hóa metadata giúp các build/check/load scripts
+dùng cùng một nguồn sự thật.
 
 **Kết quả sau khi hoàn thành**
 
-Các script ClickHouse/Gold dùng chung metadata từ
-`src/bluesky_pipeline/gold_tables.py`. Luồng tạo table, load dữ liệu, query kiểm
-chứng và reconciliation vẫn chạy thành công sau refactor.
+Project có module dùng chung cho Bronze schema, Bronze/Silver/Gold paths,
+Iceberg config, ClickHouse helper và Kafka config. Các script Silver/Gold được
+refactor để dùng contract chung thay vì lặp hard-code.
 
 **Các file liên quan**
 
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/check_gold_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Metadata của bảng serving nên có một nguồn khai báo duy nhất để tránh drift.
-- Refactor hạ tầng dữ liệu vẫn cần chạy lại create, load, check và reconciliation.
-- Module metadata giúp việc thêm Gold table mới có pattern rõ ràng hơn.
-
-## Bước 56: Tạo Gold post engagement summary trên MinIO
-
-**Mục tiêu**
-
-Tạo bảng Gold `gold_post_engagement_summary` từ `silver_posts` và
-`silver_engagements` để tổng hợp số like/repost theo từng post.
-
-**Vì sao cần thực hiện**
-
-Gold event volume chỉ cho biết tổng số event theo loại, chưa trả lời được câu hỏi
-phân tích theo thực thể bài viết. Bảng post engagement summary kết nối post với
-các engagement trỏ tới post đó, tạo nền tảng cho các metric như top posts theo
-tương tác.
-
-**Kết quả sau khi hoàn thành**
-
-Project có Gold path `gold/gold_post_engagement_summary/` trên MinIO với
-`gold_post_engagement_summary_count: 119`. Bảng có một dòng cho mỗi post, kèm
-`like_count`, `repost_count` và `engagement_count`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/read_gold_post_engagement_summary.py`
-- `scripts/build_silver_posts.py`
-- `scripts/build_silver_engagements.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Gold layer thường được thiết kế theo câu hỏi phân tích cụ thể, không chỉ copy
-  dữ liệu từ Silver.
-- Left join từ posts sang engagement counts giúp giữ cả các post chưa có tương
-  tác.
-- Aggregate theo `subject_uri` là cách nối like/repost về post gốc trong dữ liệu
-  Bluesky.
-
-## Bước 57: Load Gold post engagement summary vào ClickHouse
-
-**Mục tiêu**
-
-Tạo ClickHouse serving table cho `gold_post_engagement_summary`, load dữ liệu từ
-Gold Parquet trên MinIO vào ClickHouse và kiểm tra kết quả query.
-
-**Vì sao cần thực hiện**
-
-Gold trên MinIO là nguồn aggregate có thể rebuild, còn ClickHouse là lớp serving
-để query nhanh và phục vụ dashboard. Đưa bảng post engagement summary vào
-ClickHouse giúp truy vấn top posts theo tương tác mà không cần đọc trực tiếp từ
-Parquet.
-
-**Kết quả sau khi hoàn thành**
-
-Project có bảng `bluesky.gold_post_engagement_summary` trong ClickHouse.
-Script load và script check chạy thành công, count trong ClickHouse là
-`gold_post_engagement_summary_count: 119`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `scripts/check_clickhouse_gold_post_engagement_summary.py`
-- `scripts/read_gold_post_engagement_summary.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Với dữ liệu text tự do, `JSONEachRow` an toàn hơn TSV/CSV khi insert vào
-  ClickHouse vì tránh lỗi do tab, xuống dòng hoặc ký tự đặc biệt trong nội dung
-  bài viết.
-- ClickHouse serving table nên được tạo bằng DDL versioned trong repo và load lại
-  được từ Gold source.
-- Khi thêm Gold table mới, cần có đủ build, read/check trên MinIO, DDL ClickHouse,
-  load ClickHouse và check ClickHouse.
-
-## Bước 58: Reconcile Gold post engagement summary
-
-**Mục tiêu**
-
-Tạo checkpoint reconciliation cho `gold_post_engagement_summary`, so sánh dữ liệu
-Gold Parquet trên MinIO với bảng serving tương ứng trong ClickHouse.
-
-**Vì sao cần thực hiện**
-
-ClickHouse là bản serving được load từ Gold source, nên cần kiểm tra dữ liệu không
-bị thiếu hoặc lệch sau quá trình load. Với bảng post engagement summary, các metric
-cần đối chiếu gồm số dòng, tổng like, tổng repost và tổng engagement.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/check_gold_post_engagement_reconciliation.py` chạy thành công và báo
-`Gold post engagement reconciliation passed`. Checkpoint reconciliation cũ cho
-`gold_event_volume_by_type` cũng vẫn pass.
-
-**Các file liên quan**
-
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `scripts/check_gold_reconciliation.py`
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Mỗi Gold serving table nên có reconciliation riêng với source có thể rebuild.
-- Reconciliation không chỉ kiểm tra `row_count`; nên kiểm tra thêm các tổng metric
-  quan trọng của bảng.
-- Chạy lại checkpoint cũ sau khi thêm bảng mới giúp xác nhận thay đổi không làm
-  ảnh hưởng luồng Gold đã có.
-
-## Bước 59: Cập nhật README cho luồng Gold serving v1
-
-**Mục tiêu**
-
-Cập nhật `README.md` để phản ánh đầy đủ trạng thái Gold/ClickHouse hiện tại của
-project.
-
-**Vì sao cần thực hiện**
-
-Sau khi thêm `gold_post_engagement_summary`, README cũ chỉ mô tả một Gold serving
-table. README cần thể hiện đúng các lệnh build, load, check và reconciliation cho
-cả hai bảng Gold hiện có để người khác có thể chạy lại luồng local.
-
-**Kết quả sau khi hoàn thành**
-
-README mô tả luồng local end-to-end với 2 Gold staging outputs trên MinIO và 2
-ClickHouse serving tables:
-`bluesky.gold_event_volume_by_type` và
-`bluesky.gold_post_engagement_summary`.
-
-**Các file liên quan**
-
-- `README.md`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/check_gold_reconciliation.py`
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- README nên phản ánh luồng chạy thực tế, không chỉ kiến trúc dự kiến.
-- Khi thêm serving table mới, cần cập nhật cả build, load, check và reconciliation
-  trong hướng dẫn chạy local.
-- Tài liệu ngắn ở README giúp người đọc nhanh chóng tái hiện trạng thái project.
-
-## Bước 60: Tạo checkpoint tổng hợp Gold serving v1
-
-**Mục tiêu**
-
-Tạo script `scripts/check_gold_serving_v1.py` để chạy một lần toàn bộ checkpoint
-reconciliation cho các bảng Gold serving hiện có.
-
-**Vì sao cần thực hiện**
-
-Khi số lượng Gold serving table tăng lên, việc nhớ chạy từng reconciliation script
-riêng lẻ dễ bị thiếu. Checkpoint tổng hợp cung cấp một entrypoint duy nhất để xác
-nhận Gold serving v1 đang nhất quán trước khi làm dashboard hoặc mở rộng pipeline.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/check_gold_serving_v1.py` chạy thành công và in đủ các kết luận:
-`Gold reconciliation passed`, `Gold post engagement reconciliation passed` và
-`Gold serving v1 check passed`.
-
-**Các file liên quan**
-
-- `scripts/check_gold_serving_v1.py`
-- `scripts/check_gold_reconciliation.py`
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi có nhiều checkpoint con, nên có một checkpoint tổng hợp để giảm thao tác
-  thủ công và giảm khả năng bỏ sót.
-- Checkpoint tổng hợp nên tái sử dụng logic reconciliation đã có thay vì copy lại
-  toàn bộ logic.
-- Một SparkSession dùng chung giúp script tổng hợp nhẹ hơn so với khởi tạo Spark
-  nhiều lần.
-
-## Bước 61: Hiển thị lỗi chi tiết từ ClickHouse HTTP API
-
-**Mục tiêu**
-
-Cải thiện helper `src/bluesky_pipeline/clickhouse_client.py` để khi ClickHouse trả
-lỗi HTTP, script hiển thị cả response body từ ClickHouse.
-
-**Vì sao cần thực hiện**
-
-Khi load dữ liệu text vào ClickHouse, lỗi `HTTP Error 400: Bad Request` mặc định
-của Python không cho biết nguyên nhân thật. ClickHouse thường trả chi tiết lỗi
-trong response body, ví dụ sai format, sai kiểu dữ liệu hoặc sai column. Đọc và
-raise lại nội dung này giúp debug nhanh hơn.
-
-**Kết quả sau khi hoàn thành**
-
-`execute_clickhouse()` bắt `HTTPError`, đọc response body và raise `RuntimeError`
-có `status_code`, `reason`, `query` và `response`. Checkpoint
-`scripts/check_gold_serving_v1.py` vẫn chạy thành công sau thay đổi.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `scripts/check_gold_serving_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Với API qua HTTP, thông tin lỗi quan trọng thường nằm trong response body chứ
-  không chỉ ở status code.
-- Helper dùng chung nên surface lỗi rõ ràng để mọi script downstream dễ debug hơn.
-- Cải thiện observability của tool local là một phần quan trọng của data platform,
-  không chỉ là tiện ích lập trình.
-
-## Bước 62: Chuẩn hóa Silver table paths thành module dùng chung
-
-**Mục tiêu**
-
-Tạo module `src/bluesky_pipeline/silver_tables.py` để quản lý tập trung các path
-của Silver v1 trên MinIO.
-
-**Vì sao cần thực hiện**
-
-Các path như `silver_posts`, `silver_engagements`, `silver_follows` và
-`silver_deleted_records` đang được dùng ở nhiều script build, read, check và Gold
-aggregate. Nếu mỗi script tự khai báo path riêng, project dễ bị drift khi đổi vị
-trí lưu hoặc khi chuyển dần từ Parquet prototype sang Iceberg.
-
-**Kết quả sau khi hoàn thành**
-
-Các script Silver và Gold đọc path Silver từ `src/bluesky_pipeline/silver_tables.py`.
-Kiểm tra bằng `rg` chỉ còn hard-code `s3a://bluesky-lake/silver/...` trong module
-này. `scripts/check_silver_v1.py` và `scripts/check_gold_serving_v1.py` đều chạy
-thành công sau refactor.
-
-**Các file liên quan**
-
+- `src/bluesky_pipeline/bronze_schemas.py`
+- `src/bluesky_pipeline/bronze_tables.py`
 - `src/bluesky_pipeline/silver_tables.py`
-- `scripts/build_silver_posts.py`
-- `scripts/build_silver_engagements.py`
-- `scripts/build_silver_follows.py`
-- `scripts/build_silver_deleted_records.py`
-- `scripts/read_silver_posts.py`
-- `scripts/read_silver_engagements.py`
-- `scripts/read_silver_follows.py`
-- `scripts/read_silver_deleted_records.py`
-- `scripts/check_silver_v1.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/clickhouse_client.py`
+- `src/bluesky_pipeline/kafka_config.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Metadata có tính contract nên đưa vào module dùng chung ngay khi được nhiều file
+  sử dụng.
+- Refactor không phải mục tiêu riêng, nhưng là chi phí cần trả để pipeline tiếp
+  tục mở rộng an toàn.
+- Helper ClickHouse nên hiển thị lỗi HTTP body để debug DDL/INSERT rõ nguyên nhân.
+
+## Bước 11: Xây dựng ClickHouse Gold serving layer
+
+**Mục tiêu**
+
+Dựng ClickHouse local, tạo Gold serving tables và load Gold aggregates phục vụ
+query/dashboard.
+
+**Vì sao cần thực hiện**
+
+Silver phù hợp làm dữ liệu chuẩn hóa/lakehouse, nhưng dashboard cần query aggregate
+có độ trễ thấp. ClickHouse đóng vai trò serving layer cho business metrics.
+
+**Kết quả sau khi hoàn thành**
+
+ClickHouse có database `bluesky` và các bảng Gold serving như:
+
+- `gold_event_volume_by_type`
+- `gold_post_engagement_summary`
+
+Project có script tạo DDL, load dữ liệu vào ClickHouse, check serving tables và
+Grafana datasource/panels cho Gold serving v1.
+
+**Các file liên quan**
+
+- `scripts/create_clickhouse_gold_tables.py`
 - `scripts/build_gold_event_volume_from_iceberg.py`
 - `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/check_gold_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Path/table metadata nên có một nguồn khai báo duy nhất để giảm rủi ro drift.
-- Refactor metadata cần được kiểm chứng ở cả layer trực tiếp sử dụng nó và các
-  layer downstream phụ thuộc.
-- Chuẩn hóa Silver paths là bước chuẩn bị tốt trước khi thay đổi implementation
-  storage của Silver ở các milestone sau.
-
-## Bước 63: Chuẩn hóa Bronze paths thành module dùng chung
-
-**Mục tiêu**
-
-Tạo module `src/bluesky_pipeline/bronze_tables.py` để quản lý tập trung các path
-Bronze trên MinIO cho commit, identity và account events.
-
-**Vì sao cần thực hiện**
-
-Bronze paths đang được dùng ở streaming writer, script đọc Bronze, profiler và các
-Silver build scripts. Nếu mỗi nơi tự khai báo path riêng, việc đổi layout Bronze
-hoặc mở rộng thêm event family sẽ dễ gây sai lệch giữa writer và reader.
-
-**Kết quả sau khi hoàn thành**
-
-Các script đọc/ghi Bronze và các Silver build scripts dùng chung metadata từ
-`src/bluesky_pipeline/bronze_tables.py`. Kiểm tra bằng `rg` chỉ còn hard-code
-`s3a://bluesky-lake/bronze/...` trong module này. Các checkpoint
-`read_bronze_parquet.py`, `check_silver_v1.py` và `check_gold_serving_v1.py` đều
-chạy thành công sau refactor.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/bronze_tables.py`
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/read_bronze_parquet.py`
-- `scripts/profile_bronze_commit_events.py`
-- `scripts/build_silver_posts.py`
-- `scripts/build_silver_engagements.py`
-- `scripts/build_silver_follows.py`
-- `scripts/build_silver_deleted_records.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Metadata của Bronze writer và Bronze readers phải nhất quán vì đây là contract
-  đầu vào cho toàn bộ pipeline sau Kafka.
-- Sau khi gom Bronze paths, writer và các batch build scripts cùng nhìn vào một
-  nguồn cấu hình trong code.
-- Refactor path không thay đổi dữ liệu, nhưng vẫn cần checkpoint từ Bronze đến
-  Gold để xác nhận downstream không bị ảnh hưởng.
-
-## Bước 64: Chuẩn hóa Bronze checkpoint paths
-
-**Mục tiêu**
-
-Đưa các checkpoint locations của Spark Bronze writer vào
-`src/bluesky_pipeline/bronze_tables.py` cùng với Bronze output paths.
-
-**Vì sao cần thực hiện**
-
-Spark Structured Streaming cần checkpoint để lưu offset và trạng thái ghi stream.
-Checkpoint path là một phần metadata của Bronze writer, nên nên được quản lý cùng
-nơi với Bronze output path để tránh writer dùng path dữ liệu và path checkpoint
-không đồng bộ.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/spark_read_kafka_raw.py` dùng các constant checkpoint từ
-`src/bluesky_pipeline/bronze_tables.py`. Kiểm tra compile/import cho
-`bronze_tables.py` và `spark_read_kafka_raw.py` chạy thành công.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/bronze_tables.py`
-- `scripts/spark_read_kafka_raw.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Checkpoint path là contract vận hành quan trọng của streaming job, không chỉ là
-  cấu hình phụ.
-- Output path và checkpoint path của cùng một streaming writer nên được quản lý
-  cùng nhóm metadata.
-- Với refactor không đổi giá trị path, kiểm tra compile/import là đủ trước khi
-  chạy lại streaming job ở lần ingest tiếp theo.
-
-## Bước 65: Chuẩn hóa Kafka config dùng chung
-
-**Mục tiêu**
-
-Tạo module `src/bluesky_pipeline/kafka_config.py` để quản lý tập trung Kafka
-bootstrap servers, raw events topic và Spark Kafka connector package.
-
-**Vì sao cần thực hiện**
-
-Kafka topic và bootstrap servers được dùng ở ingestion gateway, sample publishers
-và Spark Bronze writer. Nếu các file này tự khai báo riêng, pipeline dễ bị lệch
-topic giữa producer và consumer, đặc biệt sau khi đã chuyển raw topic sang
-`bluesky.raw.events.v2`.
-
-**Kết quả sau khi hoàn thành**
-
-Các producer và Spark consumer dùng chung config từ
-`src/bluesky_pipeline/kafka_config.py`. Compile/import cho ingestion gateway,
-Spark writer và sample publishers đều pass. Kiểm tra text cho thấy default topic
-và bootstrap server chỉ còn nằm trong module config chung.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/kafka_config.py`
-- `src/bluesky_pipeline/ingestion_gateway.py`
-- `scripts/spark_read_kafka_raw.py`
-- `scripts/publish_sample_to_kafka.py`
-- `scripts/publish_sample_batch_to_kafka.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Producer và consumer phải dùng cùng topic contract, nếu không Spark sẽ đọc sai
-  luồng dữ liệu.
-- Config có thể lấy default local từ code nhưng vẫn nên cho phép override bằng
-  environment variables.
-- Gom Kafka metadata giúp giảm lỗi khi đổi topic version hoặc broker address.
-
-## Bước 66: Cập nhật README với cấu hình local có thể override
-
-**Mục tiêu**
-
-Bổ sung vào `README.md` danh sách các biến môi trường quan trọng có thể override
-khi chạy pipeline local.
-
-**Vì sao cần thực hiện**
-
-Sau khi chuẩn hóa Kafka config và đã có ClickHouse helper dùng environment
-variables, README cần chỉ rõ các biến cấu hình chính để người đọc không phải dò
-trong source code. Điều này đặc biệt hữu ích khi đổi Kafka topic, broker address,
-Spark Kafka connector package hoặc thông tin kết nối ClickHouse.
-
-**Kết quả sau khi hoàn thành**
-
-README có phần cấu hình local gồm `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC`,
-`SPARK_KAFKA_CONNECTOR_PACKAGE`, `MAX_EVENTS`, `CLICKHOUSE_URL`,
-`CLICKHOUSE_USER` và `CLICKHOUSE_PASSWORD`.
-
-**Các file liên quan**
-
-- `README.md`
-- `src/bluesky_pipeline/kafka_config.py`
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- README nên ghi rõ các biến môi trường quan trọng để project dễ chạy lại ở môi
-  trường local khác.
-- Config mặc định trong code phục vụ local convenience, nhưng environment
-  variables giúp thay đổi cấu hình mà không sửa source code.
-- Tài liệu cấu hình nên được cập nhật ngay sau khi config được gom thành module
-  dùng chung.
-
-## Bước 67: Kiểm tra compile và checkpoint sau refactor metadata
-
-**Mục tiêu**
-
-Chạy compile check cho toàn bộ code Python và chạy lại các checkpoint quan trọng
-sau chuỗi refactor metadata Bronze, Silver, Gold và Kafka.
-
-**Vì sao cần thực hiện**
-
-Các refactor metadata chủ yếu thay đổi import và nơi khai báo constant. Loại thay
-đổi này dễ gây lỗi import hoặc thiếu tên biến dù logic dữ liệu không đổi. Vì vậy
-cần chạy compile check và các checkpoint chính trước khi chuyển sang milestone
-mới.
-
-**Kết quả sau khi hoàn thành**
-
-`compileall` cho `src`, `scripts` và `tests` chạy thành công.
-`scripts/check_silver_v1.py` và `scripts/check_gold_serving_v1.py` cũng pass,
-xác nhận Silver v1 và Gold serving v1 vẫn hoạt động sau refactor.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/`
-- `scripts/`
-- `tests/`
-- `scripts/check_silver_v1.py`
-- `scripts/check_gold_serving_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Sau nhiều refactor import/metadata, compile check giúp bắt lỗi syntax và lỗi
-  import sớm.
-- Checkpoint chức năng vẫn cần thiết vì compile pass không đảm bảo dữ liệu đọc,
-  ghi và reconcile đúng.
-- Nên có một điểm kiểm tra sạch trước khi chuyển từ phần backend pipeline sang
-  dashboard hoặc milestone lớn tiếp theo.
-
-## Bước 68: Thêm Grafana và kết nối ClickHouse datasource
-
-**Mục tiêu**
-
-Thêm Grafana vào Docker Compose, cài ClickHouse datasource plugin và kết nối
-Grafana tới ClickHouse local.
-
-**Vì sao cần thực hiện**
-
-ClickHouse là serving layer cho Gold metrics, còn Grafana là lớp hiển thị dashboard.
-Trước khi xây dashboard, cần xác nhận Grafana có thể kết nối tới ClickHouse trong
-Docker network và query được bảng Gold hiện có.
-
-**Kết quả sau khi hoàn thành**
-
-Grafana chạy ở `http://localhost:3000`, datasource ClickHouse test thành công và
-query được bảng `bluesky.gold_event_volume_by_type`. Query trả về các event type
-như `like`, `repost`, `post`, `follow` và `deleted_record` cùng count tương ứng.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
+- `scripts/load_gold_event_volume_to_clickhouse.py`
+- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
 - `scripts/check_clickhouse_gold_event_volume.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Trong Docker Compose, Grafana kết nối ClickHouse bằng hostname service
-  `clickhouse`, không dùng `localhost`.
-- Với port `8123`, ClickHouse datasource cần chọn protocol HTTP, không phải
-  Native.
-- Dashboard chỉ có ý nghĩa sau khi serving layer đã có dữ liệu và query kiểm chứng
-  được.
-
-## Bước 69: Tạo Grafana panels cho Gold post engagement
-
-**Mục tiêu**
-
-Tạo các panel đầu tiên trong Grafana để hiển thị dữ liệu từ bảng
-`bluesky.gold_post_engagement_summary`.
-
-**Vì sao cần thực hiện**
-
-Sau khi Grafana đã kết nối được ClickHouse, cần kiểm chứng dashboard có thể trả
-lời câu hỏi phân tích thực tế chứ không chỉ query thử bảng event volume. Bảng post
-engagement summary cho phép quan sát top posts theo số lượng like/repost.
-
-**Kết quả sau khi hoàn thành**
-
-Dashboard có table panel `Top posts by engagement` và bar chart
-`Top 10 posts by engagement`. Cả hai panel đều query được dữ liệu từ ClickHouse và
-hiển thị các trường như `post_preview`, `like_count`, `repost_count` và
-`engagement_count`.
-
-**Các file liên quan**
-
-- `docker-compose.yml`
 - `scripts/check_clickhouse_gold_post_engagement_summary.py`
-- `scripts/check_gold_post_engagement_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `docker-compose.yml`
 
 **Kiến thức cần ghi nhớ**
 
-- Dashboard nên bám vào Gold serving tables thay vì query trực tiếp Silver hoặc
-  Bronze.
-- Table panel phù hợp để inspect chi tiết record, còn bar chart phù hợp để so
-  sánh top-N metric.
-- Khi dữ liệu sample còn nhỏ, metric có thể thấp nhưng luồng serving và dashboard
-  vẫn chứng minh được end-to-end analytics path.
+- ClickHouse là serving layer, không phải source of truth duy nhất.
+- Gold tables phải rebuild được từ Silver khi cần.
+- Dashboard JSON chưa cần commit ở giai đoạn thử nghiệm; khi dashboard hoàn chỉnh
+  có thể screenshot/link hoặc export sau.
 
-## Bước 70: Smoke test Iceberg table trên MinIO
+## Bước 12: Migrate Silver sang Apache Iceberg
 
 **Mục tiêu**
 
-Kiểm chứng Spark có thể tạo, ghi và đọc một Iceberg table nhỏ trên MinIO bằng
-Hadoop catalog.
+Chuyển Silver v1 từ Parquet prototype sang Apache Iceberg trên MinIO.
 
 **Vì sao cần thực hiện**
 
-Kiến trúc mục tiêu dùng Iceberg từ Silver layer, nhưng trước khi migrate các bảng
-Silver thật cần xác nhận môi trường local đã chạy được Iceberg runtime, Spark SQL
-extensions, catalog config và warehouse path trên MinIO.
+Parquet partitioned đơn giản phù hợp giai đoạn đầu, nhưng Silver cần table
+semantics, snapshot, schema evolution và khả năng quản lý dữ liệu rõ ràng hơn.
+Iceberg phù hợp với vai trò Silver source of truth.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/smoke_test_iceberg_minio.py` chạy thành công với
-`iceberg_smoke_count: 3`. Trên MinIO xuất hiện path
-`iceberg/warehouse/smoke/iceberg_smoke_events/`.
+Project smoke test được Iceberg table trên MinIO, build được Silver Iceberg v1 và
+reconcile với Silver Parquet prototype. Sau khi toàn bộ Silver v1 được migrate,
+các script prototype theo từng bảng được thay bằng entrypoint/checkpoint tổng hợp.
 
 **Các file liên quan**
 
-- `src/bluesky_pipeline/spark_session.py`
-- `src/bluesky_pipeline/iceberg_config.py`
 - `scripts/smoke_test_iceberg_minio.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Iceberg cần Spark runtime package, SQL extensions và catalog config riêng.
-- Hadoop catalog trên MinIO là lựa chọn đơn giản cho local smoke test trước khi
-  thêm catalog phức tạp hơn.
-- Smoke test nhỏ giúp tách lỗi môi trường Iceberg khỏi logic migrate Silver thật.
-
-## Bước 71: Build thử Silver posts bằng Iceberg
-
-**Mục tiêu**
-
-Tạo bảng Iceberg đầu tiên cho Silver layer bằng cách đọc `silver_posts` Parquet v1
-và ghi thử sang `lakehouse.silver_v1.silver_posts`.
-
-**Vì sao cần thực hiện**
-
-Sau khi môi trường Iceberg đã chạy được bằng smoke test, cần thử với một bảng
-Silver thật để kiểm tra schema thực tế, metadata table và layout warehouse trên
-MinIO. Bảng `silver_posts` được chọn trước vì là bảng lõi và đã có count ổn định.
-
-**Kết quả sau khi hoàn thành**
-
-Một script thử nghiệm theo một bảng đã chạy thành công với
-`iceberg_silver_posts_count: 119`. Trên MinIO xuất hiện path
-`iceberg/warehouse/silver_v1/silver_posts/`. Sau khi pattern được chứng minh, các
-script thử nghiệm riêng cho một bảng được thay bằng entrypoint toàn layer
-`scripts/build_iceberg_silver_v1.py`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/iceberg_config.py`
-- `src/bluesky_pipeline/silver_tables.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Migrate sang Iceberg nên bắt đầu bằng một bảng thật nhưng phạm vi nhỏ, chưa thay
-  thế ngay toàn bộ Silver Parquet.
-- DataFrameWriterV2 với `.writeTo(...).using("iceberg")` tạo table qua Iceberg
-  catalog thay vì chỉ ghi file Parquet rời.
-- Count bằng nhau là checkpoint đầu tiên, nhưng chưa đủ; cần reconciliation thêm
-  các metric/schema quan trọng.
-
-## Bước 72: Reconcile Silver posts Parquet với Iceberg
-
-**Mục tiêu**
-
-Tạo checkpoint reconciliation giữa `silver_posts` Parquet v1 và bảng Iceberg
-`lakehouse.silver_v1.silver_posts`.
-
-**Vì sao cần thực hiện**
-
-Việc ghi được Iceberg table chưa đủ để khẳng định migrate thử thành công. Cần so
-sánh các metric quan trọng giữa nguồn Parquet hiện tại và bảng Iceberg mới để đảm
-bảo dữ liệu không bị thiếu hoặc biến đổi sai trong quá trình ghi.
-
-**Kết quả sau khi hoàn thành**
-
-Checkpoint thử nghiệm cho `silver_posts` chạy thành công và báo
-`Iceberg Silver posts reconciliation passed`. Các metric như `row_count`,
-`reply_count` và `text_length_sum` khớp giữa Parquet và Iceberg. Sau đó checkpoint
-riêng này được thay bằng `scripts/check_iceberg_silver_v1.py` để kiểm tra toàn bộ
-Silver v1.
-
-**Các file liên quan**
-
-- `scripts/check_iceberg_silver_v1.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `src/bluesky_pipeline/iceberg_config.py`
-- `src/bluesky_pipeline/silver_tables.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi migrate table format, reconciliation nên so cả số dòng và các tổng metric
-  có ý nghĩa, không chỉ kiểm tra table đọc được.
-- Iceberg table có metadata riêng, nhưng dữ liệu nghiệp vụ vẫn phải khớp với
-  nguồn rebuild hiện tại.
-- Checkpoint reconciliation là điều kiện tốt trước khi migrate thêm các bảng
-  Silver khác.
-
-## Bước 73: Chuẩn hóa metadata Iceberg Silver table
-
-**Mục tiêu**
-
-Đưa namespace và table name của `silver_posts` Iceberg vào
-`src/bluesky_pipeline/iceberg_config.py` để các script build, read và reconcile
-dùng chung.
-
-**Vì sao cần thực hiện**
-
-Iceberg namespace và table name là contract chung giữa các script thao tác với
-cùng một bảng. Nếu hard-code lặp ở nhiều file, việc đổi catalog, namespace hoặc
-tên bảng sẽ dễ gây lệch giữa build, read và reconciliation.
-
-**Kết quả sau khi hoàn thành**
-
-`ICEBERG_SILVER_NAMESPACE` và metadata bảng Silver Iceberg được khai báo trong
-`src/bluesky_pipeline/iceberg_config.py`. Các entrypoint Iceberg Silver v1 dùng
-metadata chung và checkpoint reconciliation vẫn pass.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/iceberg_config.py`
 - `scripts/build_iceberg_silver_v1.py`
 - `scripts/check_iceberg_silver_v1.py`
-- `docs/huong-dan-lam-viec-voi-codex.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/spark_session.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Metadata có tính contract như table name, namespace, path, topic hoặc checkpoint
-  phải được gom vào module dùng chung ngay khi tạo nếu sẽ dùng ở nhiều nơi.
-- Refactor metadata Iceberg giúp mở rộng sang các bảng Silver khác theo cùng
-  pattern.
-- Rules làm việc cũng cần được cập nhật khi phát hiện một lỗi quy trình lặp lại.
+- Iceberg nên bắt đầu từ Silver, nơi cần table semantics rõ hơn Bronze.
+- Reconcile prototype với Iceberg giúp đảm bảo migration không làm đổi dữ liệu.
+- Không nên giữ mã prototype song song quá lâu khi đã có entrypoint chính.
 
-## Bước 74: Build và reconcile Silver engagements bằng Iceberg
+## Bước 13: Chuẩn hóa Gold refresh từ Silver Iceberg
 
 **Mục tiêu**
 
-Tạo bảng Iceberg cho `silver_engagements`, đọc kiểm chứng và reconcile với bảng
-Silver Parquet v1 hiện tại.
+Build Gold aggregates từ Silver Iceberg và load vào ClickHouse bằng entrypoint
+refresh chính thức.
 
 **Vì sao cần thực hiện**
 
-Sau `silver_posts`, `silver_engagements` là bảng Silver quan trọng tiếp theo vì là
-nguồn của các Gold metrics về like/repost và post engagement. Migrate thử bảng này
-sang Iceberg giúp kiểm tra pattern với dữ liệu có phân loại event và subject URI.
+Sau khi Silver Iceberg trở thành source of truth, Gold serving không nên phụ thuộc
+vào Parquet prototype. Luồng chính thức phải là:
+
+`Silver Iceberg -> Gold aggregate -> ClickHouse`.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/build_iceberg_silver_engagements.py`,
-`scripts/read_iceberg_silver_engagements.py` và
-`scripts/check_iceberg_silver_engagements_reconciliation.py` chạy thành công.
-Count Iceberg là `iceberg_silver_engagements_count: 981` và reconciliation báo
-`Iceberg Silver engagements reconciliation passed`.
+Project có scripts build Gold event volume và post engagement summary từ Silver
+Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.py`
+để chạy refresh Gold serving v1.
 
 **Các file liên quan**
 
-- `src/bluesky_pipeline/iceberg_config.py`
-- `src/bluesky_pipeline/silver_tables.py`
-- `scripts/build_iceberg_silver_engagements.py`
-- `scripts/read_iceberg_silver_engagements.py`
-- `scripts/check_iceberg_silver_engagements_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi thêm Iceberg table mới, metadata table phải được khai báo trong module dùng
-  chung ngay từ đầu.
-- Reconciliation cho engagement cần kiểm tra cả tổng dòng, like/repost count và
-  subject URI vì đây là contract nối engagement về post gốc.
-- Migrate từng bảng Silver giúp kiểm soát lỗi trước khi thay thế toàn bộ Silver
-  Parquet prototype.
-
-## Bước 75: Build và reconcile toàn bộ Silver v1 bằng Iceberg
-
-**Mục tiêu**
-
-Tạo batch scripts để build và reconcile toàn bộ các bảng Silver v1 dạng Iceberg:
-`silver_posts`, `silver_engagements`, `silver_follows` và
-`silver_deleted_records`.
-
-**Vì sao cần thực hiện**
-
-Sau khi `silver_posts` và `silver_engagements` đã chứng minh pattern hoạt động,
-không cần tiếp tục tạo từng script thử nghiệm riêng cho từng bảng. Một entrypoint
-build và một entrypoint reconciliation cho toàn bộ Silver v1 giúp migration gọn
-hơn, giảm thao tác lặp và thể hiện rõ đây là một lớp Silver Iceberg hoàn chỉnh.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_iceberg_silver_v1.py` build đủ 4 bảng Iceberg và in count:
-`iceberg_silver_posts_count: 119`, `iceberg_silver_engagements_count: 981`,
-`iceberg_silver_follows_count: 67` và
-`iceberg_silver_deleted_records_count: 29`.
-`scripts/check_iceberg_silver_v1.py` chạy thành công và báo
-`Iceberg Silver v1 reconciliation passed`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/iceberg_config.py`
-- `src/bluesky_pipeline/silver_tables.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `scripts/check_iceberg_silver_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi pattern đã được chứng minh, nên chuyển từ script thử nghiệm lẻ sang batch
-  entrypoint theo layer.
-- Reconciliation tổng hợp giúp xác nhận toàn bộ Silver v1 Iceberg khớp với Silver
-  Parquet prototype.
-- Các script thử nghiệm lẻ không còn vai trò lâu dài thì không nên commit để tránh
-  repo phình và gây nhầm luồng chạy chính.
-
-## Bước 76: Build Gold event volume từ Silver Iceberg
-
-**Mục tiêu**
-
-Tạo phiên bản Gold event volume đọc từ Silver Iceberg v1 và so sánh với Gold event
-volume cũ đọc từ Silver Parquet.
-
-**Vì sao cần thực hiện**
-
-Sau khi Silver Iceberg v1 đã reconcile với Silver Parquet, cần kiểm tra downstream
-Gold aggregate có thể được rebuild từ Iceberg source mà vẫn cho kết quả giống
-luồng cũ. Bước này chứng minh Iceberg có thể trở thành nguồn rebuild cho Gold.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_gold_event_volume_from_iceberg.py` tạo được Gold event volume từ
-Silver Iceberg. Kết quả được kiểm chứng với luồng Gold cũ trước khi chuyển dần
-ClickHouse load sang nguồn Iceberg.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `src/bluesky_pipeline/iceberg_config.py`
 - `scripts/build_gold_event_volume_from_iceberg.py`
+- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
+- `scripts/refresh_gold_serving_from_iceberg.py`
+- `scripts/check_gold_serving_v1.py`
+- `src/bluesky_pipeline/gold_tables.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Tên script nên phản ánh đúng vai trò; `refresh` phù hợp hơn `rebuild` khi đây là
+  luồng vận hành chính chứ không chỉ là thao tác sửa lỗi.
+- Gold staging trên MinIO là output trung gian; ClickHouse là serving mart cho
+  query/dashboard.
+- Gold historical path ưu tiên khả năng rebuild/reconcile hơn latency thấp.
+
+## Bước 14: Bổ sung reconciliation và checkpoint chất lượng
+
+**Mục tiêu**
+
+Tạo các checkpoint CLI để kiểm chứng Silver, Gold staging và ClickHouse serving
+khớp nhau.
+
+**Vì sao cần thực hiện**
+
+Data pipeline cần kiểm tra hành vi, không chỉ kiểm tra service đang chạy.
+Reconciliation giúp phát hiện lệch count giữa Silver source of truth, Gold output
+và ClickHouse serving layer.
+
+**Kết quả sau khi hoàn thành**
+
+Project có checkpoint cho Silver v1, Iceberg Silver v1, Gold event volume, Gold
+post engagement, ClickHouse Gold và Gold serving tổng hợp. Các script này phục vụ
+debug local và demo pipeline.
+
+**Các file liên quan**
+
+- `scripts/check_silver_v1.py`
+- `scripts/check_iceberg_silver_v1.py`
 - `scripts/check_gold_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Khi đổi source layer từ Parquet sang Iceberg, nên chạy song song và reconcile
-  trước khi thay thế luồng cũ.
-- Gold aggregate phải rebuild được từ Silver Iceberg nếu Iceberg là Silver source
-  chính trong kiến trúc mục tiêu.
-- Reconciliation giữa hai nguồn Gold giúp phát hiện khác biệt logic trước khi load
-  vào serving database.
-
-## Bước 77: Build Gold post engagement từ Silver Iceberg
-
-**Mục tiêu**
-
-Tạo phiên bản Gold post engagement summary đọc từ Silver Iceberg v1 và so sánh với
-Gold post engagement summary cũ đọc từ Silver Parquet.
-
-**Vì sao cần thực hiện**
-
-Sau khi event volume đã khớp khi đổi source sang Iceberg, cần kiểm tra tiếp
-aggregate phức tạp hơn có join giữa `silver_posts` và `silver_engagements`.
-Bước này đảm bảo Gold post engagement summary có thể rebuild từ Silver Iceberg mà
-không làm lệch count hoặc tổng engagement metrics.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/build_gold_post_engagement_summary_from_iceberg.py` tạo được Gold post
-engagement summary từ Silver Iceberg. Kết quả được kiểm chứng với luồng Gold cũ
-trước khi chuyển dần ClickHouse load sang nguồn Iceberg.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `src/bluesky_pipeline/iceberg_config.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/check_gold_post_engagement_reconciliation.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Iceberg là Silver Lakehouse, không phải Gold serving layer trong kiến trúc mục
-  tiêu.
-- Khi đổi nguồn build Gold, cần kiểm chứng aggregate phức tạp có join giữa posts
-  và engagements, không chỉ kiểm tra tổng row count.
-- Gold serving chính vẫn là ClickHouse; sau khi reconcile xong cần load/rebuild
-  ClickHouse từ nguồn Iceberg.
-
-## Bước 78: Load ClickHouse Gold từ Silver Iceberg source
-
-**Mục tiêu**
-
-Chuyển nguồn load ClickHouse Gold sang các Gold outputs được build từ Silver
-Iceberg, rồi chạy lại checkpoint Gold serving v1.
-
-**Vì sao cần thực hiện**
-
-Kiến trúc mục tiêu là Silver Lakehouse bằng Iceberg và Gold serving bằng
-ClickHouse. Sau khi đã chứng minh các Gold aggregate từ Silver Iceberg khớp với
-luồng cũ, cần dùng chúng làm nguồn load ClickHouse để hoàn tất đường đi
-`Silver Iceberg -> Gold ClickHouse`.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/load_gold_event_volume_to_clickhouse.py` và
-`scripts/load_gold_post_engagement_summary_to_clickhouse.py` đọc từ các source
-được build từ Silver Iceberg. Chạy lại toàn bộ luồng build từ Iceberg, load
-ClickHouse và `scripts/check_gold_serving_v1.py` thành công với
-`Gold serving v1 check passed`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/build_iceberg_silver_v1.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
 - `scripts/check_gold_serving_v1.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `scripts/check_clickhouse_gold_event_volume.py`
+- `scripts/check_clickhouse_gold_post_engagement_summary.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Gold ClickHouse vẫn là serving layer; Iceberg chỉ đóng vai trò Silver source để
-  rebuild Gold.
-- Khi đổi source cho ClickHouse load, cần chạy lại cả build aggregate, load
-  serving và reconciliation.
-- Alias source trong `gold_tables.py` giúp thể hiện rõ ClickHouse đang load từ
-  outputs build từ Silver Iceberg.
+- Reconciliation nên so sánh theo business metric, không chỉ so sánh row count
+  tổng.
+- CLI checkpoint rất hữu ích trước khi có orchestration hoặc dashboard hoàn chỉnh.
+- Không nên tuyên bố dữ liệu đúng nếu chưa có output kiểm chứng.
 
-## Bước 79: Chuẩn hóa luồng Gold từ Silver Iceberg thành luồng chính thức
+## Bước 15: Chốt hai serving paths: realtime và historical
 
 **Mục tiêu**
 
-Bỏ cách đặt tên `_iceberg_source` như một artifact tạm và chuyển các script build
-Gold từ Silver Iceberg sang ghi vào Gold path chính dùng để load ClickHouse.
+Chốt kiến trúc dashboard có hai path song song:
+
+- Fast path gần thời gian thực.
+- Historical/lakehouse path có khả năng rebuild.
 
 **Vì sao cần thực hiện**
 
-Sau khi đã chứng minh Gold aggregates build từ Silver Iceberg khớp với luồng cũ,
-việc tiếp tục giữ tên `_iceberg_source` dễ gây hiểu nhầm rằng đây vẫn là nhánh thử
-nghiệm. Kiến trúc hiện tại đã xác định Silver Iceberg là analytical source of
-truth và ClickHouse là Gold serving layer, nên contract path và tài liệu chạy local
-cần phản ánh đúng luồng chính.
-
-**Kết quả sau khi hoàn thành**
-
-`src/bluesky_pipeline/gold_tables.py` không còn khai báo các path
-`*_ICEBERG_SOURCE_PATH`. Hai script build Gold từ Iceberg ghi vào path Gold chính,
-hai script load ClickHouse đọc từ source path chính, README mô tả luồng
-`Silver Iceberg -> Gold staging -> ClickHouse`, và `scripts/check_gold_serving_v1.py`
-chạy thành công.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `scripts/read_gold_event_volume.py`
-- `scripts/check_gold_serving_v1.py`
-- `README.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Tên path, biến và script cũng là một phần của contract kiến trúc; tên tạm nên
-  được dọn sau khi luồng đã trở thành chính thức.
-- Gold trên MinIO trong bước này chỉ là staging/rebuild output trước khi load vào
-  ClickHouse, không phải Gold serving layer cuối cùng.
-- Khi xóa một artifact tạm, cần rà lại import, README và checkpoint để tránh để
-  lại reference chết trong repo.
-
-## Bước 80: Tạo entrypoint refresh Gold serving từ Silver Iceberg
-
-**Mục tiêu**
-
-Tạo một script tổng hợp để refresh toàn bộ Gold serving từ Silver Iceberg bằng một
-command duy nhất.
-
-**Vì sao cần thực hiện**
-
-Sau khi luồng `Silver Iceberg -> Gold staging -> ClickHouse` đã chạy ổn, việc phải
-nhớ nhiều command rời dễ gây lỗi thao tác khi demo, debug hoặc rebuild local.
-Một entrypoint tổng hợp giúp biến khả năng refresh ClickHouse từ Silver Iceberg
-thành một workflow rõ ràng, có thể kiểm chứng và sau này dễ chuyển thành Airflow
-DAG.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/refresh_gold_serving_from_iceberg.py` gọi lần lượt các bước build Gold
-staging từ Silver Iceberg, load hai bảng ClickHouse Gold và chạy
-`scripts/check_gold_serving_v1.py`. Script chạy thành công và kết thúc với
-`Gold serving v1 check passed`.
-
-**Các file liên quan**
-
-- `scripts/refresh_gold_serving_from_iceberg.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/load_gold_event_volume_to_clickhouse.py`
-- `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `scripts/check_gold_serving_v1.py`
-- `README.md`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Một script orchestration local nên gọi lại các hàm đã có thay vì copy lại logic
-  build/load/check.
-- Entrypoint refresh giúp chứng minh ClickHouse không phải source of truth duy
-  nhất vì có thể được tái tạo từ Silver Iceberg.
-- Trong phiên bản hiện tại, refresh là full refresh: build lại Gold staging,
-  truncate ClickHouse serving table và load lại dữ liệu.
-- Workflow đã chạy ổn trong script local là ứng viên tự nhiên để chuyển thành
-  orchestration bằng Airflow ở milestone sau.
-
-## Bước 81: Dọn các script prototype đã được thay thế
-
-**Mục tiêu**
-
-Loại bỏ các script thử nghiệm cũ đã được thay bằng entrypoint hiện tại, đồng thời
-cập nhật tài liệu để không còn tham chiếu tới file không tồn tại.
-
-**Vì sao cần thực hiện**
-
-Khi project đi qua nhiều bước học tập, một số script ban đầu chỉ còn giá trị thử
-nghiệm. Nếu giữ lại quá nhiều entrypoint cũ, người đọc repo sẽ khó biết đâu là
-luồng chính hiện tại. Dọn nhẹ trước khi thêm streaming end-to-end giúp repo bớt
-nhiễu và giảm rủi ro chạy nhầm script cũ.
-
-**Kết quả sau khi hoàn thành**
-
-Các script Gold đọc từ Silver Parquet và các script Iceberg thử riêng cho
-`silver_posts` đã được xóa. Luồng hiện tại dùng các entrypoint theo layer:
-`scripts/build_iceberg_silver_v1.py`,
-`scripts/check_iceberg_silver_v1.py`,
-`scripts/build_gold_event_volume_from_iceberg.py`,
-`scripts/build_gold_post_engagement_summary_from_iceberg.py` và
-`scripts/refresh_gold_serving_from_iceberg.py`. Checkpoint sau cleanup chạy
-thành công và thay đổi đã được push.
-
-**Các file liên quan**
-
-- `scripts/build_iceberg_silver_v1.py`
-- `scripts/check_iceberg_silver_v1.py`
-- `scripts/build_gold_event_volume_from_iceberg.py`
-- `scripts/build_gold_post_engagement_summary_from_iceberg.py`
-- `scripts/refresh_gold_serving_from_iceberg.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Script prototype nên được xóa hoặc thay thế khi đã có entrypoint chính rõ ràng.
-- Tài liệu quy trình có thể giữ lại bài học lịch sử, nhưng phần file liên quan
-  không nên trỏ tới đường dẫn đã bị xóa khỏi repo.
-- Dọn repo theo từng cụm nhỏ an toàn hơn restructure lớn khi sắp thêm luồng dữ
-  liệu mới.
-
-## Bước 82: Tạo ClickHouse table cho streaming event volume theo phút
-
-**Mục tiêu**
-
-Tạo bảng ClickHouse mới để nhận event volume realtime theo từng phút từ Spark
-Structured Streaming.
-
-**Vì sao cần thực hiện**
-
-Luồng Gold hiện tại là batch/full refresh từ Silver Iceberg sang ClickHouse. Để
-xây dựng vertical slice streaming tới dashboard, cần một bảng serving dạng time
-series để Spark streaming có thể append aggregate theo micro-batch và Grafana có
-thể vẽ biểu đồ theo thời gian.
-
-**Kết quả sau khi hoàn thành**
-
-`src/bluesky_pipeline/gold_tables.py` có metadata và DDL cho bảng
-`bluesky.gold_event_volume_1m_stream`. Script
-`scripts/create_clickhouse_gold_tables.py` tạo thêm bảng này trong ClickHouse.
-Lệnh `SHOW TABLES FROM bluesky` hiển thị `gold_event_volume_1m_stream`.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Dashboard realtime cần bảng time series, không chỉ bảng snapshot aggregate tổng.
-- `SummingMergeTree` phù hợp cho bảng aggregate append theo key
-  `(window_start, event_type)` trong môi trường local học tập.
-- Tách bảng streaming riêng giúp không làm lẫn Gold batch serving hiện tại với
-  luồng streaming end-to-end mới.
-
-## Bước 83: Stream event volume theo phút từ Kafka vào ClickHouse
-
-**Mục tiêu**
-
-Tạo Spark Structured Streaming job đọc raw events từ Kafka, aggregate số lượng
-event theo phút và ghi trực tiếp vào bảng ClickHouse streaming.
-
-**Vì sao cần thực hiện**
-
-Các bước trước đã có ingestion vào Kafka, Bronze/Silver/Gold batch và ClickHouse
-serving refresh. Để chứng minh luồng streaming end-to-end tới dashboard, cần một
-job streaming ghi metric mới vào ClickHouse mà không phải chờ batch refresh từ
-Silver Iceberg.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/stream_realtime_metrics_to_clickhouse.py` đọc Kafka topic raw events, parse
-event envelope, map commit collection/operation thành `event_type`, aggregate
-theo `window_start` từng phút và insert vào
-`bluesky.gold_event_volume_1m_stream`. Sau khi publish events hai lần, query
-ClickHouse trả về nhiều bucket phút như `2026-07-05 23:27:00` và
-`2026-07-05 23:30:00` với các event type `deleted_record`, `follow`, `like`,
-`post` và `repost`.
-
-**Các file liên quan**
-
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `src/bluesky_pipeline/gold_tables.py`
-- `src/bluesky_pipeline/kafka_config.py`
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `src/bluesky_pipeline/clickhouse_client.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- `foreachBatch` là cách thực dụng để Spark Structured Streaming ghi sang sink
-  không có connector streaming chính thức trong project hiện tại.
-- Bảng realtime hiện dùng Kafka timestamp làm thời gian bucket theo phút, phù hợp
-  cho lát cắt dashboard đầu tiên.
-- Luồng này đang theo semantics at-least-once; nếu Spark ghi ClickHouse xong nhưng
-  chưa checkpoint rồi bị restart, micro-batch có thể bị insert lại.
-
-## Bước 84: Kiểm tra streaming event volume bằng CLI và Grafana
-
-**Mục tiêu**
-
-Tạo checkpoint CLI cho bảng streaming event volume và xác nhận Grafana dashboard
-có thể hiển thị dữ liệu mới khi publish event vào Kafka.
-
-**Vì sao cần thực hiện**
-
-Dashboard UI giúp chứng minh luồng end-to-end trực quan, nhưng repo vẫn cần một
-command kiểm chứng được bằng terminal để debug và demo ổn định. Checkpoint CLI
-giúp xác nhận ClickHouse đã nhận dữ liệu realtime trước khi phụ thuộc vào Grafana
-panel và time range.
-
-**Kết quả sau khi hoàn thành**
-
-`scripts/check_clickhouse_stream_event_volume.py` in summary của bảng
-`bluesky.gold_event_volume_1m_stream` và các bucket mới nhất theo
-`window_start`/`event_type`. Grafana query đọc được dữ liệu khi time range bao
-đúng khoảng dữ liệu, panel time series hiển thị các event mới sau khi publish vào
-Kafka và bật hoặc bấm lại refresh query.
-
-**Các file liên quan**
-
-- `scripts/check_clickhouse_stream_event_volume.py`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Với dashboard realtime, cần kiểm tra cả dữ liệu trong serving table và cấu hình
-  time range của Grafana.
-- Query không có `$__timeFilter` giúp phân biệt lỗi dữ liệu với lỗi time picker
-  hoặc timezone trong Grafana.
-- Grafana không tự cập nhật nếu chưa bật auto-refresh; interval refresh nên khớp
-  tương đối với trigger interval của Spark streaming job.
-
-## Bước 85: Bổ sung Spark batch id cho streaming event volume
-
-**Mục tiêu**
-
-Thêm `spark_batch_id` vào bảng streaming event volume và checkpoint CLI để quan
-sát từng micro-batch Spark đã ghi vào ClickHouse.
-
-**Vì sao cần thực hiện**
-
-`foreachBatch` ghi dữ liệu theo từng micro-batch. Luồng hiện tại chấp nhận
-at-least-once, nên nếu Spark ghi ClickHouse xong nhưng chưa checkpoint rồi bị
-restart, cùng một batch có thể được ghi lại. `spark_batch_id` chưa giải quyết
-idempotency hoàn chỉnh, nhưng giúp debug và giải thích rõ batch nào đã tạo ra dữ
-liệu trong bảng serving.
-
-**Kết quả sau khi hoàn thành**
-
-DDL của `bluesky.gold_event_volume_1m_stream` có thêm cột `spark_batch_id`.
-`scripts/stream_realtime_metrics_to_clickhouse.py` insert `batch_id` do Spark cung cấp
-vào ClickHouse. `scripts/check_clickhouse_stream_event_volume.py` in thêm
-`spark_batch_id` trong phần latest rows. Bảng local được tạo lại với schema mới và
-checkpoint CLI chạy thành công.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_stream_event_volume.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- `batch_id` trong `foreachBatch` là metadata quan trọng để quan sát/reason về
-  micro-batch Spark.
-- Thêm cột vào ClickHouse table bằng `CREATE TABLE IF NOT EXISTS` không tự đổi
-  schema bảng đã tồn tại; với bảng local có thể drop và tạo lại khi schema còn
-  đang thử nghiệm.
-- Dashboard nên aggregate theo business key `window_start` và `event_type`; không
-  nên tách series theo `spark_batch_id` vì batch id chỉ phục vụ debug.
-
-## Bước 86: Chốt kiến trúc fast path và historical path cho dashboard
-
-**Mục tiêu**
-
-Cập nhật kiến trúc tổng thể để thể hiện rõ dashboard có hai luồng phục vụ song
-song: fast path gần thời gian thực và historical/lakehouse path có khả năng
-rebuild.
-
-**Vì sao cần thực hiện**
-
-Sơ đồ tuyến tính `Kafka -> Spark -> Bronze -> Silver -> Gold -> Grafana` dễ gây
-hiểu nhầm rằng mọi chỉ số dashboard đều phải đi qua Silver Iceberg trước. Trong
-thực tế, project cần một luồng nhanh từ Kafka sang ClickHouse cho chỉ số realtime,
-đồng thời vẫn giữ Silver Iceberg làm source of truth cho dữ liệu lịch sử, kiểm
-tra chất lượng, backfill và rebuild.
+Sơ đồ tuyến tính `Kafka -> Bronze -> Silver -> Gold -> Grafana` dễ gây hiểu nhầm
+rằng mọi dashboard đều phải đi qua Silver trước. Với realtime metrics cần latency
+thấp, hệ thống dùng path riêng từ Kafka sang ClickHouse. Silver Iceberg vẫn giữ
+vai trò source of truth cho dữ liệu lịch sử, backfill và rebuild.
 
 **Kết quả sau khi hoàn thành**
 
 `docs/tong-quan-du-an.md` mô tả rõ:
 
 - Fast path: `Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana`.
-- Historical/lakehouse path: `Kafka -> Bronze Parquet -> Silver Iceberg -> ClickHouse historical marts -> Grafana`.
-- Observability path: service metrics được thu thập bởi Prometheus và hiển thị
-  trên Grafana technical dashboard.
+- Historical path: `Kafka -> Bronze -> Silver Iceberg -> Gold refresh -> ClickHouse -> Grafana`.
+- Observability path: logs/metrics/checkpoints phục vụ vận hành.
 
-Kiến trúc cũng ghi rõ realtime trong project là near-real-time, có độ trễ từ Spark
-micro-batch, ClickHouse insert và Grafana refresh.
+Kiến trúc được mô tả là lambda-like streaming lakehouse architecture: có fast path
+cho realtime metrics, có historical/lakehouse path cho backfill, correction và
+rebuild, nhưng không phải Lambda Architecture cổ điển với hai codebase hoàn toàn
+tách biệt.
 
 **Các file liên quan**
 
 - `docs/tong-quan-du-an.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 - `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/refresh_gold_serving_from_iceberg.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Fast path tối ưu cho latency thấp nhưng không thay thế lakehouse source of
-  truth.
-- Historical path tối ưu cho độ tin cậy, backfill, rebuild và reconciliation.
-- ClickHouse là serving layer; các bảng realtime trong ClickHouse phục vụ
-  dashboard và cần được giải thích theo semantics hiện tại, chưa tuyên bố
-  exactly-once end-to-end.
-- Dashboard realtime trong data platform thường là near-real-time, không phải
-  cập nhật từng event ngay lập tức trên trình duyệt.
+- Fast path không thay thế Silver Iceberg.
+- ClickHouse realtime marts là serving tables, không phải source of truth duy
+  nhất.
+- Near-real-time luôn có độ trễ từ Spark trigger, ClickHouse insert và Grafana
+  refresh.
+- Project có lai một phần tư duy Kappa vì Kafka là event backbone chung và Spark
+  được dùng cho cả streaming lẫn batch, nhưng không phải Kappa thuần vì vẫn có
+  Bronze/Silver Iceberg làm historical source of truth.
 
-## Bước 87: Tối ưu fast path bằng stateless micro-batch aggregation
+## Bước 16: Xây dựng realtime fast path vào ClickHouse
 
 **Mục tiêu**
 
-Điều chỉnh realtime Spark job để aggregate event volume bên trong từng
-micro-batch `foreachBatch`, thay vì dùng streaming aggregation có state store
-trước khi ghi ClickHouse.
+Xây dựng Spark streaming job đọc Kafka, aggregate realtime metrics theo phút và
+ghi vào ClickHouse realtime marts.
 
 **Vì sao cần thực hiện**
 
-Luồng fast path hiện tại chỉ cần metric đơn giản cho dashboard realtime:
-event count theo phút và event type. Khi dùng `groupBy` trực tiếp trên streaming
-DataFrame, Spark phải duy trì state store và checkpoint state cho window
-aggregation. Trong môi trường local, điều này tạo nhiều log state store và có thể
-làm batch thường xuyên `falling behind`. Với metric append đơn giản, aggregate
-trong từng micro-batch giúp luồng nhẹ hơn và phù hợp hơn với mục tiêu latency của
-fast path.
+Historical path phục vụ baseline/rebuild, nhưng dashboard realtime cần dữ liệu cập
+nhật nhanh hơn mà không chờ Silver/Gold batch refresh.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/stream_realtime_metrics_to_clickhouse.py` đọc Kafka stream, parse event và
-map `event_type` như trước. DataFrame streaming chưa aggregate được đưa vào
-`foreachBatch`; trong mỗi micro-batch, script group theo
-`window_start` và `event_type`, tạo payload JSONEachRow rồi insert vào
-`bluesky.gold_event_volume_1m_stream`. Sau thay đổi, job vẫn ghi được dữ liệu mới
-vào ClickHouse và không còn cảnh báo `falling behind` lặp liên tục.
+Project có entrypoint `scripts/stream_realtime_metrics_to_clickhouse.py` ghi các
+realtime marts:
+
+- `gold_event_volume_1m_stream`
+- `gold_content_activity_1m_stream`
+- `gold_engagement_1m_stream`
+- `gold_network_activity_1m_stream`
+- `gold_realtime_stream_batches`
+
+Spark job dùng `foreachBatch`, aggregate trong từng micro-batch và ghi
+ClickHouse qua HTTP JSONEachRow. Job cũng có `maxOffsetsPerTrigger` cấu hình qua
+`SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER` để tránh một batch phình quá lớn khi Kafka
+có backlog.
 
 **Các file liên quan**
 
 - `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_stream_event_volume.py`
+- `scripts/create_clickhouse_gold_tables.py`
+- `scripts/check_clickhouse_realtime_metrics.py`
 - `src/bluesky_pipeline/gold_tables.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `src/bluesky_pipeline/kafka_config.py`
 
 **Kiến thức cần ghi nhớ**
 
-- `foreachBatch` nhận một DataFrame tĩnh đại diện cho micro-batch hiện tại, nên
-  aggregation bên trong hàm này là batch aggregation bình thường.
-- Với dashboard fast path đơn giản, stateless micro-batch aggregation có thể thực
-  dụng hơn stateful streaming aggregation.
-- Cách này không thay thế các bài toán event-time/stateful nghiêm túc ở Silver
-  hoặc Gold historical path; nó chỉ tối ưu cho realtime serving metric đơn giản.
-- `spark_batch_id` vẫn là metadata debug. Business query trên Grafana phải group
-  theo `window_start` và `event_type`, không group theo `spark_batch_id`.
+- `foreachBatch` nhận DataFrame tĩnh của micro-batch, nên aggregation bên trong
+  hàm là batch aggregation bình thường.
+- Hiện tại collect aggregate về Driver chấp nhận được vì metric cardinality thấp.
+  Nếu mở rộng sang top user, hashtag hoặc domain, cần chuyển sang connector/JDBC
+  hoặc `foreachPartition`.
+- `input_rows = count()` phục vụ batch health nhưng là một action bổ sung; workload
+  lớn hơn có thể lấy từ streaming progress metrics.
+- Semantics hiện tại là at-least-once; chưa tuyên bố exactly-once end-to-end.
 
-## Bước 88: Kiểm chứng realtime dashboard và freshness panel
+## Bước 17: Hoàn thiện Grafana realtime dashboard và operational health
 
 **Mục tiêu**
 
-Kiểm chứng Grafana có thể hiển thị event volume realtime từ ClickHouse và có panel
-freshness để quan sát luồng streaming còn đang cập nhật hay không.
+Hiển thị business realtime metrics và operational health trên Grafana.
 
 **Vì sao cần thực hiện**
 
-Biểu đồ event count chỉ cho biết có dữ liệu phân tích, nhưng chưa trả lời được
-pipeline có đang sống hay đã đứng. Freshness panel bổ sung một tín hiệu vận hành
-đơn giản: lần ghi gần nhất vào ClickHouse cách hiện tại bao lâu. Đây là bước quan
-trọng để dashboard realtime không chỉ phục vụ business metric mà còn giúp debug
-luồng dữ liệu.
+Dashboard realtime không chỉ cần trả lời “người dùng đang làm gì” mà còn cần trả
+lời “pipeline có đang chạy tốt không”. Vì vậy cần cả business panels và health
+panels.
 
 **Kết quả sau khi hoàn thành**
 
-Grafana có time series panel đọc từ
-`bluesky.gold_event_volume_1m_stream`, group theo `window_start` và `event_type`,
-đồng thời bỏ qua `spark_batch_id` để không tách series theo Spark micro-batch.
-Dashboard cũng có freshness stat/table dựa trên `max(loaded_at)` và
-`max(window_start)`. Khi Spark streaming và ingestion/publish chạy, biểu đồ hiển
-thị dữ liệu mới và freshness phản ánh thời điểm ClickHouse được ghi gần nhất.
+Grafana có các nhóm panel:
+
+- Event volume theo event type.
+- Content activity: post, original post, reply, post update, post delete.
+- Engagement: like, repost, reply.
+- Network activity: follow, unfollow, net follow.
+- Freshness: lần ghi ClickHouse gần nhất.
+- Batch health: batch duration, input rows, rows inserted by metric group,
+  seconds since last batch.
+
+Các query time series đã được chỉnh để group theo business key và sort tăng dần
+theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chưa sorted.
 
 **Các file liên quan**
 
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_stream_event_volume.py`
-- `src/bluesky_pipeline/gold_tables.py`
 - `docker-compose.yml`
-- `docs/quy-trinh-xay-dung-pipeline.md`
+- `scripts/check_clickhouse_realtime_metrics.py`
+- `scripts/check_clickhouse_stream_event_volume.py`
+- `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Grafana realtime panel vẫn là cơ chế query định kỳ xuống ClickHouse, không phải
-  stream từng event trực tiếp vào trình duyệt.
-- Business query phải aggregate theo business key như `window_start` và
-  `event_type`; metadata như `spark_batch_id` chỉ dùng để debug.
-- Freshness là một chỉ số vận hành quan trọng để phát hiện pipeline dừng, Kafka
-  không có event mới, Spark không ghi được hoặc ClickHouse insert gặp vấn đề.
-- Near-real-time dashboard luôn có độ trễ từ Spark trigger, thời gian ghi
-  ClickHouse và chu kỳ refresh của Grafana.
+- Grafana realtime panel vẫn query định kỳ xuống ClickHouse, không stream từng
+  event trực tiếp vào trình duyệt.
+- `spark_batch_id` chỉ dùng debug; business query không nên group theo batch id.
+- Time picker/timezone là nguyên nhân thường gặp khi query có dữ liệu trong
+  ClickHouse nhưng Grafana báo no data.
+- Grafana time series cần output sort tăng dần theo cột time.
 
-## Bước 89: Build bộ realtime metrics đầy đủ cho fast path
+## Bước 18: Trạng thái hiện tại và bài học thiết kế
 
 **Mục tiêu**
 
-Mở rộng fast path từ một metric event volume sang bộ realtime metrics đầy đủ hơn
-cho dashboard: event volume, content activity, engagement và network activity.
+Tóm tắt trạng thái hiện tại của project và các bài học thiết kế quan trọng trước
+khi chuyển sang hoàn thiện historical/lakehouse path.
 
 **Vì sao cần thực hiện**
 
-Event volume chỉ cho biết tổng quan dòng sự kiện đang chảy qua hệ thống. Dashboard
-phân tích cần thêm các góc nhìn business như lượng post/reply, mức tương tác
-like/repost/reply, biến động follow/unfollow và các metric dẫn xuất như tỷ trọng
-event type, engagement/post ratio hoặc net follow. Các metric này vẫn dùng cùng
-luồng Kafka và Spark streaming, nên nên ghi trong một realtime job chung thay vì
-tạo nhiều job đọc Kafka trùng nhau.
+Khi project đi qua nhiều prototype, tài liệu cần phản ánh kiến trúc hiện tại thay
+vì giữ nguyên mọi bước nhỏ trong quá khứ. Điều này giúp người học ôn tập và trình
+bày dự án theo mạch rõ ràng hơn.
 
 **Kết quả sau khi hoàn thành**
 
-ClickHouse có thêm các realtime marts:
+Project hiện có hai path đã chạy được ở local:
 
-- `bluesky.gold_content_activity_1m_stream`
-- `bluesky.gold_engagement_1m_stream`
-- `bluesky.gold_network_activity_1m_stream`
+- Realtime fast path:
+  `Jetstream -> Gateway -> Kafka -> Spark Streaming -> ClickHouse realtime marts -> Grafana`.
+- Historical/lakehouse path:
+  `Kafka/Bronze -> Silver Iceberg -> Gold refresh -> ClickHouse historical marts -> Grafana`.
 
-`scripts/stream_realtime_metrics_to_clickhouse.py` ghi nhiều nhóm metric trong cùng
-một `foreachBatch`: event volume, content activity, engagement và network
-activity. `scripts/check_clickhouse_realtime_metrics.py` kiểm tra summary,
-freshness, latest metrics và các metric dẫn xuất như event type share,
-engagement/post ratio và net follow. Checkpoint chạy thành công với dữ liệu live,
-các bảng mới có `last_loaded_at` gần hiện tại và có dữ liệu theo window mới nhất.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_realtime_metrics.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Một fast path có thể ghi nhiều realtime marts trong cùng một Spark micro-batch
-  nếu các metric cùng đọc từ một stream và có cùng trigger/checkpoint.
-- Không phải metric nào cũng cần lưu thành bảng riêng. Các metric như share,
-  ratio hoặc net follow có thể là query dẫn xuất từ các bảng aggregate gốc.
-- Reply vừa là content activity vừa là engagement, nên có thể xuất hiện trong hai
-  bảng metric khác nhau với ý nghĩa phân tích khác nhau.
-- Các bảng realtime phục vụ dashboard, còn Silver Iceberg vẫn là source of truth
-  cho lịch sử, backfill và rebuild.
-
-## Bước 90: Bổ sung batch health cho realtime fast path
-
-**Mục tiêu**
-
-Ghi metadata vận hành của từng Spark micro-batch vào ClickHouse để dashboard và
-CLI có thể quan sát tình trạng realtime job.
-
-**Vì sao cần thực hiện**
-
-Freshness từ `loaded_at` cho biết bảng realtime vừa được ghi gần đây hay không,
-nhưng chưa cho biết mỗi micro-batch mất bao lâu, có bao nhiêu input rows, batch có
-rỗng không và mỗi nhóm metric đã insert bao nhiêu dòng aggregate. Batch health
-giúp phân biệt các tình huống như không có event mới, Spark xử lý chậm, hoặc một
-nhóm metric không ghi ra dữ liệu dù batch vẫn có input.
-
-**Kết quả sau khi hoàn thành**
-
-ClickHouse có bảng `bluesky.gold_realtime_stream_batches` lưu các field như
-`spark_batch_id`, `batch_started_at`, `batch_finished_at`, `batch_duration_ms`,
-`input_rows`, số dòng aggregate đã ghi theo từng nhóm metric và `is_empty`.
-`scripts/stream_realtime_metrics_to_clickhouse.py` ghi một health row cho mỗi
-micro-batch, bao gồm cả batch rỗng. `scripts/check_clickhouse_realtime_metrics.py`
-in thêm `realtime_batch_health_summary` và `latest_realtime_batches`. Checkpoint
-đã xác nhận có batch mới với `input_rows`, `batch_duration_ms` và các row count
-theo từng metric group.
+Realtime path đã có business metrics và operational health. Historical path đã có
+Silver Iceberg, Gold refresh và reconciliation, nhưng vẫn cần được hoàn thiện hơn
+ở các bước tiếp theo như entrypoint vận hành rõ ràng, tài liệu runbook cuối dự án
+và orchestration/monitoring nếu milestone yêu cầu.
 
 **Các file liên quan**
 
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/create_clickhouse_gold_tables.py`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_realtime_metrics.py`
+- `docs/tong-quan-du-an.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
+- `README.md`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
+- `scripts/refresh_gold_serving_from_iceberg.py`
+- `scripts/check_clickhouse_realtime_metrics.py`
+- `scripts/check_gold_serving_v1.py`
 
 **Kiến thức cần ghi nhớ**
 
-- Realtime dashboard nên có cả business metrics và operational metrics.
-- Batch duration và input rows giúp giải thích vì sao dashboard trễ hoặc không có
-  dữ liệu mới.
-- Empty batch không phải lỗi; nó có thể chỉ nghĩa là Kafka không có event mới
-  trong trigger interval.
-- Batch health hiện phục vụ quan sát và demo local, chưa phải hệ thống alert đầy
-  đủ như Prometheus/Alertmanager.
-
-## Bước 91: Kiểm chứng Grafana operational health panels
-
-**Mục tiêu**
-
-Hiển thị các chỉ số vận hành của realtime fast path trên Grafana để quan sát tình
-trạng Spark micro-batches bên cạnh các business metrics.
-
-**Vì sao cần thực hiện**
-
-Một dashboard realtime không chỉ cần biểu đồ business như event volume,
-engagement hoặc follow/unfollow. Khi demo hoặc debug pipeline, cần biết job có
-đang chạy đều không, batch mới nhất cách hiện tại bao lâu, mỗi batch mất bao lâu
-và batch đã ghi bao nhiêu dòng aggregate vào từng nhóm metric.
-
-**Kết quả sau khi hoàn thành**
-
-Grafana có các panel operational health đọc từ
-`bluesky.gold_realtime_stream_batches`, bao gồm batch duration, input rows per
-batch, rows inserted by metric group và seconds since last batch. Các query đã
-được chỉnh để sort theo time tăng dần, phù hợp yêu cầu của Grafana time series.
-Panel đã trả dữ liệu sau khi Spark streaming ghi batch health vào ClickHouse.
-
-**Các file liên quan**
-
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/stream_realtime_metrics_to_clickhouse.py`
-- `scripts/check_clickhouse_realtime_metrics.py`
-- `docs/quy-trinh-xay-dung-pipeline.md`
-
-**Kiến thức cần ghi nhớ**
-
-- Grafana time series cần dữ liệu được sort tăng dần theo cột thời gian.
-- Business dashboard và operational dashboard nên bổ sung cho nhau: một bên trả
-  lời “người dùng đang làm gì”, bên kia trả lời “pipeline có đang chạy tốt không”.
-- Batch health table là observability tối thiểu trong ClickHouse; sau này có thể
-  bổ sung Prometheus cho metrics hệ thống như CPU, memory, Kafka lag hoặc service
-  health.
+- Tài liệu quy trình nên ghi mốc kiến trúc, không ghi mọi command đã chạy.
+- Prototype có giá trị học tập, nhưng khi bị thay thế bởi path chính thức thì nên
+  được gom vào bài học thay vì giữ thành bước riêng.
+- Fast path tối ưu latency; historical path tối ưu độ tin cậy, rebuild và
+  reconciliation.
+- README/runbook nên hoàn thiện gần cuối project, khi command và entrypoint đã ổn
+  định.
