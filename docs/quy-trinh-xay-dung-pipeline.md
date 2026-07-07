@@ -484,6 +484,14 @@ vào Parquet prototype. Luồng chính thức phải là:
 
 `Silver Iceberg -> Gold aggregate -> ClickHouse`.
 
+Trong batch/historical path, Spark xử lý dữ liệu ở cả hai đoạn chính:
+
+- `Bronze -> Spark -> Silver Iceberg`
+- `Silver Iceberg -> Spark -> Gold aggregate -> ClickHouse`
+
+ClickHouse chỉ là serving layer cho historical marts, không phải nơi xử lý dữ liệu
+gốc chính.
+
 **Kết quả sau khi hoàn thành**
 
 Project có scripts build Gold event volume và post engagement summary từ Silver
