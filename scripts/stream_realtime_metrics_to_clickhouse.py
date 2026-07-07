@@ -24,6 +24,7 @@ from bluesky_pipeline.gold_tables import (
 from bluesky_pipeline.kafka_config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_RAW_EVENTS_TOPIC,
+    SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER,
     SPARK_KAFKA_CONNECTOR_PACKAGE,
 )
 from bluesky_pipeline.spark_session import create_spark_session
@@ -49,6 +50,8 @@ def build_clickhouse_payload(
     Input chính là DataFrame gồm window_start, metric column và count column.
     Output là chuỗi JSONEachRow dùng làm HTTP body cho ClickHouse.
     """
+    # Realtime metrics hiện có cardinality thấp. Nếu metric mở rộng sang top user,
+    # hashtag hoặc domain, cần đổi sang JDBC/connector hoặc foreachPartition.
     rows = batch_df.select("window_start", metric_column, count_column).collect()
     lines = []
 
@@ -334,6 +337,8 @@ def write_batch_to_clickhouse(batch_df: DataFrame, batch_id: int) -> None:
     cached_batch_df = batch_df.persist(StorageLevel.MEMORY_AND_DISK)
 
     try:
+        # Count này phục vụ batch health. Với workload lớn hơn, có thể lấy từ
+        # streaming progress metrics để tránh thêm một action trên micro-batch.
         input_rows = cached_batch_df.count()
 
         if input_rows == 0:
@@ -433,6 +438,7 @@ def main() -> None:
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
         .option("subscribe", KAFKA_RAW_EVENTS_TOPIC)
         .option("startingOffsets", "latest")
+        .option("maxOffsetsPerTrigger", SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER)
         .load()
     )
 
