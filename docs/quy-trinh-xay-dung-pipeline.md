@@ -498,13 +498,16 @@ Project có scripts build Gold event volume và post engagement summary từ Sil
 Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.py`
 để chạy refresh Gold serving v1. Checkpoint cuối của Gold serving đối chiếu
 ClickHouse với Silver Iceberg source of truth, không còn quay lại Silver Parquet
-prototype.
+prototype. Project cũng có entrypoint `run_historical_lakehouse_path.py` để chạy
+toàn bộ luồng historical/lakehouse theo thứ tự: build Silver Iceberg, check
+Silver Iceberg, refresh Gold serving và check Gold serving.
 
 **Các file liên quan**
 
 - `scripts/build_gold_event_volume_from_iceberg.py`
 - `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/refresh_gold_serving_from_iceberg.py`
+- `scripts/run_historical_lakehouse_path.py`
 - `scripts/check_gold_serving_v1.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
@@ -517,6 +520,8 @@ prototype.
 - Gold historical path ưu tiên khả năng rebuild/reconcile hơn latency thấp.
 - Khi đã chốt Silver Iceberg là source of truth, reconciliation cuối cùng phải
   đọc từ Iceberg để phản ánh đúng kiến trúc chính thức.
+- Một entrypoint end-to-end giúp demo và kiểm tra luồng nhiều lớp dễ hơn, nhưng
+  vẫn nên giữ các script con để debug từng tầng khi có lỗi.
 
 ## Bước 14: Bổ sung reconciliation và checkpoint chất lượng
 
