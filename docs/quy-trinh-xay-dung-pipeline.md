@@ -545,7 +545,9 @@ Project có checkpoint cho Silver v1, Iceberg Silver v1, Gold event volume, Gold
 post engagement, ClickHouse Gold và Gold serving tổng hợp. Các script này phục vụ
 debug local và demo pipeline. Với Gold serving v1, expected metrics được tính từ
 Silver Iceberg hoặc Gold staging được build từ Silver Iceberg trước khi so sánh
-với ClickHouse.
+với ClickHouse. Project cũng có checkpoint tổng hợp
+`check_historical_lakehouse_path.py` để kiểm tra historical/lakehouse path hiện
+có mà không build hoặc refresh lại dữ liệu.
 
 **Các file liên quan**
 
@@ -553,12 +555,15 @@ với ClickHouse.
 - `scripts/check_gold_reconciliation.py`
 - `scripts/check_gold_post_engagement_reconciliation.py`
 - `scripts/check_gold_serving_v1.py`
+- `scripts/check_historical_lakehouse_path.py`
 
 **Kiến thức cần ghi nhớ**
 
 - Reconciliation nên so sánh theo business metric, không chỉ so sánh row count
   tổng.
 - CLI checkpoint rất hữu ích trước khi có orchestration hoặc dashboard hoàn chỉnh.
+- Nên tách lệnh `run` có ghi dữ liệu với lệnh `check` chỉ kiểm tra trạng thái
+  hiện có, để demo và debug rõ ràng hơn.
 - Không nên để checkpoint chính phụ thuộc vào prototype cũ sau khi pipeline đã
   chuyển sang bảng Iceberg chính thức.
 - Không nên tuyên bố dữ liệu đúng nếu chưa có output kiểm chứng.
