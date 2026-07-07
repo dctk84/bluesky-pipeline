@@ -1,42 +1,37 @@
-"""Reconcile Gold event volume trong ClickHouse với nguồn Silver v1."""
+"""Reconcile Gold event volume trong ClickHouse với nguồn Silver Iceberg."""
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit
 
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 from bluesky_pipeline.gold_tables import GOLD_EVENT_VOLUME_TABLE
-from bluesky_pipeline.silver_tables import (
-    SILVER_DELETED_RECORDS_PATH,
-    SILVER_ENGAGEMENTS_PATH,
-    SILVER_FOLLOWS_PATH,
-    SILVER_POSTS_PATH,
+from bluesky_pipeline.iceberg_config import (
+    ICEBERG_SILVER_TABLES,
+    create_iceberg_spark_session,
 )
-from bluesky_pipeline.spark_session import create_spark_session
 
 
-def read_silver_table(spark: SparkSession, path: str) -> DataFrame:
-    """Đọc một bảng Silver từ MinIO.
+def read_silver_table(spark: SparkSession, table_name: str) -> DataFrame:
+    """Đọc một bảng Silver Iceberg từ catalog.
 
-    Input chính là SparkSession và path của bảng Silver.
+    Input chính là SparkSession có cấu hình Iceberg và tên bảng Silver.
     Output là DataFrame tương ứng.
     """
-    return spark.read.parquet(path)
+    return spark.table(ICEBERG_SILVER_TABLES[table_name])
 
 
 def build_expected_counts(spark: SparkSession) -> dict[str, int]:
-    """Tính expected event count từ các bảng Silver v1.
+    """Tính expected event count từ các bảng Silver Iceberg v1.
 
-    Input chính là SparkSession dùng để đọc Silver.
+    Input chính là SparkSession dùng để đọc Silver Iceberg.
     Output là dict mapping event_type sang count kỳ vọng.
     """
-    posts_count = read_silver_table(spark, SILVER_POSTS_PATH).count()
-    follows_count = read_silver_table(spark, SILVER_FOLLOWS_PATH).count()
+    posts_count = read_silver_table(spark, "silver_posts").count()
+    follows_count = read_silver_table(spark, "silver_follows").count()
     deleted_records_count = read_silver_table(
-        spark,
-        SILVER_DELETED_RECORDS_PATH,
+        spark, "silver_deleted_records"
     ).count()
 
-    engagements_df = read_silver_table(spark, SILVER_ENGAGEMENTS_PATH)
+    engagements_df = read_silver_table(spark, "silver_engagements")
     engagement_counts = {
         row.engagement_type: row["count"]
         for row in engagements_df.groupBy("engagement_type").count().collect()
@@ -74,7 +69,7 @@ def read_clickhouse_counts() -> dict[str, int]:
 
 
 def print_reconciliation(expected: dict[str, int], actual: dict[str, int]) -> None:
-    """In kết quả reconciliation giữa Silver expected và ClickHouse actual."""
+    """In kết quả reconciliation giữa Silver Iceberg và ClickHouse."""
     all_event_types = sorted(set(expected) | set(actual))
     has_mismatch = False
 
@@ -97,12 +92,12 @@ def print_reconciliation(expected: dict[str, int], actual: dict[str, int]) -> No
 
 
 def main() -> None:
-    """So sánh Gold ClickHouse với nguồn Silver v1."""
-    # Tạo SparkSession local có cấu hình đọc MinIO.
-    spark = create_spark_session("bluesky-check-gold-reconciliation")
+    """So sánh Gold ClickHouse với nguồn Silver Iceberg v1."""
+    # Tạo SparkSession có Iceberg catalog để đọc Silver source of truth.
+    spark = create_iceberg_spark_session("bluesky-check-gold-reconciliation")
     spark.sparkContext.setLogLevel("WARN")
 
-    # Tính expected từ Silver và actual từ ClickHouse rồi so sánh.
+    # Tính expected từ Silver Iceberg và actual từ ClickHouse rồi so sánh.
     expected_counts = build_expected_counts(spark)
     actual_counts = read_clickhouse_counts()
     print_reconciliation(expected_counts, actual_counts)
