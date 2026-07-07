@@ -84,8 +84,8 @@ debug và khó trình bày.
 Project có package chính dưới `src/bluesky_pipeline/`, scripts thao tác local dưới
 `scripts/`, tài liệu dưới `docs/`, tests dưới `tests/` và dữ liệu local không
 commit dưới `data/`. Các metadata dùng chung như Kafka topic, Bronze/Silver/Gold
-paths, ClickHouse table names và Spark/S3 config được tách dần vào module dùng
-chung khi chúng trở thành contract giữa nhiều bước.
+paths, ClickHouse table names, Spark/S3 config và transformation logic được tách
+dần vào module dùng chung khi chúng trở thành contract giữa nhiều bước.
 
 **Các file liên quan**
 
@@ -94,7 +94,7 @@ chung khi chúng trở thành contract giữa nhiều bước.
 - `src/bluesky_pipeline/kafka_config.py`
 - `src/bluesky_pipeline/spark_session.py`
 - `src/bluesky_pipeline/bronze_tables.py`
-- `src/bluesky_pipeline/silver_tables.py`
+- `src/bluesky_pipeline/silver_transformations.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
@@ -340,19 +340,17 @@ Silver v1 có các datasets:
 - `silver_follows`
 - `silver_deleted_records`
 
-Các script build/read/check kiểm chứng count, schema, reply/non-reply,
-subject URI và delete records. `docs/silver-schema-v1.md` ghi lại schema và ý
-nghĩa từng bảng.
+Silver v1 ban đầu được thử bằng Parquet prototype, sau đó được chuẩn hóa thành
+Iceberg source of truth. `docs/silver-schema-v1.md` ghi lại schema và ý nghĩa
+từng bảng.
 
 **Các file liên quan**
 
 - `docs/silver-schema-v1.md`
 - `scripts/profile_bronze_commit_events.py`
-- `scripts/build_silver_posts.py`
-- `scripts/build_silver_engagements.py`
-- `scripts/build_silver_follows.py`
-- `scripts/build_silver_deleted_records.py`
-- `scripts/check_silver_v1.py`
+- `src/bluesky_pipeline/silver_transformations.py`
+- `scripts/build_iceberg_silver_v1.py`
+- `scripts/check_iceberg_silver_v1.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -365,7 +363,7 @@ nghĩa từng bảng.
 
 **Mục tiêu**
 
-Tách các schema, table paths, ClickHouse table names, Kafka config và helper HTTP
+Tách các schema, transformation logic, table names, Kafka config và helper HTTP
 vào module dùng chung.
 
 **Vì sao cần thực hiện**
@@ -376,15 +374,16 @@ dùng cùng một nguồn sự thật.
 
 **Kết quả sau khi hoàn thành**
 
-Project có module dùng chung cho Bronze schema, Bronze/Silver/Gold paths,
-Iceberg config, ClickHouse helper và Kafka config. Các script Silver/Gold được
-refactor để dùng contract chung thay vì lặp hard-code.
+Project có module dùng chung cho Bronze schema, Bronze paths, Silver
+transformations, Gold table contracts, Iceberg config, ClickHouse helper và Kafka
+config. Các script Silver/Gold được refactor để dùng contract chung thay vì lặp
+hard-code.
 
 **Các file liên quan**
 
 - `src/bluesky_pipeline/bronze_schemas.py`
 - `src/bluesky_pipeline/bronze_tables.py`
-- `src/bluesky_pipeline/silver_tables.py`
+- `src/bluesky_pipeline/silver_transformations.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/clickhouse_client.py`
@@ -417,8 +416,8 @@ ClickHouse có database `bluesky` và các bảng Gold serving như:
 - `gold_event_volume_by_type`
 - `gold_post_engagement_summary`
 
-Project có script tạo DDL, load dữ liệu vào ClickHouse, check serving tables và
-Grafana datasource/panels cho Gold serving v1.
+Project có script tạo DDL, load dữ liệu vào ClickHouse, checkpoint
+reconciliation và Grafana datasource/panels cho Gold serving v1.
 
 **Các file liên quan**
 
@@ -427,8 +426,9 @@ Grafana datasource/panels cho Gold serving v1.
 - `scripts/build_gold_post_engagement_summary_from_iceberg.py`
 - `scripts/load_gold_event_volume_to_clickhouse.py`
 - `scripts/load_gold_post_engagement_summary_to_clickhouse.py`
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/check_clickhouse_gold_post_engagement_summary.py`
+- `scripts/check_gold_reconciliation.py`
+- `scripts/check_gold_post_engagement_reconciliation.py`
+- `scripts/check_gold_serving_v1.py`
 - `docker-compose.yml`
 
 **Kiến thức cần ghi nhớ**
@@ -438,37 +438,40 @@ Grafana datasource/panels cho Gold serving v1.
 - Dashboard JSON chưa cần commit ở giai đoạn thử nghiệm; khi dashboard hoàn chỉnh
   có thể screenshot/link hoặc export sau.
 
-## Bước 12: Migrate Silver sang Apache Iceberg
+## Bước 12: Chuẩn hóa Silver bằng Apache Iceberg
 
 **Mục tiêu**
 
-Chuyển Silver v1 từ Parquet prototype sang Apache Iceberg trên MinIO.
+Build Silver v1 trực tiếp từ Bronze thành Apache Iceberg trên MinIO.
 
 **Vì sao cần thực hiện**
 
-Parquet partitioned đơn giản phù hợp giai đoạn đầu, nhưng Silver cần table
-semantics, snapshot, schema evolution và khả năng quản lý dữ liệu rõ ràng hơn.
-Iceberg phù hợp với vai trò Silver source of truth.
+Parquet prototype phù hợp để học và kiểm chứng nhanh ở giai đoạn đầu, nhưng
+Silver chính thức cần table semantics, snapshot, schema evolution và khả năng
+quản lý dữ liệu rõ ràng hơn. Iceberg phù hợp với vai trò Silver source of truth.
 
 **Kết quả sau khi hoàn thành**
 
-Project smoke test được Iceberg table trên MinIO, build được Silver Iceberg v1 và
-reconcile với Silver Parquet prototype. Sau khi toàn bộ Silver v1 được migrate,
-các script prototype theo từng bảng được thay bằng entrypoint/checkpoint tổng hợp.
+Project smoke test được Iceberg table trên MinIO, build được Silver Iceberg v1
+trực tiếp từ Bronze thông qua `silver_transformations.py`, và reconcile Iceberg
+với expected metrics được tính lại từ Bronze. Các script Silver Parquet prototype
+được loại bỏ để luồng chính không bị nhầm lẫn.
 
 **Các file liên quan**
 
 - `scripts/smoke_test_iceberg_minio.py`
 - `scripts/build_iceberg_silver_v1.py`
 - `scripts/check_iceberg_silver_v1.py`
+- `src/bluesky_pipeline/silver_transformations.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/spark_session.py`
 
 **Kiến thức cần ghi nhớ**
 
 - Iceberg nên bắt đầu từ Silver, nơi cần table semantics rõ hơn Bronze.
-- Reconcile prototype với Iceberg giúp đảm bảo migration không làm đổi dữ liệu.
-- Không nên giữ mã prototype song song quá lâu khi đã có entrypoint chính.
+- Transformation logic nên nằm trong module dùng chung để batch build, check và
+  future orchestration không phải copy cùng một logic.
+- Không nên giữ mã prototype song song quá lâu khi đã có luồng chính thức.
 
 ## Bước 13: Chuẩn hóa Gold refresh từ Silver Iceberg
 
@@ -546,13 +549,10 @@ với ClickHouse.
 
 **Các file liên quan**
 
-- `scripts/check_silver_v1.py`
 - `scripts/check_iceberg_silver_v1.py`
 - `scripts/check_gold_reconciliation.py`
 - `scripts/check_gold_post_engagement_reconciliation.py`
 - `scripts/check_gold_serving_v1.py`
-- `scripts/check_clickhouse_gold_event_volume.py`
-- `scripts/check_clickhouse_gold_post_engagement_summary.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -688,7 +688,6 @@ theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chư
 
 - `docker-compose.yml`
 - `scripts/check_clickhouse_realtime_metrics.py`
-- `scripts/check_clickhouse_stream_event_volume.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
