@@ -307,6 +307,28 @@ Kiến trúc dashboard có hai luồng phục vụ khác nhau:
 - Prometheus và Grafana technical dashboard phục vụ observability như lag,
   freshness, throughput và service health; luồng này tách với business analytics.
 
+### 5.1. Phân loại kiến trúc
+
+Kiến trúc của project là **lambda-like architecture** cho bài toán streaming
+analytics.
+
+Project có fast path từ Kafka qua Spark Structured Streaming tới ClickHouse
+realtime marts để phục vụ các metric có freshness thấp. Đồng thời, dữ liệu vẫn
+được lưu vào Bronze và Silver Iceberg để phục vụ batch processing, backfill,
+historical baseline, correction, reconciliation và rebuild. Hai path gặp nhau ở
+serving layer là ClickHouse/Grafana.
+
+Tuy nhiên, đây không phải Lambda Architecture cổ điển với hai codebase hoàn toàn
+tách biệt cho speed layer và batch layer. Project dùng Spark cho cả streaming và
+batch, đồng thời tách schema, metadata và table contract vào các module dùng chung
+để giảm duplication. Vì vậy cách mô tả chính xác là **lambda-like streaming
+lakehouse architecture**, có lai một phần tư duy Kappa ở chỗ Kafka là event
+backbone chung và compute stack được tái sử dụng.
+
+Project cũng không phải Kappa Architecture thuần, vì dữ liệu lịch sử không chỉ
+dựa vào replay từ Kafka. Bronze/Silver Iceberg vẫn giữ vai trò lakehouse source of
+truth cho correction, backfill, rebuild và phân tích lịch sử.
+
 ---
 
 ## 6. Tech stack
