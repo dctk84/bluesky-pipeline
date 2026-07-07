@@ -1,4 +1,4 @@
-"""Reconcile toàn bộ Silver v1 Parquet với Silver v1 Iceberg."""
+"""Reconcile toàn bộ Silver v1 Iceberg với expected data từ Bronze."""
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count, sum as spark_sum, when
@@ -7,16 +7,10 @@ from bluesky_pipeline.iceberg_config import (
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.silver_tables import SILVER_TABLE_PATHS
-
-
-def read_parquet_table(spark, table_name: str) -> DataFrame:
-    """Đọc một bảng Silver Parquet v1 từ MinIO.
-
-    Input chính là SparkSession và tên bảng Silver.
-    Output là DataFrame Parquet của bảng tương ứng.
-    """
-    return spark.read.parquet(SILVER_TABLE_PATHS[table_name])
+from bluesky_pipeline.silver_transformations import (
+    SILVER_TRANSFORMATIONS,
+    read_bronze_commit_events,
+)
 
 
 def read_iceberg_table(spark, table_name: str) -> DataFrame:
@@ -81,50 +75,57 @@ def build_metrics(table_name: str, table_df: DataFrame) -> dict[str, int]:
     }
 
 
-def reconcile_table(table_name: str, parquet_metrics: dict[str, int], iceberg_metrics: dict[str, int]) -> bool:
+def reconcile_table(
+    table_name: str,
+    expected_metrics: dict[str, int],
+    iceberg_metrics: dict[str, int],
+) -> bool:
     """In kết quả reconciliation cho một bảng Silver.
 
-    Input là tên bảng, metrics từ Parquet và metrics từ Iceberg.
+    Input là tên bảng, metrics expected từ Bronze và metrics từ Iceberg.
     Output là True nếu bảng có mismatch.
     """
     has_mismatch = False
 
     print(f"\n=== {table_name} ===")
-    print("metric\tparquet\ticeberg\tstatus")
+    print("metric\texpected\ticeberg\tstatus")
 
-    for metric in sorted(set(parquet_metrics) | set(iceberg_metrics)):
-        parquet_value = parquet_metrics.get(metric, 0)
+    for metric in sorted(set(expected_metrics) | set(iceberg_metrics)):
+        expected_value = expected_metrics.get(metric, 0)
         iceberg_value = iceberg_metrics.get(metric, 0)
-        status = "OK" if parquet_value == iceberg_value else "MISMATCH"
+        status = "OK" if expected_value == iceberg_value else "MISMATCH"
 
         if status != "OK":
             has_mismatch = True
 
-        print(f"{metric}\t{parquet_value}\t{iceberg_value}\t{status}")
+        print(f"{metric}\t{expected_value}\t{iceberg_value}\t{status}")
 
     return has_mismatch
 
 
 def main() -> None:
-    """So sánh toàn bộ Silver v1 Parquet với Silver v1 Iceberg."""
-    # Dùng Iceberg SparkSession để đọc được cả Parquet path và Iceberg catalog.
+    """So sánh toàn bộ Silver v1 Iceberg với expected data từ Bronze."""
+    # Dùng Iceberg SparkSession để đọc Bronze và Iceberg catalog.
     spark = create_iceberg_spark_session("bluesky-check-iceberg-silver-v1")
     spark.sparkContext.setLogLevel("WARN")
 
     has_mismatch = False
+    bronze_df = read_bronze_commit_events(spark).cache()
 
-    # Reconcile từng bảng theo cùng metadata table/path chung.
-    for table_name in SILVER_TABLE_PATHS:
-        parquet_df = read_parquet_table(spark, table_name)
+    # Reconcile từng bảng theo transformation dùng chung từ Bronze.
+    for table_name, build_expected_df in SILVER_TRANSFORMATIONS.items():
+        expected_df = build_expected_df(bronze_df)
         iceberg_df = read_iceberg_table(spark, table_name)
 
-        parquet_metrics = build_metrics(table_name, parquet_df)
+        expected_metrics = build_metrics(table_name, expected_df)
         iceberg_metrics = build_metrics(table_name, iceberg_df)
 
         has_mismatch = (
-            reconcile_table(table_name, parquet_metrics, iceberg_metrics)
+            reconcile_table(table_name, expected_metrics, iceberg_metrics)
             or has_mismatch
         )
+
+    bronze_df.unpersist()
 
     if has_mismatch:
         raise SystemExit("Iceberg Silver v1 reconciliation failed")

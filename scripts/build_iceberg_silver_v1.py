@@ -1,4 +1,4 @@
-"""Build toàn bộ Silver v1 dạng Iceberg từ Silver Parquet prototype."""
+"""Build toàn bộ Silver v1 dạng Iceberg trực tiếp từ Bronze."""
 
 from bluesky_pipeline.iceberg_config import (
     ICEBERG_CATALOG_NAME,
@@ -6,7 +6,10 @@ from bluesky_pipeline.iceberg_config import (
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.silver_tables import SILVER_TABLE_PATHS
+from bluesky_pipeline.silver_transformations import (
+    SILVER_TRANSFORMATIONS,
+    read_bronze_commit_events,
+)
 
 
 def ensure_silver_namespace(spark) -> None:
@@ -22,17 +25,16 @@ def ensure_silver_namespace(spark) -> None:
     )
 
 
-def build_iceberg_table(spark, table_name: str) -> int:
-    """Build một bảng Silver Iceberg từ bảng Parquet tương ứng.
+def build_iceberg_table(spark, table_name: str, bronze_df) -> int:
+    """Build một bảng Silver Iceberg từ Bronze commit events.
 
-    Input chính là SparkSession và tên bảng Silver v1.
+    Input chính là SparkSession, tên bảng Silver v1 và Bronze DataFrame.
     Output là số dòng đọc lại từ Iceberg table sau khi ghi.
     """
-    parquet_path = SILVER_TABLE_PATHS[table_name]
     iceberg_table = ICEBERG_SILVER_TABLES[table_name]
+    source_df = SILVER_TRANSFORMATIONS[table_name](bronze_df)
 
-    # Đọc nguồn Parquet hiện tại, drop table cũ và ghi lại Iceberg table.
-    source_df = spark.read.parquet(parquet_path)
+    # Ghi overwrite logic bằng cách drop/create để đơn giản trong môi trường local.
     spark.sql(f"DROP TABLE IF EXISTS {iceberg_table}")
     source_df.writeTo(iceberg_table).using("iceberg").create()
 
@@ -47,11 +49,14 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
 
     ensure_silver_namespace(spark)
+    bronze_df = read_bronze_commit_events(spark).cache()
 
-    # Build từng bảng theo metadata chung để tránh hard-code path/table lặp lại.
-    for table_name in SILVER_TABLE_PATHS:
-        row_count = build_iceberg_table(spark, table_name)
+    # Build từng bảng theo transformation dùng chung để tránh prototype Parquet.
+    for table_name in SILVER_TRANSFORMATIONS:
+        row_count = build_iceberg_table(spark, table_name, bronze_df)
         print(f"iceberg_{table_name}_count: {row_count}")
+
+    bronze_df.unpersist()
 
 
 if __name__ == "__main__":

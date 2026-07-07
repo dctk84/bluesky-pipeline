@@ -27,8 +27,8 @@ Jetstream
 Lưu ý:
 
 - Bronze hiện là partitioned Parquet trên MinIO.
-- Silver Parquet v1 vẫn còn là prototype/rebuild source trung gian.
-- Silver Iceberg v1 hiện đã có đủ 4 bảng chính trên MinIO.
+- Silver Iceberg v1 hiện là source of truth cho 4 bảng chính trên MinIO.
+- Silver được build trực tiếp từ Bronze qua transformation module dùng chung.
 - Gold aggregates được rebuild từ Silver Iceberg trước khi load vào ClickHouse.
 - Gold serving layer hiện có 2 bảng ClickHouse:
   - `bluesky.gold_event_volume_by_type`
@@ -72,19 +72,9 @@ PYTHONPATH=src python scripts/spark_read_kafka_raw.py
 PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
 ```
 
-Build Silver v1:
+Build và kiểm tra Silver Iceberg v1 trực tiếp từ Bronze:
 
 ```bash
-PYTHONPATH=src python scripts/build_silver_posts.py
-PYTHONPATH=src python scripts/build_silver_engagements.py
-PYTHONPATH=src python scripts/build_silver_follows.py
-PYTHONPATH=src python scripts/build_silver_deleted_records.py
-```
-
-Kiểm tra Silver Parquet v1 và build Silver Iceberg v1:
-
-```bash
-PYTHONPATH=src python scripts/check_silver_v1.py
 PYTHONPATH=src python scripts/build_iceberg_silver_v1.py
 PYTHONPATH=src python scripts/check_iceberg_silver_v1.py
 ```
@@ -113,8 +103,6 @@ PYTHONPATH=src:. python scripts/refresh_gold_serving_from_iceberg.py
 Kiểm tra ClickHouse Gold và reconciliation:
 
 ```bash
-PYTHONPATH=src python scripts/check_clickhouse_gold_event_volume.py
-PYTHONPATH=src python scripts/check_clickhouse_gold_post_engagement_summary.py
 PYTHONPATH=src python scripts/check_gold_reconciliation.py
 PYTHONPATH=src python scripts/check_gold_post_engagement_reconciliation.py
 ```
@@ -148,7 +136,7 @@ PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
 Kiểm tra bảng realtime bằng CLI:
 
 ```bash
-PYTHONPATH=src python scripts/check_clickhouse_stream_event_volume.py
+PYTHONPATH=src python scripts/check_clickhouse_realtime_metrics.py
 ```
 
 Query dùng cho Grafana time series:
