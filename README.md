@@ -136,7 +136,7 @@ PYTHONPATH=src python scripts/create_clickhouse_gold_tables.py
 Terminal 1, chạy Spark streaming job ghi event volume realtime vào ClickHouse:
 
 ```bash
-PYTHONPATH=src python scripts/stream_event_volume_to_clickhouse.py
+PYTHONPATH=src python scripts/stream_realtime_metrics_to_clickhouse.py
 ```
 
 Terminal 2, publish live events vào Kafka:

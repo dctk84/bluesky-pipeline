@@ -99,6 +99,7 @@ tồn tại trong repository.
 88. [Kiểm chứng realtime dashboard và freshness panel](#bước-88-kiểm-chứng-realtime-dashboard-và-freshness-panel)
 89. [Build bộ realtime metrics đầy đủ cho fast path](#bước-89-build-bộ-realtime-metrics-đầy-đủ-cho-fast-path)
 90. [Bổ sung batch health cho realtime fast path](#bước-90-bổ-sung-batch-health-cho-realtime-fast-path)
+91. [Kiểm chứng Grafana operational health panels](#bước-91-kiểm-chứng-grafana-operational-health-panels)
 
 ## Bước 1: Xác định mục tiêu, phạm vi và nguyên tắc làm việc
 
@@ -3185,7 +3186,7 @@ Silver Iceberg.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/stream_event_volume_to_clickhouse.py` đọc Kafka topic raw events, parse
+`scripts/stream_realtime_metrics_to_clickhouse.py` đọc Kafka topic raw events, parse
 event envelope, map commit collection/operation thành `event_type`, aggregate
 theo `window_start` từng phút và insert vào
 `bluesky.gold_event_volume_1m_stream`. Sau khi publish events hai lần, query
@@ -3195,7 +3196,7 @@ ClickHouse trả về nhiều bucket phút như `2026-07-05 23:27:00` và
 
 **Các file liên quan**
 
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `src/bluesky_pipeline/kafka_config.py`
 - `src/bluesky_pipeline/bronze_schemas.py`
@@ -3236,7 +3237,7 @@ Kafka và bật hoặc bấm lại refresh query.
 **Các file liên quan**
 
 - `scripts/check_clickhouse_stream_event_volume.py`
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `scripts/create_clickhouse_gold_tables.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
@@ -3268,7 +3269,7 @@ liệu trong bảng serving.
 **Kết quả sau khi hoàn thành**
 
 DDL của `bluesky.gold_event_volume_1m_stream` có thêm cột `spark_batch_id`.
-`scripts/stream_event_volume_to_clickhouse.py` insert `batch_id` do Spark cung cấp
+`scripts/stream_realtime_metrics_to_clickhouse.py` insert `batch_id` do Spark cung cấp
 vào ClickHouse. `scripts/check_clickhouse_stream_event_volume.py` in thêm
 `spark_batch_id` trong phần latest rows. Bảng local được tạo lại với schema mới và
 checkpoint CLI chạy thành công.
@@ -3276,7 +3277,7 @@ checkpoint CLI chạy thành công.
 **Các file liên quan**
 
 - `src/bluesky_pipeline/gold_tables.py`
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `scripts/check_clickhouse_stream_event_volume.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -3322,7 +3323,7 @@ micro-batch, ClickHouse insert và Grafana refresh.
 
 - `docs/tong-quan-du-an.md`
 - `docs/quy-trinh-xay-dung-pipeline.md`
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
 **Kiến thức cần ghi nhớ**
@@ -3356,7 +3357,7 @@ fast path.
 
 **Kết quả sau khi hoàn thành**
 
-`scripts/stream_event_volume_to_clickhouse.py` đọc Kafka stream, parse event và
+`scripts/stream_realtime_metrics_to_clickhouse.py` đọc Kafka stream, parse event và
 map `event_type` như trước. DataFrame streaming chưa aggregate được đưa vào
 `foreachBatch`; trong mỗi micro-batch, script group theo
 `window_start` và `event_type`, tạo payload JSONEachRow rồi insert vào
@@ -3365,7 +3366,7 @@ vào ClickHouse và không còn cảnh báo `falling behind` lặp liên tục.
 
 **Các file liên quan**
 
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `scripts/check_clickhouse_stream_event_volume.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
@@ -3407,7 +3408,7 @@ thị dữ liệu mới và freshness phản ánh thời điểm ClickHouse đư
 
 **Các file liên quan**
 
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `scripts/check_clickhouse_stream_event_volume.py`
 - `src/bluesky_pipeline/gold_tables.py`
 - `docker-compose.yml`
@@ -3448,7 +3449,7 @@ ClickHouse có thêm các realtime marts:
 - `bluesky.gold_engagement_1m_stream`
 - `bluesky.gold_network_activity_1m_stream`
 
-`scripts/stream_event_volume_to_clickhouse.py` ghi nhiều nhóm metric trong cùng
+`scripts/stream_realtime_metrics_to_clickhouse.py` ghi nhiều nhóm metric trong cùng
 một `foreachBatch`: event volume, content activity, engagement và network
 activity. `scripts/check_clickhouse_realtime_metrics.py` kiểm tra summary,
 freshness, latest metrics và các metric dẫn xuất như event type share,
@@ -3459,7 +3460,7 @@ các bảng mới có `last_loaded_at` gần hiện tại và có dữ liệu th
 
 - `src/bluesky_pipeline/gold_tables.py`
 - `scripts/create_clickhouse_gold_tables.py`
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `scripts/check_clickhouse_realtime_metrics.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -3494,7 +3495,7 @@ nhóm metric không ghi ra dữ liệu dù batch vẫn có input.
 ClickHouse có bảng `bluesky.gold_realtime_stream_batches` lưu các field như
 `spark_batch_id`, `batch_started_at`, `batch_finished_at`, `batch_duration_ms`,
 `input_rows`, số dòng aggregate đã ghi theo từng nhóm metric và `is_empty`.
-`scripts/stream_event_volume_to_clickhouse.py` ghi một health row cho mỗi
+`scripts/stream_realtime_metrics_to_clickhouse.py` ghi một health row cho mỗi
 micro-batch, bao gồm cả batch rỗng. `scripts/check_clickhouse_realtime_metrics.py`
 in thêm `realtime_batch_health_summary` và `latest_realtime_batches`. Checkpoint
 đã xác nhận có batch mới với `input_rows`, `batch_duration_ms` và các row count
@@ -3504,7 +3505,7 @@ theo từng metric group.
 
 - `src/bluesky_pipeline/gold_tables.py`
 - `scripts/create_clickhouse_gold_tables.py`
-- `scripts/stream_event_volume_to_clickhouse.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
 - `scripts/check_clickhouse_realtime_metrics.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -3517,3 +3518,41 @@ theo từng metric group.
   trong trigger interval.
 - Batch health hiện phục vụ quan sát và demo local, chưa phải hệ thống alert đầy
   đủ như Prometheus/Alertmanager.
+
+## Bước 91: Kiểm chứng Grafana operational health panels
+
+**Mục tiêu**
+
+Hiển thị các chỉ số vận hành của realtime fast path trên Grafana để quan sát tình
+trạng Spark micro-batches bên cạnh các business metrics.
+
+**Vì sao cần thực hiện**
+
+Một dashboard realtime không chỉ cần biểu đồ business như event volume,
+engagement hoặc follow/unfollow. Khi demo hoặc debug pipeline, cần biết job có
+đang chạy đều không, batch mới nhất cách hiện tại bao lâu, mỗi batch mất bao lâu
+và batch đã ghi bao nhiêu dòng aggregate vào từng nhóm metric.
+
+**Kết quả sau khi hoàn thành**
+
+Grafana có các panel operational health đọc từ
+`bluesky.gold_realtime_stream_batches`, bao gồm batch duration, input rows per
+batch, rows inserted by metric group và seconds since last batch. Các query đã
+được chỉnh để sort theo time tăng dần, phù hợp yêu cầu của Grafana time series.
+Panel đã trả dữ liệu sau khi Spark streaming ghi batch health vào ClickHouse.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/stream_realtime_metrics_to_clickhouse.py`
+- `scripts/check_clickhouse_realtime_metrics.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Grafana time series cần dữ liệu được sort tăng dần theo cột thời gian.
+- Business dashboard và operational dashboard nên bổ sung cho nhau: một bên trả
+  lời “người dùng đang làm gì”, bên kia trả lời “pipeline có đang chạy tốt không”.
+- Batch health table là observability tối thiểu trong ClickHouse; sau này có thể
+  bổ sung Prometheus cho metrics hệ thống như CPU, memory, Kafka lag hoặc service
+  health.
