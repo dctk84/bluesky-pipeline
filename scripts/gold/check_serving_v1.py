@@ -1,21 +1,14 @@
 """Chạy checkpoint tổng hợp cho Gold serving v1."""
 
-import sys
-from pathlib import Path
-
 from bluesky_pipeline.iceberg_config import create_iceberg_spark_session
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from check_gold_post_engagement_reconciliation import (
+from scripts.gold.check_post_engagement_reconciliation import (
     build_expected_metrics as build_post_engagement_expected_metrics,
     print_reconciliation as print_post_engagement_reconciliation,
     read_clickhouse_metrics as read_post_engagement_clickhouse_metrics,
     read_gold_post_engagement_summary,
 )
-from check_gold_reconciliation import (
+from scripts.gold.check_event_volume_reconciliation import (
     build_expected_counts as build_event_volume_expected_counts,
     print_reconciliation as print_event_volume_reconciliation,
     read_clickhouse_counts as read_event_volume_clickhouse_counts,

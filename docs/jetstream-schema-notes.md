@@ -213,7 +213,7 @@ Mục tiêu của bước này là biến event envelope lồng nhau thành mộ
 Script local dùng để tạo sample normalized:
 
 ```text
-scripts/normalize_sample.py
+scripts/discovery/normalize_sample.py
 ```
 
 Input local:
@@ -475,8 +475,8 @@ Lý do dùng `repository_did` làm key:
 Các script đã dùng để kiểm chứng:
 
 ```text
-scripts/publish_sample_to_kafka.py
-scripts/publish_sample_batch_to_kafka.py
+scripts/ingestion/publish_sample_to_kafka.py
+scripts/ingestion/publish_sample_batch_to_kafka.py
 ```
 
 Luồng đã kiểm chứng:

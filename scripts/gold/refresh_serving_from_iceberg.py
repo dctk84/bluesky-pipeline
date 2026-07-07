@@ -1,14 +1,14 @@
 """Refresh toàn bộ Gold serving từ Silver Iceberg."""
 
-from scripts.build_gold_event_volume_from_iceberg import main as build_event_volume
-from scripts.build_gold_post_engagement_summary_from_iceberg import (
+from scripts.gold.build_event_volume_from_iceberg import main as build_event_volume
+from scripts.gold.build_post_engagement_summary_from_iceberg import (
     main as build_post_engagement_summary,
 )
-from scripts.load_gold_event_volume_to_clickhouse import main as load_event_volume
-from scripts.load_gold_post_engagement_summary_to_clickhouse import (
+from scripts.gold.load_event_volume_to_clickhouse import main as load_event_volume
+from scripts.gold.load_post_engagement_summary_to_clickhouse import (
     main as load_post_engagement_summary,
 )
-from scripts.check_gold_serving_v1 import main as check_gold_serving
+from scripts.gold.check_serving_v1 import main as check_gold_serving
 
 
 def main() -> None:

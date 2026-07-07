@@ -6,17 +6,17 @@ import subprocess
 import sys
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 STEPS = [
     (
         "Check Silver Iceberg v1",
-        "scripts.check_iceberg_silver_v1",
+        "scripts.historical.check_iceberg_silver_v1",
     ),
     (
         "Check Gold serving v1",
-        "scripts.check_gold_serving_v1",
+        "scripts.gold.check_serving_v1",
     ),
 ]
 
