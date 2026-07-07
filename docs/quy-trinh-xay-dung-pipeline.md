@@ -496,7 +496,9 @@ gốc chính.
 
 Project có scripts build Gold event volume và post engagement summary từ Silver
 Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.py`
-để chạy refresh Gold serving v1.
+để chạy refresh Gold serving v1. Checkpoint cuối của Gold serving đối chiếu
+ClickHouse với Silver Iceberg source of truth, không còn quay lại Silver Parquet
+prototype.
 
 **Các file liên quan**
 
@@ -513,6 +515,8 @@ Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.
 - Gold staging trên MinIO là output trung gian; ClickHouse là serving mart cho
   query/dashboard.
 - Gold historical path ưu tiên khả năng rebuild/reconcile hơn latency thấp.
+- Khi đã chốt Silver Iceberg là source of truth, reconciliation cuối cùng phải
+  đọc từ Iceberg để phản ánh đúng kiến trúc chính thức.
 
 ## Bước 14: Bổ sung reconciliation và checkpoint chất lượng
 
@@ -531,7 +535,9 @@ và ClickHouse serving layer.
 
 Project có checkpoint cho Silver v1, Iceberg Silver v1, Gold event volume, Gold
 post engagement, ClickHouse Gold và Gold serving tổng hợp. Các script này phục vụ
-debug local và demo pipeline.
+debug local và demo pipeline. Với Gold serving v1, expected metrics được tính từ
+Silver Iceberg hoặc Gold staging được build từ Silver Iceberg trước khi so sánh
+với ClickHouse.
 
 **Các file liên quan**
 
@@ -548,6 +554,8 @@ debug local và demo pipeline.
 - Reconciliation nên so sánh theo business metric, không chỉ so sánh row count
   tổng.
 - CLI checkpoint rất hữu ích trước khi có orchestration hoặc dashboard hoàn chỉnh.
+- Không nên để checkpoint chính phụ thuộc vào prototype cũ sau khi pipeline đã
+  chuyển sang bảng Iceberg chính thức.
 - Không nên tuyên bố dữ liệu đúng nếu chưa có output kiểm chứng.
 
 ## Bước 15: Chốt hai serving paths: realtime và historical
