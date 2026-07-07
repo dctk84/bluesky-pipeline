@@ -359,12 +359,13 @@ từng bảng.
 - Delete event cần bảng riêng vì thường thiếu `record` đầy đủ nhưng vẫn quan trọng
   cho phân tích churn/moderation.
 
-## Bước 10: Chuẩn hóa metadata và schema dùng chung
+## Bước 10: Chuẩn hóa code dùng chung và cấu trúc repo
 
 **Mục tiêu**
 
 Tách các schema, transformation logic, table names, Kafka config và helper HTTP
-vào module dùng chung.
+vào module dùng chung; đồng thời tổ chức lại `scripts/` theo vai trò để repo dễ
+đọc hơn.
 
 **Vì sao cần thực hiện**
 
@@ -372,12 +373,28 @@ Khi số lượng script tăng lên, nếu mỗi script tự hard-code path/tabl
 repo rất dễ lệch contract. Chuẩn hóa metadata giúp các build/check/load scripts
 dùng cùng một nguồn sự thật.
 
+Ngoài ra, cần phân biệt rõ hai loại code:
+
+- `src/bluesky_pipeline/`: package Python chính, chứa logic pipeline có thể dùng
+  lại như schema, config, transformation, table contract và helper client.
+- `scripts/`: entrypoint để chạy local, demo, debug hoặc kiểm tra từng phần của
+  pipeline.
+
 **Kết quả sau khi hoàn thành**
 
 Project có module dùng chung cho Bronze schema, Bronze paths, Silver
 transformations, Gold table contracts, Iceberg config, ClickHouse helper và Kafka
 config. Các script Silver/Gold được refactor để dùng contract chung thay vì lặp
 hard-code.
+
+Thư mục `scripts/` được tách theo vai trò:
+
+- `scripts/discovery/`: probe, phân tích sample và smoke test.
+- `scripts/ingestion/`: publish Kafka sample và ghi Bronze.
+- `scripts/historical/`: build/check Silver Iceberg và historical path runner.
+- `scripts/gold/`: build/load/reconcile Gold serving.
+- `scripts/realtime/`: realtime fast path và realtime metrics check.
+- `scripts/platform/`: setup các object phục vụ platform, ví dụ ClickHouse tables.
 
 **Các file liên quan**
 
@@ -388,6 +405,7 @@ hard-code.
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/clickhouse_client.py`
 - `src/bluesky_pipeline/kafka_config.py`
+- `docs/script-inventory.md`
 
 **Kiến thức cần ghi nhớ**
 
@@ -396,6 +414,10 @@ hard-code.
 - Refactor không phải mục tiêu riêng, nhưng là chi phí cần trả để pipeline tiếp
   tục mở rộng an toàn.
 - Helper ClickHouse nên hiển thị lỗi HTTP body để debug DDL/INSERT rõ nguyên nhân.
+- `scripts/` nên mỏng và thiên về orchestration; logic reusable nên nằm trong
+  `src/bluesky_pipeline/`.
+- `src/` là container source code; `src/bluesky_pipeline/` mới là package Python
+  chính của project.
 
 ## Bước 11: Xây dựng ClickHouse Gold serving layer
 
