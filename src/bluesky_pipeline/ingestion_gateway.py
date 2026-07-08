@@ -51,10 +51,20 @@ def delivery_report(error: Any, message: Any) -> None:
         logger.error("delivery failed: %s", error)
 
 
+def should_stop(published_events: int) -> bool:
+    """Trả về True nếu gateway đã publish đủ số event cần chạy.
+
+    MAX_EVENTS = 0 nghĩa là chạy live không giới hạn cho demo realtime.
+    """
+    return MAX_EVENTS > 0 and published_events >= MAX_EVENTS
+
+
 async def publish_events_once(producer: Producer, published_events: int) -> int:
     """Kết nối Jetstream một lần và publish event cho tới khi đủ MAX_EVENTS."""
     # Mỗi lần gọi hàm này tương ứng với một WebSocket connection.
     async with websockets.connect(JETSTREAM_URL) as websocket:
+        events_before_connection = published_events
+
         async for message in websocket:
             # Decode raw event rồi bọc metadata ingestion.
             raw_event = json.loads(message)
@@ -74,9 +84,15 @@ async def publish_events_once(producer: Producer, published_events: int) -> int:
 
             published_events += 1
 
-            # Dừng hữu hạn để kiểm chứng gateway local.
-            if published_events >= MAX_EVENTS:
+            # Dừng hữu hạn khi MAX_EVENTS > 0; MAX_EVENTS = 0 là live mode.
+            if should_stop(published_events):
                 return published_events
+
+        if published_events > events_before_connection:
+            logger.info(
+                "jetstream connection ended after publishing events_in_connection=%s",
+                published_events - events_before_connection,
+            )
 
     return published_events
 
@@ -85,25 +101,43 @@ async def run_gateway() -> None:
     """Đọc live Jetstream event, bọc envelope và publish vào Kafka raw topic."""
     producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
     published_events = 0
-    retry_count = 0
+    connection_error_count = 0
+    consecutive_retry_count = 0
 
     try:
         # Retry hữu hạn để tránh gateway loop vô hạn khi nguồn lỗi liên tục.
-        while published_events < MAX_EVENTS:
+        while not should_stop(published_events):
+            events_before_connection = published_events
+
             try:
                 published_events = await publish_events_once(producer, published_events)
-                retry_count = 0
 
-            except websockets.exceptions.WebSocketException as error:
-                retry_count += 1
+                # Nếu connection vừa rồi đã nhận được data thì chuỗi lỗi liên tiếp đã kết thúc.
+                if published_events > events_before_connection:
+                    consecutive_retry_count = 0
+
+            except (
+                websockets.exceptions.ConnectionClosed,
+                websockets.exceptions.WebSocketException,
+                OSError,
+                TimeoutError,
+                asyncio.TimeoutError,
+            ) as error:
+                connection_error_count += 1
+                consecutive_retry_count += 1
                 logger.warning(
-                    "jetstream websocket error retry=%s max_retries=%s error=%s",
-                    retry_count,
+                    (
+                        "jetstream websocket error consecutive_retry=%s "
+                        "total_connection_errors=%s max_retries=%s error=%s"
+                    ),
+                    consecutive_retry_count,
+                    connection_error_count,
                     MAX_RETRIES,
                     error,
                 )
 
-                if retry_count > MAX_RETRIES:
+                # MAX_RETRIES=0 dùng cho live demo: retry không giới hạn khi nguồn ngắt.
+                if MAX_RETRIES > 0 and consecutive_retry_count > MAX_RETRIES:
                     logger.error("max retries exceeded")
                     raise
 
@@ -119,10 +153,14 @@ async def run_gateway() -> None:
         producer.flush()
 
         logger.info(
-            "gateway finished topic=%s published_events=%s delivery_failed=%s",
+            (
+                "gateway finished topic=%s published_events=%s delivery_failed=%s "
+                "total_connection_errors=%s"
+            ),
             KAFKA_RAW_EVENTS_TOPIC,
             published_events,
             delivery_failed,
+            connection_error_count,
         )
 
 

@@ -1,10 +1,12 @@
 """Cấu hình Spark Iceberg catalog dùng cho MinIO local."""
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
-from pyspark.sql import SparkSession
-
-from bluesky_pipeline.spark_session import create_spark_session
+if TYPE_CHECKING:
+    from pyspark.sql import SparkSession
 
 
 ICEBERG_SPARK_PACKAGE = os.getenv(
@@ -58,6 +60,8 @@ def create_iceberg_spark_session(app_name: str) -> SparkSession:
             ICEBERG_WAREHOUSE_PATH
         ),
     }
+
+    from bluesky_pipeline.spark_session import create_spark_session
 
     return create_spark_session(
         app_name,

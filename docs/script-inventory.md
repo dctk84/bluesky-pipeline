@@ -18,6 +18,8 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
   Kafka qua Spark Structured Streaming vào ClickHouse realtime marts.
 - `scripts/realtime/check_clickhouse_metrics.py`: kiểm tra các realtime marts và
   batch health trong ClickHouse.
+- `scripts/e2e/run_live_pipeline.py`: chạy live pipeline gồm Bronze writer,
+  realtime metrics stream và ingestion gateway đọc Bluesky Jetstream.
 
 ## 2. Historical/lakehouse sub-steps
 
@@ -50,6 +52,8 @@ Các script này phục vụ build, load và reconcile từng Gold mart.
   engagement summary giữa Gold staging và ClickHouse.
 - `scripts/platform/create_clickhouse_gold_tables.py`: tạo database và các bảng serving
   trong ClickHouse.
+- `scripts/platform/cleanup_ingested_data.py`: dọn dữ liệu ingest local trên
+  Kafka, MinIO và ClickHouse bằng cơ chế dry-run trước khi xóa thật.
 
 ## 4. Ingestion và Bronze
 
