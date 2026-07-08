@@ -29,6 +29,7 @@ bài học của bước lớn tương ứng.
 16. [Xây dựng realtime fast path vào ClickHouse](#bước-16-xây-dựng-realtime-fast-path-vào-clickhouse)
 17. [Hoàn thiện Grafana realtime dashboard và operational health](#bước-17-hoàn-thiện-grafana-realtime-dashboard-và-operational-health)
 18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
+19. [Bổ sung live demo runner và cleanup dữ liệu local](#bước-19-bổ-sung-live-demo-runner-và-cleanup-dữ-liệu-local)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -780,3 +781,52 @@ và orchestration/monitoring nếu milestone yêu cầu.
   reconciliation.
 - README/runbook nên hoàn thiện gần cuối project, khi command và entrypoint đã ổn
   định.
+
+## Bước 19: Bổ sung live demo runner và cleanup dữ liệu local
+
+**Mục tiêu**
+
+Tạo entrypoint chạy live pipeline end-to-end và cơ chế dọn dữ liệu ingest local
+an toàn sau các lần demo/thử nghiệm.
+
+**Vì sao cần thực hiện**
+
+Sau khi từng path đã chạy được riêng lẻ, project cần một cách kiểm chứng thực tế:
+nguồn live đi vào gateway, Kafka, Spark, ClickHouse và hiển thị trên Grafana mà
+không cần bắn event thủ công. Đồng thời, vì đây là project cá nhân chạy local,
+dữ liệu ingest lịch sử không cần giữ lâu dài và có thể làm phình MinIO,
+ClickHouse, Kafka hoặc checkpoint.
+
+**Kết quả sau khi hoàn thành**
+
+Project có live demo runner để chạy đồng thời Bronze writer, realtime metrics
+stream và ingestion gateway. Gateway hỗ trợ live mode, retry không giới hạn khi
+cấu hình `MAX_RETRIES=0`, và log tách rõ tổng số lỗi kết nối với số lần retry
+liên tiếp để tránh hiểu nhầm lỗi đang tích tụ.
+
+Project cũng có cleanup utility mặc định chạy dry-run trước, chỉ xóa thật khi
+truyền flag xác nhận. Cleanup dọn Bronze/Silver/Gold/checkpoints trên MinIO,
+truncate ClickHouse serving tables và có tùy chọn purge Kafka raw topic.
+
+Live pipeline đã được chạy lại từ trạng thái sạch sau cleanup: dữ liệu mới đi từ
+Jetstream vào Kafka, Spark ghi Bronze và realtime marts, Grafana cập nhật theo
+time range hiện tại, checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
+
+**Các file liên quan**
+
+- `scripts/e2e/run_live_pipeline.py`
+- `src/bluesky_pipeline/ingestion_gateway.py`
+- `scripts/platform/cleanup_ingested_data.py`
+- `docs/script-inventory.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Live demo runner là entrypoint vận hành local, không thay thế orchestration như
+  Airflow trong các workflow batch/backfill có điểm bắt đầu và kết thúc rõ ràng.
+- Cleanup dữ liệu ingest nên có dry-run và flag xác nhận vì đây là thao tác phá
+  hủy dữ liệu.
+- Truncate ClickHouse giữ lại schema để Grafana dashboard không mất query/table
+  contract.
+- Xóa dữ liệu trong Docker volume không nhất thiết làm file disk image của WSL
+  giảm ngay; compact WSL là thao tác ở tầng hệ điều hành, không phải logic
+  pipeline.

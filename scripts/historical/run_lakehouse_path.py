@@ -28,6 +28,7 @@ def run_step(step_name: str, module_name: str) -> None:
     """Chạy một module script và dừng toàn bộ pipeline nếu module đó lỗi."""
     print(f"\n=== {step_name} ===")
 
+    # Chạy bằng module để import package `scripts.*` ổn định sau khi tách thư mục.
     subprocess.run(
         [sys.executable, "-m", module_name],
         cwd=PROJECT_ROOT,
@@ -42,6 +43,7 @@ def run_step(step_name: str, module_name: str) -> None:
 def main() -> None:
     """Chạy toàn bộ historical/lakehouse path theo đúng thứ tự."""
     for step_name, script_path in STEPS:
+        # check=True trong run_step tạo fail-fast: bước lỗi thì dừng pipeline ngay.
         run_step(step_name, script_path)
 
     print("\nHistorical lakehouse path passed")

@@ -128,6 +128,15 @@ PYTHONPATH=src:. python scripts/gold/check_serving_v1.py
 
 ## Realtime fast path
 
+Chạy live pipeline từ Bluesky Jetstream tới ClickHouse/Grafana:
+
+```bash
+PYTHONPATH=src:. python scripts/e2e/run_live_pipeline.py
+```
+
+Lệnh này start Bronze writer, realtime metrics stream và ingestion gateway. Nhấn
+`Ctrl+C` để dừng toàn bộ process con.
+
 Terminal 1, chạy Spark streaming job ghi realtime metrics vào ClickHouse:
 
 ```bash
