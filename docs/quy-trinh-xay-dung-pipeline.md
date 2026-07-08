@@ -561,6 +561,12 @@ Data pipeline cần kiểm tra hành vi, không chỉ kiểm tra service đang c
 Reconciliation giúp phát hiện lệch count giữa Silver source of truth, Gold output
 và ClickHouse serving layer.
 
+Cơ chế checkpoint trong project là integration/data quality check: script đọc dữ
+liệu thật từ Bronze, Iceberg hoặc ClickHouse; tính expected metrics từ source of
+truth; query actual metrics ở output layer; sau đó so sánh expected với actual.
+Nếu có mismatch, script dừng bằng exception. Đây không phải unit test dùng mock,
+và cũng chưa phải full automated end-to-end test tự khởi động toàn bộ pipeline.
+
 **Kết quả sau khi hoàn thành**
 
 Project có checkpoint cho Silver v1, Iceberg Silver v1, Gold event volume, Gold
@@ -583,6 +589,8 @@ có mà không build hoặc refresh lại dữ liệu.
 
 - Reconciliation nên so sánh theo business metric, không chỉ so sánh row count
   tổng.
+- Checkpoint pipeline kiểm chứng output thật của từng tầng, nên hữu ích để bắt
+  lỗi cấu hình, schema, load thiếu dữ liệu hoặc lệch transformation.
 - CLI checkpoint rất hữu ích trước khi có orchestration hoặc dashboard hoàn chỉnh.
 - Nên tách lệnh `run` có ghi dữ liệu với lệnh `check` chỉ kiểm tra trạng thái
   hiện có, để demo và debug rõ ràng hơn.
