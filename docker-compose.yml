@@ -60,6 +60,46 @@ services:
       # Lưu dữ liệu object storage local qua các lần restart container.
       - minio-data:/data
 
+  hive-metastore:
+    image: apache/hive:3.1.3
+    container_name: bluesky-hive-metastore
+    hostname: hive-metastore
+
+    ports:
+      - "9083:9083"
+
+    environment:
+      # Metastore local dùng embedded Derby để tránh thêm database riêng ở bước này.
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+      HADOOP_CLASSPATH: /opt/hadoop/share/hadoop/tools/lib/*
+
+    volumes:
+      # Lưu metadata catalog local qua các lần restart container.
+      - hive-metastore-data-v3:/opt/hive/data
+      # Hive Metastore cũng cần biết cách truy cập MinIO khi tạo database/table location.
+      - ./config/hive/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./config/hive/core-site.xml:/opt/hive/conf/core-site.xml:ro
+
+    depends_on:
+      - minio
+
+  trino:
+    image: trinodb/trino:477
+    container_name: bluesky-trino
+    hostname: trino
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      # Trino catalog để query Iceberg tables trên MinIO qua Hive Metastore.
+      - ./config/trino/catalog:/etc/trino/catalog:ro
+
+    depends_on:
+      - hive-metastore
+      - minio
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: bluesky-clickhouse
@@ -103,5 +143,6 @@ services:
 
 volumes:
   minio-data:
+  hive-metastore-data-v3:
   clickhouse-data:
   grafana-data:

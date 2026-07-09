@@ -14,9 +14,14 @@ ICEBERG_SPARK_PACKAGE = os.getenv(
     "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.1",
 )
 ICEBERG_CATALOG_NAME = os.getenv("ICEBERG_CATALOG_NAME", "lakehouse")
+ICEBERG_CATALOG_TYPE = os.getenv("ICEBERG_CATALOG_TYPE", "hive")
+ICEBERG_HIVE_METASTORE_URI = os.getenv(
+    "ICEBERG_HIVE_METASTORE_URI",
+    "thrift://localhost:9083",
+)
 ICEBERG_WAREHOUSE_PATH = os.getenv(
     "ICEBERG_WAREHOUSE_PATH",
-    "s3a://bluesky-lake/iceberg/warehouse",
+    "s3://bluesky-lake/iceberg/warehouse",
 )
 ICEBERG_SILVER_NAMESPACE = "silver_v1"
 ICEBERG_SILVER_POSTS_TABLE = (
@@ -46,12 +51,12 @@ ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION = (
 
 
 def create_iceberg_spark_session(app_name: str) -> SparkSession:
-    """Tạo SparkSession có cấu hình Iceberg Hadoop catalog trên MinIO.
+    """Tạo SparkSession có cấu hình Iceberg catalog trên MinIO.
 
     Input chính là tên Spark app.
     Output là SparkSession có thể tạo, ghi và đọc Iceberg tables.
     """
-    # Hadoop catalog dùng warehouse path trên MinIO, chưa cần Hive/REST catalog.
+    # Hive catalog giúp Spark và Trino nhìn chung Iceberg table metadata.
     iceberg_configs = {
         "spark.sql.extensions": (
             "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
@@ -59,11 +64,16 @@ def create_iceberg_spark_session(app_name: str) -> SparkSession:
         f"spark.sql.catalog.{ICEBERG_CATALOG_NAME}": (
             "org.apache.iceberg.spark.SparkCatalog"
         ),
-        f"spark.sql.catalog.{ICEBERG_CATALOG_NAME}.type": "hadoop",
+        f"spark.sql.catalog.{ICEBERG_CATALOG_NAME}.type": ICEBERG_CATALOG_TYPE,
         f"spark.sql.catalog.{ICEBERG_CATALOG_NAME}.warehouse": (
             ICEBERG_WAREHOUSE_PATH
         ),
     }
+
+    if ICEBERG_CATALOG_TYPE == "hive":
+        iceberg_configs[f"spark.sql.catalog.{ICEBERG_CATALOG_NAME}.uri"] = (
+            ICEBERG_HIVE_METASTORE_URI
+        )
 
     from bluesky_pipeline.spark_session import create_spark_session
 

@@ -30,6 +30,7 @@ bài học của bước lớn tương ứng.
 17. [Hoàn thiện Grafana realtime dashboard và operational health](#bước-17-hoàn-thiện-grafana-realtime-dashboard-và-operational-health)
 18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
 19. [Bổ sung live demo runner và cleanup dữ liệu local](#bước-19-bổ-sung-live-demo-runner-và-cleanup-dữ-liệu-local)
+20. [Bổ sung Trino Query Engine cho Lakehouse](#bước-20-bổ-sung-trino-query-engine-cho-lakehouse)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -525,16 +526,22 @@ vào Parquet prototype. Ở thời điểm này, luồng đã triển khai là:
 Đây là bước thực dụng để có dashboard và reconciliation chạy được trước. Về mặt
 kiến trúc lakehouse đầy đủ, Gold không chỉ là aggregate metric. Target lâu dài là:
 
-`Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse`.
+`Silver Iceberg -> Gold modeled tables -> Trino`.
+
+Từ Gold modeled, pipeline tiếp tục tạo serving marts cho dashboard:
+
+`Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse`.
 
 Gold modeled tables có thể là fact/dim hoặc semantic marts phục vụ phân tích sâu.
-Gold aggregate/serving marts là lớp tính trước metric từ dữ liệu đã model để phục
-vụ Grafana và các truy vấn lặp lại với độ trễ thấp hơn.
+Trino là query engine để query trực tiếp Gold modeled trên Iceberg. Gold
+aggregate/serving marts là lớp tính trước metric từ dữ liệu đã model để phục vụ
+Grafana và các truy vấn lặp lại với độ trễ thấp hơn.
 
 Trong lakehouse path, Spark xử lý dữ liệu ở các đoạn chính:
 
 - `Bronze -> Spark -> Silver Iceberg`
 - `Silver Iceberg -> Spark -> Gold modeled tables`
+- `Gold modeled tables -> Trino -> ad-hoc analytics`
 - `Gold modeled tables -> Spark -> Gold aggregate/serving marts -> ClickHouse`
 
 ClickHouse chỉ là serving layer cho lakehouse marts, không phải nơi xử lý dữ liệu
@@ -650,7 +657,9 @@ vai trò source of truth cho dữ liệu lịch sử, backfill và rebuild.
 - Lakehouse path: `Kafka -> Bronze -> Silver Iceberg`, trong đó Bronze -> Silver
   chạy theo streaming để dữ liệu sạch được cập nhật liên tục.
 - Gold lakehouse path mục tiêu:
-  `Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse -> Grafana`.
+  `Silver Iceberg -> Gold modeled tables -> Trino`.
+- Serving path từ lakehouse:
+  `Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse -> Grafana`.
   Trong đó Gold modeled và Gold aggregate/serving có thể schedule chậm hơn bằng
   Airflow vì ưu tiên data modeling, aggregate, rebuild và reconciliation.
 - Observability path: logs/metrics/checkpoints phục vụ vận hành.
@@ -676,9 +685,11 @@ tách biệt.
   các tầng streaming/continuous, còn Gold có thể refresh chậm hơn.
 - Near-real-time luôn có độ trễ từ Spark trigger, ClickHouse insert và Grafana
   refresh.
-- Project có lai một phần tư duy Kappa vì Kafka là event backbone chung và Spark
-  được dùng cho cả streaming lẫn batch, nhưng không phải Kappa thuần vì vẫn có
-  Bronze/Silver Iceberg làm lakehouse source of truth.
+- Đây không còn nên gọi là Kappa-like architecture: project có lakehouse path
+  riêng với Bronze/Silver/Gold Iceberg và Trino query layer. Kafka vẫn là event
+  backbone chung, nhưng source of truth phân tích nằm ở lakehouse.
+- Hai consumer group cùng đọc Kafka có thể lệch tạm thời; cần kiểm soát bằng lag,
+  freshness, reconciliation và khả năng rebuild ClickHouse từ Iceberg.
 
 ## Bước 16: Xây dựng realtime fast path vào ClickHouse
 
@@ -726,6 +737,10 @@ có backlog.
 - `input_rows = count()` phục vụ batch health nhưng là một action bổ sung; workload
   lớn hơn có thể lấy từ streaming progress metrics.
 - Semantics hiện tại là at-least-once; chưa tuyên bố exactly-once end-to-end.
+- Khi Spark retry một micro-batch, ClickHouse có thể nhận lại cùng dữ liệu nếu
+  sink không idempotent. Bảng metric nên có khóa logic như
+  `window_start + metric_name + dimension` hoặc cơ chế reconciliation/deduplicate
+  rõ ràng.
 
 ## Bước 17: Hoàn thiện Grafana realtime dashboard và operational health
 
@@ -792,7 +807,9 @@ Project hiện có hai path đã chạy được ở local:
   `Kafka -> Bronze -> Silver Iceberg`, với Bronze -> Silver chạy streaming trong
   live pipeline.
 - Gold lakehouse path:
-  `Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse lakehouse marts -> Grafana`.
+  `Silver Iceberg -> Gold modeled tables -> Trino`.
+- Serving path từ lakehouse:
+  `Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse lakehouse marts -> Grafana`.
 
 Realtime path đã có business metrics và operational health. Lakehouse path đã có
 Silver Iceberg, Gold aggregate refresh và reconciliation. Phần còn cần hoàn thiện
@@ -818,6 +835,8 @@ runbook và monitoring nếu milestone yêu cầu.
   reconciliation.
 - Với lakehouse analytics, Gold nên được hiểu thành hai vai trò: modeled layer để
   biểu diễn dữ liệu nghiệp vụ và aggregated/serving layer để tăng tốc dashboard.
+- Trino là query engine cho Gold modeled Iceberg; ClickHouse là serving/metric
+  store cho dashboard.
 - README/runbook nên hoàn thiện gần cuối project, khi command và entrypoint đã ổn
   định.
 
@@ -872,3 +891,57 @@ checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
 - Xóa dữ liệu trong Docker volume không nhất thiết làm file disk image của WSL
   giảm ngay; compact WSL là thao tác ở tầng hệ điều hành, không phải logic
   pipeline.
+
+## Bước 20: Bổ sung Trino Query Engine cho Lakehouse
+
+**Mục tiêu**
+
+Dựng Trino và Hive Metastore để query trực tiếp các bảng Iceberg bằng SQL, bắt
+đầu bằng checkpoint query Silver v1.
+
+**Vì sao cần thực hiện**
+
+Trước bước này, Iceberg đã lưu được Silver nhưng việc kiểm tra và phân tích vẫn
+phụ thuộc vào Spark job. Spark phù hợp cho compute, streaming transform, backfill
+và build bảng; còn Trino phù hợp cho query SQL tương tác trên lakehouse. Bổ sung
+Trino giúp kiến trúc lakehouse đầy đủ hơn: Iceberg là table format, Hive Metastore
+là catalog metadata dùng chung, Trino là query engine, ClickHouse vẫn là serving
+layer cho dashboard có độ trễ thấp.
+
+**Kết quả sau khi hoàn thành**
+
+Project có thêm service Hive Metastore và Trino trong Docker Compose. Spark
+Iceberg được chuyển sang Hive catalog để các bảng Iceberg được đăng ký vào
+metastore dùng chung, thay vì chỉ tồn tại dưới dạng Hadoop catalog riêng của
+Spark. Trino kết nối được tới catalog lakehouse và query được các bảng Silver v1
+trên MinIO.
+
+Checkpoint Trino đã pass với các bảng Silver v1, nghĩa là luồng lakehouse hiện có
+không chỉ build được bằng Spark mà còn query được bằng SQL qua query engine độc
+lập.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `config/hive/core-site.xml`
+- `config/trino/catalog/lakehouse.properties`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `scripts/lakehouse/check_trino_silver_v1.py`
+- `docs/tong-quan-du-an.md`
+- `docs/gold-data-model-v1.md`
+- `docs/script-inventory.md`
+- `README.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Trino query Iceberg cần một catalog metadata dùng chung. Nếu chỉ dùng Hadoop
+  catalog riêng trong Spark, Trino không tự biết các bảng đó tồn tại.
+- Hive Metastore phải có cấu hình S3A để tạo namespace/table location trên MinIO.
+- Khi đổi Iceberg catalog từ Hadoop sang Hive catalog, các bảng Iceberg cần được
+  build lại để đăng ký metadata vào metastore mới.
+- Trong kiến trúc này, Spark là compute engine; Trino là query engine cho
+  lakehouse SQL/ad-hoc analytics; ClickHouse là serving/metric store cho Grafana.
+- Lỗi tương thích giữa client Iceberg/Spark và Hive Metastore có thể xuất hiện ở
+  tầng RPC/metastore. Trong project này, Hive Metastore 3.1.3 phù hợp hơn Hive 4
+  cho stack local hiện tại.

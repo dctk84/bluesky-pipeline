@@ -7,6 +7,7 @@ Tài liệu kỹ thuật chi tiết:
 
 - [Tổng quan dự án](docs/tong-quan-du-an.md)
 - [Hướng dẫn làm việc với Codex](docs/huong-dan-lam-viec-voi-codex.md)
+- [Gold data model v1](docs/gold-data-model-v1.md)
 - [Script inventory](docs/script-inventory.md)
 
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
@@ -25,6 +26,7 @@ Jetstream
 → Kafka
 → Spark Bronze trên MinIO
 → Silver Iceberg v1 trên MinIO
+→ Trino query layer
 → Gold modeled / aggregate marts build từ Silver Iceberg
 → ClickHouse serving tables
 → Reconciliation check
@@ -45,6 +47,9 @@ Lưu ý:
 - Silver Iceberg v1 hiện là source of truth cho 4 bảng chính trên MinIO.
 - Silver được build trực tiếp từ Bronze qua transformation module dùng chung; live
   pipeline có streaming job đẩy Bronze mới sang Silver Iceberg.
+- Trino query Silver/Gold Iceberg qua Hive Metastore catalog.
+- Sau khi bật Trino/Hive Metastore lần đầu, cần build lại Silver Iceberg để các
+  bảng được đăng ký vào metastore mới.
 - Lakehouse Gold không chỉ là metric aggregate; hướng thiết kế tiếp theo là có
   lớp Gold modeled fact/dim hoặc semantic marts trước khi tính metric.
 - ClickHouse serving layer hiện có 2 bảng lakehouse serving marts:
@@ -57,7 +62,7 @@ Lưu ý:
 Khởi động hạ tầng:
 
 ```bash
-docker compose up -d kafka minio clickhouse
+docker compose up -d kafka minio hive-metastore trino clickhouse
 ```
 
 Kiểm tra ClickHouse:
@@ -76,6 +81,8 @@ MAX_EVENTS=300
 CLICKHOUSE_URL=http://localhost:8123
 CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=clickhouse
+ICEBERG_CATALOG_TYPE=hive
+ICEBERG_HIVE_METASTORE_URI=thrift://localhost:9083
 ```
 
 Chạy Spark Bronze writer:
@@ -122,6 +129,7 @@ Các script con vẫn có thể chạy riêng khi cần debug từng tầng:
 ```bash
 PYTHONPATH=src python scripts/lakehouse/build_iceberg_silver_v1.py
 PYTHONPATH=src python scripts/lakehouse/check_iceberg_silver_v1.py
+PYTHONPATH=src python scripts/lakehouse/check_trino_silver_v1.py
 PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
 PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
 PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py

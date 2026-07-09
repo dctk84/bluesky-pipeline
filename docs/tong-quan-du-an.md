@@ -7,7 +7,7 @@
 Tên mô tả ngắn:
 
 > Nền tảng xử lý dữ liệu streaming phân tán từ Bluesky Jetstream, sử dụng Kafka,
-> Spark Structured Streaming, S3-compatible Data Lake, Apache Iceberg và
+> Spark Structured Streaming, S3-compatible Data Lake, Apache Iceberg, Trino và
 > ClickHouse.
 
 ---
@@ -64,10 +64,11 @@ Project xây dựng một nền tảng có khả năng:
 4. Lưu dữ liệu lịch sử trên S3-compatible object storage.
 5. Tổ chức dữ liệu theo các tầng Bronze, Silver và Gold.
 6. Quản lý các bảng Silver Lakehouse bằng Apache Iceberg.
-7. Phục vụ truy vấn gần thời gian thực bằng ClickHouse.
-8. Hiển thị business metrics và platform metrics qua Grafana.
-9. Hỗ trợ backfill, data quality, compaction và rebuild bằng Airflow.
-10. Theo dõi độ trễ, throughput, consumer lag và lỗi pipeline.
+7. Query dữ liệu lakehouse bằng Trino cho ad-hoc analytics.
+8. Phục vụ truy vấn gần thời gian thực bằng ClickHouse.
+9. Hiển thị business metrics và platform metrics qua Grafana.
+10. Hỗ trợ backfill, data quality, compaction và rebuild bằng Airflow.
+11. Theo dõi độ trễ, throughput, consumer lag và lỗi pipeline.
 
 ---
 
@@ -124,6 +125,7 @@ Trong lakehouse path, Spark là compute engine chính cho các đoạn xử lý 
 ```text
 Bronze / raw lake -> Spark -> Silver Iceberg
 Silver Iceberg -> Spark -> Gold modeled tables
+Gold modeled tables -> Trino -> ad-hoc analytics
 Gold modeled tables -> Spark -> Gold aggregate / serving marts -> ClickHouse
 ```
 
@@ -167,7 +169,22 @@ thấp. ClickHouse không phải toàn bộ tầng Gold và không phải source
 nhất; các bảng serving trong ClickHouse phải có thể được rebuild từ Gold modeled
 tables hoặc từ Silver khi cần.
 
-### 4.5. Analytical serving
+### 4.5. Query engine layer
+
+Trino được sử dụng làm query engine cho lakehouse path.
+
+Trino phục vụ:
+
+- Query SQL trực tiếp lên các bảng Iceberg.
+- Ad-hoc analytics trên Silver và Gold modeled tables.
+- Kiểm tra dữ liệu lakehouse mà không cần viết Spark job riêng cho từng câu hỏi.
+- Demo rõ lớp Query Engine Layer của kiến trúc lakehouse hiện đại.
+
+Trino không thay thế Spark. Spark vẫn là compute engine cho streaming,
+transformation, backfill và build các bảng Silver/Gold. Trino cũng không thay thế
+ClickHouse. ClickHouse vẫn là serving/metric store cho dashboard có latency thấp.
+
+### 4.6. Analytical serving
 
 ClickHouse được sử dụng làm serving layer cho:
 
@@ -181,7 +198,7 @@ ClickHouse không phải source of truth duy nhất.
 Các bảng ClickHouse phải có khả năng rebuild từ Gold modeled tables hoặc từ
 Silver Iceberg khi cần.
 
-### 4.6. Platform operations
+### 4.7. Platform operations
 
 Airflow được sử dụng cho các workflow có điểm bắt đầu và kết thúc rõ ràng:
 
@@ -198,10 +215,11 @@ Airflow được sử dụng cho các workflow có điểm bắt đầu và kế
 Airflow không được sử dụng để xử lý từng streaming event.
 Airflow cũng không thay thế live ingestion gateway hoặc Spark streaming consumer.
 Trong project này, Airflow phù hợp nhất để schedule các job hữu hạn như
-`Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts ->
-ClickHouse` và các checkpoint sau load.
+`Silver Iceberg -> Gold modeled tables`, chạy Trino validation/query checkpoint,
+rồi `Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse` và các
+checkpoint sau load.
 
-### 4.7. Observability
+### 4.8. Observability
 
 Hệ thống cần theo dõi:
 
@@ -311,6 +329,10 @@ Bluesky Jetstream
 │ - Dimension tables          │                                       │
 │ - Semantic marts            │                                       │
 └──────────────┬──────────────┘                                       │
+               │ SQL / ad-hoc analytics                              │
+               ├──────────────▶ Trino query engine                    │
+               │                - Query Iceberg                       │
+               │                - Analyst SQL                         │
                │ Aggregates / serving marts                           │
                ▼                                                      │
 ┌─────────────────────────────┐                                       │
@@ -344,11 +366,12 @@ Kiến trúc dashboard có hai luồng phục vụ khác nhau:
   vẫn có độ trễ từ trigger interval của Spark, thời gian ghi ClickHouse và chu kỳ
   refresh của Grafana.
 - **Lakehouse path** ghi dữ liệu qua Bronze và Silver Iceberg trước
-  khi tạo Gold modeled tables, rồi từ Gold modeled tính các aggregate/serving
-  marts và load vào ClickHouse. Luồng này là nền tảng cho backfill, rebuild,
-  reconciliation và phân tích chuyên sâu. Trong path này, Bronze và Silver là các
-  tầng streaming/continuous; Gold modeled và Gold aggregate refresh có thể chạy
-  thưa hơn bằng Airflow.
+  khi tạo Gold modeled tables. Trino query trực tiếp các bảng Iceberg để phục vụ
+  ad-hoc analytics. Từ Gold modeled, Spark hoặc các job được Airflow schedule sẽ
+  tính aggregate/serving marts và load vào ClickHouse. Luồng này là nền tảng cho
+  backfill, rebuild, reconciliation và phân tích chuyên sâu. Trong path này,
+  Bronze và Silver là các tầng streaming/continuous; Gold modeled và Gold
+  aggregate refresh có thể chạy thưa hơn bằng Airflow.
 - Fast path không thay thế Silver Iceberg. ClickHouse realtime marts là serving
   table cho dashboard, không phải source of truth duy nhất.
 - Prometheus và Grafana technical dashboard phục vụ observability như lag,
@@ -356,32 +379,51 @@ Kiến trúc dashboard có hai luồng phục vụ khác nhau:
 
 ### 5.1. Phân loại kiến trúc
 
-Kiến trúc của project là **lambda-like architecture** cho bài toán streaming
-analytics.
+Kiến trúc của project là **lambda-like streaming lakehouse architecture** cho bài
+toán streaming analytics.
 
-Project có fast path từ Kafka qua Spark Structured Streaming tới ClickHouse
-realtime marts để phục vụ các metric có freshness thấp. Đồng thời, dữ liệu vẫn
-được lưu vào Bronze và Silver Iceberg để phục vụ batch processing, backfill,
-lakehouse baseline, correction, reconciliation và rebuild. Hai path gặp nhau ở
-serving layer là ClickHouse/Grafana.
+Project có hai path cùng đọc từ Kafka:
 
-Trong thiết kế hiện tại, Kafka fan-out sang hai consumer chính: một consumer phục
-vụ realtime fast path vào ClickHouse, một consumer ghi Bronze. Từ Bronze, một
-Spark Structured Streaming job tiếp tục đẩy dữ liệu mới sang Silver Iceberg. Từ
-Silver, lakehouse path sẽ modeling dữ liệu thành Gold fact/dim hoặc semantic
-marts; các bảng metric phục vụ Grafana được tính từ lớp Gold modeled này và load
-vào ClickHouse theo lịch chậm hơn bằng Airflow.
+```text
+Kafka topic
+├── Consumer group 1: lakehouse_ingestion
+│   └── Spark -> Bronze/Silver/Gold Iceberg -> Trino -> analytics
+└── Consumer group 2: realtime_metrics
+    └── Spark -> ClickHouse -> Grafana operational dashboard
+```
 
-Tuy nhiên, đây không phải Lambda Architecture cổ điển với hai codebase hoàn toàn
-tách biệt cho speed layer và batch layer. Project dùng Spark cho cả streaming và
-batch, đồng thời tách schema, metadata và table contract vào các module dùng chung
-để giảm duplication. Vì vậy cách mô tả chính xác là **lambda-like streaming
-lakehouse architecture**, có lai một phần tư duy Kappa ở chỗ Kafka là event
-backbone chung và compute stack được tái sử dụng.
+Fast path đi từ Kafka qua Spark Structured Streaming tới ClickHouse realtime marts
+để phục vụ metric có freshness thấp. Đây là **operational serving view**: nhanh
+hơn, ít tầng hơn, phù hợp quan sát tức thời, nhưng không phải single source of
+truth.
 
-Project cũng không phải Kappa Architecture thuần, vì dữ liệu lịch sử không chỉ
-dựa vào replay từ Kafka. Bronze/Silver Iceberg vẫn giữ vai trò lakehouse source of
-truth cho correction, backfill, rebuild và phân tích lịch sử.
+Lakehouse path lưu dữ liệu vào Bronze, Silver Iceberg và Gold modeled Iceberg.
+Trino là query engine để analyst hoặc người vận hành query trực tiếp lakehouse
+tables. Các metric phục vụ Grafana được tính từ Gold modeled thành
+aggregate/serving marts rồi load vào ClickHouse. Kafka là short-term replay log;
+source of truth phân tích nằm ở Bronze Parquet và các bảng Silver/Gold Iceberg
+trên lakehouse.
+
+Vì có hai consumer/job khác nhau cùng đọc Kafka, dữ liệu giữa hai path có thể lệch
+tạm thời. Các nguyên nhân thường gặp:
+
+- Một job xử lý trước, job kia còn lag.
+- Logic transform giữa fast path và lakehouse path khác nhau.
+- Late event hoặc out-of-order event.
+- Duplicate event hoặc replay từ Kafka.
+- Retry khi ghi ClickHouse làm một micro-batch có thể được gửi lại.
+- Watermark hoặc schema thay đổi.
+- Một job fail trong khi job còn lại vẫn chạy.
+
+Đây không phải lỗi thiết kế, nhưng phải được kiểm soát bằng checkpoint,
+reconciliation, data freshness metrics và quy tắc rebuild rõ ràng.
+
+Thiết kế này không còn nên gọi là Kappa-like. Kappa Architecture thuần thường dựa
+trên một stream processing path duy nhất và replay từ log để rebuild state. Project
+này có lakehouse path riêng với Bronze/Silver/Gold Iceberg, Trino cho ad-hoc
+analytics và ClickHouse cho serving, nên mô tả chính xác hơn là lambda-like. Điểm
+giống Kappa còn lại chỉ là Kafka đóng vai trò event backbone chung và Spark được
+tái sử dụng ở nhiều đoạn xử lý.
 
 ---
 
@@ -434,24 +476,30 @@ truth cho correction, backfill, rebuild và phân tích lịch sử.
 - Apache Iceberg.
 - Iceberg catalog.
 
-### 6.6. Serving
+### 6.6. Query engine
+
+- Trino.
+- Iceberg connector.
+- SQL ad-hoc analytics trên lakehouse tables.
+
+### 6.7. Serving
 
 - ClickHouse.
 - MergeTree-family engines.
 - Materialized views khi có use case.
 - Grafana.
 
-### 6.7. Orchestration
+### 6.8. Orchestration
 
 - Apache Airflow.
 
-### 6.8. Monitoring
+### 6.9. Monitoring
 
 - Prometheus.
 - Grafana.
 - Structured application logs.
 
-### 6.9. Testing và code quality
+### 6.10. Testing và code quality
 
 - pytest.
 - ruff.
@@ -653,9 +701,24 @@ MinIO   = object storage
 Parquet = file format
 Iceberg = table format
 Spark   = compute engine
+Trino   = query engine
 ```
 
-### 8.8. ClickHouse
+### 8.8. Trino
+
+Trino là query engine của lakehouse path.
+
+Trino phục vụ:
+
+- Query SQL trực tiếp trên Silver và Gold modeled Iceberg tables.
+- Ad-hoc analytics và kiểm tra dữ liệu bằng SQL.
+- Demo lớp query engine của kiến trúc lakehouse.
+
+Trino không ghi thay Spark và không phục vụ dashboard realtime thay ClickHouse.
+Spark vẫn build/refresh dữ liệu; ClickHouse vẫn giữ metric serving marts cho
+Grafana.
+
+### 8.9. ClickHouse
 
 ClickHouse là analytical serving database.
 
@@ -664,14 +727,18 @@ Nó phục vụ:
 - Dashboard.
 - Near-real-time metrics.
 - Low-latency analytical queries.
+- Metric marts đã được pre-aggregate hoặc denormalize để query nhanh.
 
-### 8.9. Airflow
+ClickHouse không phải source of truth của lakehouse. Nếu mất dữ liệu serving,
+pipeline phải rebuild được từ Gold modeled Iceberg hoặc Silver Iceberg.
+
+### 8.10. Airflow
 
 Airflow orchestration các batch workflow hữu hạn.
 
 Airflow không chạy continuous consumer.
 
-### 8.10. Prometheus và Grafana
+### 8.11. Prometheus và Grafana
 
 Prometheus lưu technical metrics.
 
@@ -925,6 +992,27 @@ processing và sink semantics.
 Deduplication key phải được xác định từ các trường thực tế của Jetstream sau khi đã
 khảo sát event schema.
 
+Với Spark Structured Streaming ghi thẳng sang ClickHouse bằng `foreachBatch`, cần
+hiểu mặc định là at-least-once ở sink. Spark có `batchId`, nhưng chính pipeline
+phải dùng `batchId` hoặc khóa logic để tránh ghi trùng nếu micro-batch bị retry.
+Với bảng metric theo window, khóa logic nên có dạng:
+
+```text
+window_start + metric_name + dimension
+```
+
+Ví dụ:
+
+```text
+2026-07-09 10:01:00 | event_count | post_created
+2026-07-09 10:01:00 | event_count | like_created
+2026-07-09 10:02:00 | error_count | api_error
+```
+
+Không nên chỉ append mù vào ClickHouse mà không có cơ chế deduplicate hoặc
+reconciliation, vì Spark retry một micro-batch có thể khiến ClickHouse nhận lại
+cùng một batch.
+
 ---
 
 ## 13. Spark Structured Streaming
@@ -1107,6 +1195,7 @@ Luồng tính toán lakehouse chuẩn hơn:
 ```text
 Silver clean events
 → Gold modeled tables / semantic marts
+→ Trino ad-hoc SQL
 → Gold aggregated metrics
 → ClickHouse serving marts / Grafana
 ```
@@ -1114,33 +1203,30 @@ Silver clean events
 Các bảng Gold modeled dự kiến cho project Bluesky:
 
 ```text
-fact_posts
-fact_post_engagements
-fact_user_interactions
-fact_follows
-dim_actor
-dim_collection
-dim_event_type
-dim_date
+gold_dim_actors
+gold_dim_posts
+gold_fact_content_events
+gold_fact_engagement_events
+gold_fact_network_events
 ```
 
 Ý nghĩa ví dụ:
 
-- `fact_posts`: lưu post-level facts, ví dụ post URI, author, thời gian tạo,
-  reply flag, text length và các khóa join cần thiết.
-- `fact_post_engagements`: lưu các interaction hướng vào post như like/repost,
-  actor, subject post và event time.
-- `fact_user_interactions`: mô hình hóa actor -> target/object để phân tích hành
-  vi người dùng.
-- `fact_follows`: lưu quan hệ follow event-level hoặc relationship-level tùy use
-  case.
-- `dim_actor`: mô tả actor/user ở mức phân tích, có thể hash/pseudonymize DID nếu
-  cần.
-- `dim_collection`, `dim_event_type`, `dim_date`: dimension phục vụ filter,
-  grouping và dashboard query ổn định.
+- `gold_dim_actors`: một dòng cho mỗi actor DID đã xuất hiện trong dữ liệu.
+- `gold_dim_posts`: một dòng cho mỗi post URI, đại diện cho trạng thái mới nhất
+  mà lakehouse biết về bài viết.
+- `gold_fact_content_events`: các event liên quan tới post lifecycle như create,
+  update, delete và reply.
+- `gold_fact_engagement_events`: các interaction hướng vào post như like/repost,
+  actor, target post và event time.
+- `gold_fact_network_events`: các event quan hệ social graph như follow/unfollow.
 
-Khi đã có Gold modeled layer, Data Analyst hoặc pipeline metric có thể query theo
-business logic rõ ràng hơn, ví dụ:
+Các dimension bổ sung như date, collection hoặc event type có thể được thêm sau
+khi query pattern đủ rõ. Không tạo quá sớm nếu các cột hiện tại đã đáp ứng được
+dashboard và Trino ad-hoc query.
+
+Khi đã có Gold modeled layer, Data Analyst, người vận hành hoặc pipeline metric
+có thể query bằng Trino theo business logic rõ ràng hơn, ví dụ:
 
 ```text
 Người dùng tương tác nhiều nhất với loại nội dung nào?
@@ -1150,8 +1236,8 @@ Actor nào tạo nhiều follow events trong một khoảng thời gian?
 ```
 
 Các câu hỏi này khó trả lời nếu chỉ có các bảng metric aggregate đã tính sẵn.
-Gold modeled layer giữ khả năng phân tích sâu; Gold aggregated layer tối ưu tốc
-độ cho dashboard.
+Gold modeled layer giữ khả năng phân tích sâu qua Trino; Gold aggregated layer
+tối ưu tốc độ cho dashboard qua ClickHouse.
 
 ### 14.4. Gold aggregated / serving layer
 
@@ -1166,34 +1252,34 @@ Gold aggregated là lớp metric/mart được tính từ Gold modeled hoặc t�
 modeling chưa hoàn thiện. Đây là phần phù hợp để đưa vào ClickHouse vì dashboard
 cần query nhanh và thường chỉ đọc kết quả đã tổng hợp.
 
-Về mặt kỹ thuật, Grafana hoàn toàn có thể query trực tiếp từ Gold modeled layer
-nếu query engine/serving database có các bảng fact và dimension. Ví dụ, với một
-mô hình star schema đã có `fact_posts` và `dim_collection`, dashboard có thể chạy
-query dạng:
+Về mặt kỹ thuật, Grafana hoặc analyst hoàn toàn có thể query trực tiếp từ Gold
+modeled layer nếu query engine có các bảng fact và dimension. Trong project này,
+query engine đó là Trino. Ví dụ, với Gold modeled v1 đã có
+`gold_fact_content_events` và `gold_dim_posts`, query có thể có dạng:
 
 ```sql
 SELECT
-    toStartOfMinute(fact_posts.post_created_at) AS minute,
-    dim_collection.collection_name,
-    count(fact_posts.post_uri) AS total_posts
-FROM fact_posts
-JOIN dim_collection
-    ON fact_posts.collection_id = dim_collection.collection_id
-WHERE fact_posts.post_created_at >= now() - INTERVAL 1 HOUR
+    date_trunc('minute', content_events.event_time) AS minute,
+    posts.is_reply,
+    count(*) AS total_content_events
+FROM gold_fact_content_events AS content_events
+JOIN gold_dim_posts AS posts
+    ON content_events.post_uri = posts.post_uri
+WHERE content_events.event_time >= current_timestamp - INTERVAL '1' HOUR
 GROUP BY
     minute,
-    dim_collection.collection_name
+    posts.is_reply
 ORDER BY
     minute,
-    dim_collection.collection_name
+    posts.is_reply
 ```
 
-Cách này linh hoạt vì dashboard đọc trực tiếp mô hình phân tích. Tuy nhiên, với
-dashboard realtime hoặc near-realtime, Grafana thường refresh liên tục. Nếu mỗi
-5-30 giây dashboard lại bắt ClickHouse hoặc query engine đọc nhiều dòng fact,
-JOIN dimension và GROUP BY lại từ đầu, hệ thống sẽ lặp lại cùng một phép tính rất
-nhiều lần. Khi nhiều người cùng mở dashboard, tải CPU và I/O sẽ tăng theo số
-người xem và số panel.
+Cách này linh hoạt vì người dùng đọc trực tiếp mô hình phân tích trên lakehouse.
+Tuy nhiên, với dashboard realtime hoặc near-realtime, Grafana thường refresh liên
+tục. Nếu mỗi 5-30 giây dashboard lại bắt Trino hoặc ClickHouse đọc nhiều dòng
+fact, JOIN dimension và GROUP BY lại từ đầu, hệ thống sẽ lặp lại cùng một phép
+tính rất nhiều lần. Khi nhiều người cùng mở dashboard, tải CPU và I/O sẽ tăng
+theo số người xem và số panel.
 
 Gold Aggregated giải quyết bài toán này bằng cách pre-aggregate các metric phổ
 biến trước khi Grafana hỏi. Thay vì để Grafana kích hoạt query nặng mỗi lần
@@ -1236,18 +1322,19 @@ Với lakehouse path, hướng thiết kế dài hạn là:
 ```text
 Silver clean events
 → Gold modeled fact/dim hoặc semantic marts
+→ Trino ad-hoc analytics
 → Gold aggregated metrics
 → ClickHouse serving marts
 → Grafana
 ```
 
-ClickHouse cũng có một cơ chế mạnh để hỗ trợ lớp này: Materialized View kết hợp
-với các engine như `SummingMergeTree` hoặc `AggregatingMergeTree`. Nếu các bảng
-fact/model đã được đưa vào ClickHouse, có thể tạo Materialized View để ClickHouse
-tự động cập nhật bảng Gold Aggregated khi dữ liệu mới được insert. Trong project
-hiện tại, realtime marts đang được pre-aggregate bằng Spark trước khi insert vào
-ClickHouse; Materialized View là hướng tối ưu có thể cân nhắc sau khi Gold modeled
-tables ổn định.
+ClickHouse cũng có một cơ chế mạnh để hỗ trợ lớp serving: Materialized View kết
+hợp với các engine như `SummingMergeTree` hoặc `AggregatingMergeTree`. Nếu sau
+này có use case đưa một phần serving model vào ClickHouse, có thể tạo
+Materialized View để ClickHouse tự động cập nhật bảng Gold Aggregated khi dữ liệu
+mới được insert. Trong project hiện tại, realtime marts đang được pre-aggregate
+bằng Spark trước khi insert vào ClickHouse; Materialized View là hướng tối ưu có
+thể cân nhắc sau khi Gold modeled tables và serving use case ổn định.
 
 Bảng dự kiến:
 
@@ -1344,6 +1431,7 @@ Nguyên tắc:
 Bronze Parquet             = raw history và replay
 Silver Iceberg             = clean event-level source of truth
 Gold modeled Iceberg       = fact/dim hoặc semantic marts
+Trino                       = query engine cho lakehouse SQL/ad-hoc analytics
 ClickHouse serving marts   = metric store / rebuildable serving layer
 ```
 
@@ -1359,7 +1447,8 @@ Nếu ClickHouse mất dữ liệu:
 
 Vì vậy ClickHouse là nơi tối ưu latency cho dashboard, không phải nơi giữ toàn bộ
 business model của lakehouse. Điều này giúp project vừa có dashboard realtime
-nhanh, vừa giữ được khả năng phân tích sâu và rebuild trong lakehouse.
+nhanh, vừa giữ được khả năng phân tích sâu bằng Trino và khả năng rebuild trong
+lakehouse.
 
 ---
 
@@ -1398,6 +1487,7 @@ Workflow:
 check_silver_freshness
 → build_gold_modeled_tables_from_silver
 → validate_gold_modeled_tables
+→ validate_gold_modeled_tables_with_trino
 → build_gold_aggregates_from_modeled_tables
 → load_clickhouse_gold_marts
 → run_gold_reconciliation
@@ -1711,7 +1801,7 @@ Không thêm:
 - RabbitMQ nếu Kafka đã đáp ứng event streaming.
 - Flink khi Spark đang là compute engine.
 - Kubernetes trước khi Docker Compose architecture hoạt động.
-- Trino khi chưa có nhu cầu federated query.
+- Connector hoặc federated source chỉ thêm khi có nhu cầu query rõ ràng.
 - OpenMetadata chỉ để chụp giao diện.
 
 ### 23.2. Xây theo vertical slice
@@ -1905,7 +1995,17 @@ Mục tiêu:
 - Compaction.
 - Snapshot expiration.
 
-### Milestone 8 — ClickHouse và Grafana
+### Milestone 8 — Trino Query Engine
+
+Mục tiêu:
+
+- Cấu hình Trino local.
+- Kết nối Trino tới Iceberg catalog trên MinIO.
+- Query Silver và Gold modeled Iceberg bằng SQL.
+- Tạo các SQL kiểm tra schema, row count và freshness.
+- Chứng minh lakehouse có query engine layer độc lập với Spark job.
+
+### Milestone 9 — ClickHouse và Grafana
 
 Mục tiêu:
 
@@ -1915,7 +2015,7 @@ Mục tiêu:
 - Rebuild ClickHouse serving marts từ Gold modeled hoặc Silver.
 - Query tuning cơ bản.
 
-### Milestone 9 — Airflow
+### Milestone 10 — Airflow
 
 Mục tiêu:
 
@@ -1924,7 +2024,7 @@ Mục tiêu:
 - Maintenance DAG.
 - ClickHouse rebuild DAG.
 
-### Milestone 10 — Observability và failure testing
+### Milestone 11 — Observability và failure testing
 
 Mục tiêu:
 
@@ -1948,18 +2048,19 @@ Chỉ bổ sung sau khi core architecture hoàn thành.
 
 Có thể dùng cho:
 
-- Analytical SQL models trên ClickHouse.
+- Analytical SQL models trên Trino hoặc ClickHouse tùy lớp dữ liệu.
 - Tests.
 - Documentation.
 - Metric definitions.
 
-### Trino
+### Trino connectors mở rộng
 
-Chỉ dùng khi cần:
+Trino đã được chọn làm query engine cho Iceberg lakehouse. Các connector mở rộng
+chỉ bổ sung khi có use case rõ ràng:
 
-- Query Iceberg.
 - Federated query giữa Iceberg, PostgreSQL và ClickHouse.
-- Ad hoc analyst access.
+- Query thêm external data source ngoài lakehouse.
+- Analyst workspace cần kết hợp nhiều hệ thống dữ liệu.
 
 ### Cube.js
 
