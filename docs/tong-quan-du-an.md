@@ -119,16 +119,26 @@ Spark Structured Streaming được sử dụng để:
 Spark phải được chạy ở chế độ multi-worker Spark Standalone bằng Docker Compose,
 không chỉ chạy bằng `local[*]`.
 
-Trong historical/lakehouse path, Spark là compute engine chính cho cả hai đoạn xử
-lý dữ liệu:
+Trong lakehouse path, Spark là compute engine chính cho các đoạn xử lý dữ liệu:
 
 ```text
 Bronze / raw lake -> Spark -> Silver Iceberg
-Silver Iceberg -> Spark -> Gold aggregate -> ClickHouse
+Silver Iceberg -> Spark -> Gold modeled tables
+Gold modeled tables -> Spark -> Gold aggregate / serving marts -> ClickHouse
 ```
 
 ClickHouse không xử lý dữ liệu gốc thay Spark; ClickHouse nhận các bảng aggregate
 hoặc mart đã được Spark chuẩn bị để phục vụ truy vấn dashboard có độ trễ thấp.
+
+Yêu cầu latency của từng lớp không giống nhau:
+
+- Bronze được ghi liên tục từ Kafka để giữ raw history gần nguồn.
+- Silver Iceberg là lớp dữ liệu sạch/chuẩn hóa nên Bronze -> Silver cần chạy theo
+  streaming/continuous transform để dữ liệu sạch được cập nhật liên tục.
+- Gold modeled tables là nơi data modeling cho lakehouse path, ví dụ fact/dim
+  hoặc semantic marts phục vụ phân tích sâu.
+- Gold aggregate/serving marts tính metric từ Gold modeled tables và có thể chấp
+  nhận latency cao hơn Silver, ví dụ theo giờ hoặc theo lịch Airflow.
 
 ### 4.4. Storage architecture
 
@@ -137,8 +147,13 @@ MinIO được sử dụng làm S3-compatible object storage trong môi trườn
 Dữ liệu được tổ chức theo các tầng với công nghệ phù hợp cho từng mục đích:
 
 - Bronze: dữ liệu gần nguồn, lưu dạng Parquet partitioned trên MinIO.
-- Silver: dữ liệu đã chuẩn hóa và kiểm tra, quản lý bằng Apache Iceberg trên MinIO.
-- Gold: dữ liệu aggregate phục vụ dashboard, lưu trong ClickHouse.
+- Silver: dữ liệu đã chuẩn hóa và kiểm tra, quản lý bằng Apache Iceberg trên
+  MinIO, được cập nhật liên tục từ Bronze để làm lakehouse serving dataset.
+- Gold modeled: dữ liệu đã được thiết kế mô hình phân tích, ví dụ fact/dim hoặc
+  semantic marts, có thể lưu trên Iceberg để phục vụ ad-hoc analytics và làm
+  nguồn tính metric.
+- Gold aggregate/serving: dữ liệu metric hoặc mart đã tổng hợp phục vụ dashboard,
+  lưu trong ClickHouse để truy vấn độ trễ thấp.
 
 Bronze chưa cần dùng Iceberg ngay lập tức vì tầng này chủ yếu phục vụ append,
 audit và replay. Thiết kế đơn giản bằng Parquet partitioned giúp dễ quan sát dữ
@@ -147,9 +162,10 @@ liệu và giảm độ phức tạp ở giai đoạn đầu.
 Apache Iceberg được dùng từ Silver vì tầng này cần table semantics, snapshot,
 schema evolution, deduplication và xử lý thay đổi dữ liệu rõ ràng hơn.
 
-ClickHouse đóng vai trò Gold serving layer cho truy vấn phân tích có độ trễ thấp.
-ClickHouse không phải source of truth duy nhất; dữ liệu Gold trong ClickHouse phải
-có thể được rebuild từ Silver khi cần.
+ClickHouse đóng vai trò serving/metric store cho truy vấn dashboard có độ trễ
+thấp. ClickHouse không phải toàn bộ tầng Gold và không phải source of truth duy
+nhất; các bảng serving trong ClickHouse phải có thể được rebuild từ Gold modeled
+tables hoặc từ Silver khi cần.
 
 ### 4.5. Analytical serving
 
@@ -162,13 +178,16 @@ ClickHouse được sử dụng làm serving layer cho:
 
 ClickHouse không phải source of truth duy nhất.
 
-Các bảng ClickHouse phải có khả năng rebuild từ Silver Iceberg khi cần.
+Các bảng ClickHouse phải có khả năng rebuild từ Gold modeled tables hoặc từ
+Silver Iceberg khi cần.
 
 ### 4.6. Platform operations
 
 Airflow được sử dụng cho các workflow có điểm bắt đầu và kết thúc rõ ràng:
 
-- Historical backfill.
+- Lakehouse backfill.
+- Gold lakehouse modeling từ Silver Iceberg.
+- Gold aggregate/serving refresh từ Gold modeled tables sang ClickHouse.
 - Data quality checks.
 - Reconciliation.
 - Iceberg compaction.
@@ -177,6 +196,10 @@ Airflow được sử dụng cho các workflow có điểm bắt đầu và kế
 - ClickHouse rebuild.
 
 Airflow không được sử dụng để xử lý từng streaming event.
+Airflow cũng không thay thế live ingestion gateway hoặc Spark streaming consumer.
+Trong project này, Airflow phù hợp nhất để schedule các job hữu hạn như
+`Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts ->
+ClickHouse` và các checkpoint sau load.
 
 ### 4.7. Observability
 
@@ -253,7 +276,7 @@ Bluesky Jetstream
                ▼                                                      │
             Grafana                                                   │
                                                                       │
-        Historical / lakehouse path                                   │
+        Lakehouse path                                                │
         ▼                                                             │
 ┌─────────────────────────────┐                                       │
 │ Spark Structured Streaming  │                                       │
@@ -278,10 +301,20 @@ Bluesky Jetstream
 │ Silver Lakehouse            │                                       │
 │ MinIO + Apache Iceberg      │                                       │
 └──────────────┬──────────────┘                                       │
-               │ Aggregates / rebuild source                          │
+               │ Modeled analytical data                              │
                ▼                                                      │
 ┌─────────────────────────────┐                                       │
-│ ClickHouse historical marts │                                       │
+│ Gold modeled lakehouse      │                                       │
+│ MinIO + Apache Iceberg      │                                       │
+│                             │                                       │
+│ - Fact tables               │                                       │
+│ - Dimension tables          │                                       │
+│ - Semantic marts            │                                       │
+└──────────────┬──────────────┘                                       │
+               │ Aggregates / serving marts                           │
+               ▼                                                      │
+┌─────────────────────────────┐                                       │
+│ ClickHouse lakehouse marts  │                                       │
 │                             │                                       │
 │ - Baseline aggregates       │                                       │
 │ - Rebuildable serving data  │                                       │
@@ -310,9 +343,12 @@ Kiến trúc dashboard có hai luồng phục vụ khác nhau:
   chỉ số cần cập nhật gần thời gian thực trên Grafana. Gần thời gian thực nghĩa là
   vẫn có độ trễ từ trigger interval của Spark, thời gian ghi ClickHouse và chu kỳ
   refresh của Grafana.
-- **Historical/lakehouse path** ghi dữ liệu qua Bronze và Silver Iceberg trước
-  khi tạo Gold aggregate và load vào ClickHouse. Luồng này là nền tảng cho
-  backfill, rebuild, reconciliation và các bảng phân tích ổn định hơn.
+- **Lakehouse path** ghi dữ liệu qua Bronze và Silver Iceberg trước
+  khi tạo Gold modeled tables, rồi từ Gold modeled tính các aggregate/serving
+  marts và load vào ClickHouse. Luồng này là nền tảng cho backfill, rebuild,
+  reconciliation và phân tích chuyên sâu. Trong path này, Bronze và Silver là các
+  tầng streaming/continuous; Gold modeled và Gold aggregate refresh có thể chạy
+  thưa hơn bằng Airflow.
 - Fast path không thay thế Silver Iceberg. ClickHouse realtime marts là serving
   table cho dashboard, không phải source of truth duy nhất.
 - Prometheus và Grafana technical dashboard phục vụ observability như lag,
@@ -326,8 +362,15 @@ analytics.
 Project có fast path từ Kafka qua Spark Structured Streaming tới ClickHouse
 realtime marts để phục vụ các metric có freshness thấp. Đồng thời, dữ liệu vẫn
 được lưu vào Bronze và Silver Iceberg để phục vụ batch processing, backfill,
-historical baseline, correction, reconciliation và rebuild. Hai path gặp nhau ở
+lakehouse baseline, correction, reconciliation và rebuild. Hai path gặp nhau ở
 serving layer là ClickHouse/Grafana.
+
+Trong thiết kế hiện tại, Kafka fan-out sang hai consumer chính: một consumer phục
+vụ realtime fast path vào ClickHouse, một consumer ghi Bronze. Từ Bronze, một
+Spark Structured Streaming job tiếp tục đẩy dữ liệu mới sang Silver Iceberg. Từ
+Silver, lakehouse path sẽ modeling dữ liệu thành Gold fact/dim hoặc semantic
+marts; các bảng metric phục vụ Grafana được tính từ lớp Gold modeled này và load
+vào ClickHouse theo lịch chậm hơn bằng Airflow.
 
 Tuy nhiên, đây không phải Lambda Architecture cổ điển với hai codebase hoàn toàn
 tách biệt cho speed layer và batch layer. Project dùng Spark cho cả streaming và
@@ -443,7 +486,7 @@ bluesky-pipeline/
 ├── scripts/
 │   ├── discovery/
 │   ├── ingestion/
-│   ├── historical/
+│   ├── lakehouse/
 │   ├── gold/
 │   ├── realtime/
 │   └── platform/
@@ -460,7 +503,7 @@ Vai trò:
 
 - `src/bluesky_pipeline/`: code Python có thể dùng lại trong pipeline.
 - `scripts/`: entrypoint và script chạy tay, được tách theo vai trò như
-  discovery, ingestion, historical, gold, realtime và platform.
+  discovery, ingestion, lakehouse, gold, realtime và platform.
 - `tests/`: test cho các module có logic đáng kiểm chứng.
 - `docs/`: tài liệu thiết kế, phạm vi dự án, ghi chú schema và quyết định kỹ
   thuật.
@@ -993,51 +1036,218 @@ hoặc schema riêng.
 
 Mục tiêu:
 
-- Clean.
-- Normalize.
-- Validate.
-- Deduplicate.
-- Pseudonymize identifiers.
-- Xử lý create/update/delete.
+- Clean dữ liệu event-level.
+- Parse JSON raw thành các cột rõ ràng.
+- Normalize schema theo domain.
+- Validate field quan trọng.
+- Deduplicate event khi bổ sung khóa dedup/watermark đầy đủ.
+- Data typing: ép kiểu thời gian, số, boolean thay vì để toàn bộ là string.
+- Enrichment nhẹ khi cần, ví dụ phân loại event, text length, reply flag hoặc
+  subject URI.
+- Xử lý create/update/delete thành các bảng Silver có nghĩa nghiệp vụ rõ ràng.
 
-Bảng dự kiến:
+Điểm quan trọng là **Bronze và Silver có thể có cùng granularity**. Trong project
+này, cả Bronze và Silver đều chủ yếu lưu dữ liệu ở mức event-level hoặc row-level.
+Sự khác biệt không nằm ở độ mịn dữ liệu, mà nằm ở chất lượng và cấu trúc:
+
+- **Bronze raw events** giữ gần như mọi thứ nhận được từ Bluesky/Kafka: raw JSON,
+  metadata Kafka, offset, timestamp, collection, operation và các field audit. Nếu
+  nguồn trả event thiếu field, duplicate do retry hoặc payload còn lộn xộn, Bronze
+  vẫn giữ lại để audit/replay.
+- **Silver clean events** vẫn là từng event hoặc từng record nghiệp vụ, nhưng đã
+  được parse, chuẩn hóa và tách thành bảng rõ nghĩa. Downstream không cần parse
+  lại JSON thô khi build Gold hoặc chạy reconciliation.
+
+Bảng Silver hiện tại của project:
 
 ```text
 silver_posts
 silver_deleted_records
-silver_hashtags
-silver_shared_domains
+silver_engagements
+silver_follows
 ```
 
-Các trường có thể gồm:
+Ví dụ vai trò từng bảng:
 
-```text
-post_uri
-author_did_hash
-created_at
-processed_at
-language
-text_length
-hashtag_count
-link_count
-is_reply
-is_quote
-record_status
-```
+- `silver_posts`: post create/update events đã chuẩn hóa thành `post_uri`,
+  `author_did`, `record_created_at`, `text`, `text_length`, `is_reply`,
+  `reply_root_uri`, `reply_parent_uri`.
+- `silver_engagements`: like/repost create events đã chuẩn hóa thành
+  `engagement_uri`, `actor_did`, `engagement_type`, `subject_uri`,
+  `subject_cid`.
+- `silver_follows`: follow create events đã chuẩn hóa thành `follow_uri`,
+  `actor_did`, `target_actor_did`.
+- `silver_deleted_records`: delete operations đã chuẩn hóa thành `record_uri`,
+  `deleted_collection`, `deleted_rkey`.
+
+Silver không phải metric layer. Silver cũng không phải data model phân tích cuối
+cùng. Silver là **clean event foundation** để các bước Gold modeling, aggregate,
+backfill và reconciliation dùng chung.
 
 Việc lưu toàn bộ post text trong Silver cần được đánh giá theo use case và retention.
 
-### 14.3. Gold serving layer
+### 14.3. Gold modeled layer
 
 Mục tiêu:
 
 - Business analytics.
+- Data modeling.
+- Tạo fact/dimension hoặc semantic marts từ Silver.
+- Tạo lớp dữ liệu dễ JOIN, dễ phân tích và ổn định hơn Silver event tables.
+- Làm nguồn chuẩn để tính metric phục vụ dashboard hoặc ad-hoc analytics.
+
+Gold trong lakehouse path **không chỉ là metric aggregate**. Nếu chỉ lấy Silver
+để tính thẳng một vài metric rồi đẩy vào ClickHouse, hệ thống sẽ nhanh bị hụt hơi
+khi cần phân tích chuyên sâu hơn. Tầng Gold là nơi diễn ra data modeling: biến
+các event tables tương đối phẳng và rời rạc ở Silver thành mô hình phân tích có
+business logic rõ ràng.
+
+Luồng tính toán lakehouse chuẩn hơn:
+
+```text
+Silver clean events
+→ Gold modeled tables / semantic marts
+→ Gold aggregated metrics
+→ ClickHouse serving marts / Grafana
+```
+
+Các bảng Gold modeled dự kiến cho project Bluesky:
+
+```text
+fact_posts
+fact_post_engagements
+fact_user_interactions
+fact_follows
+dim_actor
+dim_collection
+dim_event_type
+dim_date
+```
+
+Ý nghĩa ví dụ:
+
+- `fact_posts`: lưu post-level facts, ví dụ post URI, author, thời gian tạo,
+  reply flag, text length và các khóa join cần thiết.
+- `fact_post_engagements`: lưu các interaction hướng vào post như like/repost,
+  actor, subject post và event time.
+- `fact_user_interactions`: mô hình hóa actor -> target/object để phân tích hành
+  vi người dùng.
+- `fact_follows`: lưu quan hệ follow event-level hoặc relationship-level tùy use
+  case.
+- `dim_actor`: mô tả actor/user ở mức phân tích, có thể hash/pseudonymize DID nếu
+  cần.
+- `dim_collection`, `dim_event_type`, `dim_date`: dimension phục vụ filter,
+  grouping và dashboard query ổn định.
+
+Khi đã có Gold modeled layer, Data Analyst hoặc pipeline metric có thể query theo
+business logic rõ ràng hơn, ví dụ:
+
+```text
+Người dùng tương tác nhiều nhất với loại nội dung nào?
+Bài viết dạng reply có nhận engagement khác original post không?
+Collection nào tăng trưởng mạnh theo giờ/ngày?
+Actor nào tạo nhiều follow events trong một khoảng thời gian?
+```
+
+Các câu hỏi này khó trả lời nếu chỉ có các bảng metric aggregate đã tính sẵn.
+Gold modeled layer giữ khả năng phân tích sâu; Gold aggregated layer tối ưu tốc
+độ cho dashboard.
+
+### 14.4. Gold aggregated / serving layer
+
+Mục tiêu:
+
 - Dashboard.
 - API metrics.
 - ClickHouse serving.
+- Low-latency query cho Grafana.
 
-Trong project này, Gold là các bảng aggregate hoặc mart phục vụ truy vấn nhanh
-trong ClickHouse. Gold không phải là một tầng Iceberg trong MinIO.
+Gold aggregated là lớp metric/mart được tính từ Gold modeled hoặc từ Silver khi
+modeling chưa hoàn thiện. Đây là phần phù hợp để đưa vào ClickHouse vì dashboard
+cần query nhanh và thường chỉ đọc kết quả đã tổng hợp.
+
+Về mặt kỹ thuật, Grafana hoàn toàn có thể query trực tiếp từ Gold modeled layer
+nếu query engine/serving database có các bảng fact và dimension. Ví dụ, với một
+mô hình star schema đã có `fact_posts` và `dim_collection`, dashboard có thể chạy
+query dạng:
+
+```sql
+SELECT
+    toStartOfMinute(fact_posts.post_created_at) AS minute,
+    dim_collection.collection_name,
+    count(fact_posts.post_uri) AS total_posts
+FROM fact_posts
+JOIN dim_collection
+    ON fact_posts.collection_id = dim_collection.collection_id
+WHERE fact_posts.post_created_at >= now() - INTERVAL 1 HOUR
+GROUP BY
+    minute,
+    dim_collection.collection_name
+ORDER BY
+    minute,
+    dim_collection.collection_name
+```
+
+Cách này linh hoạt vì dashboard đọc trực tiếp mô hình phân tích. Tuy nhiên, với
+dashboard realtime hoặc near-realtime, Grafana thường refresh liên tục. Nếu mỗi
+5-30 giây dashboard lại bắt ClickHouse hoặc query engine đọc nhiều dòng fact,
+JOIN dimension và GROUP BY lại từ đầu, hệ thống sẽ lặp lại cùng một phép tính rất
+nhiều lần. Khi nhiều người cùng mở dashboard, tải CPU và I/O sẽ tăng theo số
+người xem và số panel.
+
+Gold Aggregated giải quyết bài toán này bằng cách pre-aggregate các metric phổ
+biến trước khi Grafana hỏi. Thay vì để Grafana kích hoạt query nặng mỗi lần
+refresh, pipeline hoặc database tính sẵn kết quả theo grain phù hợp, ví dụ theo
+phút, event type, collection hoặc engagement type. Grafana chỉ cần query bảng nhỏ:
+
+```sql
+SELECT
+    window_start,
+    content_activity_type,
+    sum(activity_count) AS activity_count
+FROM bluesky.gold_content_activity_1m_stream
+WHERE window_start >= now() - INTERVAL 1 HOUR
+GROUP BY
+    window_start,
+    content_activity_type
+ORDER BY
+    window_start,
+    content_activity_type
+```
+
+Bảng Gold Aggregated thường nhỏ hơn rất nhiều so với fact table vì mỗi dòng đã là
+kết quả gom cụm theo window và dimension chính. Điều này giúp:
+
+- Dashboard load nhanh hơn vì query ít JOIN và ít GROUP BY nặng.
+- ClickHouse chịu tải tốt hơn khi nhiều người cùng xem dashboard.
+- Công thức metric được quản lý tập trung trong pipeline/model thay vì rải ở từng
+  panel Grafana.
+- Có thể kiểm chứng metric bằng reconciliation giữa Gold modeled, Gold aggregated
+  và ClickHouse serving.
+
+Trong project hiện tại, realtime fast path đã áp dụng tư duy Gold Aggregated:
+Spark Structured Streaming tính trước các bảng theo phút như
+`gold_event_volume_1m_stream`, `gold_content_activity_1m_stream`,
+`gold_engagement_1m_stream` và `gold_network_activity_1m_stream`, sau đó ghi vào
+ClickHouse để Grafana query nhẹ.
+
+Với lakehouse path, hướng thiết kế dài hạn là:
+
+```text
+Silver clean events
+→ Gold modeled fact/dim hoặc semantic marts
+→ Gold aggregated metrics
+→ ClickHouse serving marts
+→ Grafana
+```
+
+ClickHouse cũng có một cơ chế mạnh để hỗ trợ lớp này: Materialized View kết hợp
+với các engine như `SummingMergeTree` hoặc `AggregatingMergeTree`. Nếu các bảng
+fact/model đã được đưa vào ClickHouse, có thể tạo Materialized View để ClickHouse
+tự động cập nhật bảng Gold Aggregated khi dữ liệu mới được insert. Trong project
+hiện tại, realtime marts đang được pre-aggregate bằng Spark trước khi insert vào
+ClickHouse; Materialized View là hướng tối ưu có thể cân nhắc sau khi Gold modeled
+tables ổn định.
 
 Bảng dự kiến:
 
@@ -1050,6 +1260,22 @@ gold_post_engagement_velocity
 gold_activity_spike_alerts
 gold_pipeline_quality_metrics
 ```
+
+Trong MVP hiện tại, project đã có một số bảng aggregate/serving như:
+
+```text
+bluesky.gold_event_volume_by_type
+bluesky.gold_post_engagement_summary
+bluesky.gold_event_volume_1m_stream
+bluesky.gold_content_activity_1m_stream
+bluesky.gold_engagement_1m_stream
+bluesky.gold_network_activity_1m_stream
+bluesky.gold_realtime_stream_batches
+```
+
+Các bảng realtime marts thuộc fast path có thể được tính trực tiếp từ Kafka bằng
+Spark Structured Streaming để đạt freshness thấp. Chúng không đại diện cho toàn
+bộ tầng Gold lakehouse. Chúng là **serving marts tối ưu latency**.
 
 Không cần triển khai toàn bộ bảng trong MVP đầu tiên.
 
@@ -1099,7 +1325,7 @@ engagement_growth_rate
 
 ---
 
-## 16. ClickHouse serving model
+## 16. ClickHouse serving / metric store model
 
 ClickHouse ưu tiên lưu:
 
@@ -1107,31 +1333,39 @@ ClickHouse ưu tiên lưu:
 - Trending results.
 - Platform metrics.
 - Latest dashboard state.
+- Gold aggregated marts đã được tính sẵn.
 
-Không ưu tiên lưu toàn bộ raw event.
+ClickHouse không ưu tiên lưu toàn bộ raw event, Silver event-level hoặc toàn bộ
+Gold modeled fact/dim. Những lớp đó thuộc lakehouse storage trên MinIO/Iceberg.
 
 Nguyên tắc:
 
 ```text
-Bronze Parquet  = raw history và replay
-Silver Iceberg  = analytical source of truth
-ClickHouse Gold = rebuildable serving layer
+Bronze Parquet             = raw history và replay
+Silver Iceberg             = clean event-level source of truth
+Gold modeled Iceberg       = fact/dim hoặc semantic marts
+ClickHouse serving marts   = metric store / rebuildable serving layer
 ```
 
 Nếu ClickHouse mất dữ liệu:
 
 1. Xác định khoảng thời gian bị ảnh hưởng.
-2. Đọc dữ liệu Silver từ Iceberg.
-3. Tính lại aggregate Gold cho khoảng thời gian đó.
-4. Load lại ClickHouse.
-5. Chạy reconciliation.
-6. Xác nhận dashboard hoạt động.
+2. Đọc Gold modeled tables từ Iceberg nếu đã có model hoàn chỉnh.
+3. Nếu Gold modeled chưa có đủ, rebuild tạm từ Silver Iceberg.
+4. Tính lại aggregate/serving marts cho khoảng thời gian đó.
+5. Load lại ClickHouse.
+6. Chạy reconciliation.
+7. Xác nhận dashboard hoạt động.
+
+Vì vậy ClickHouse là nơi tối ưu latency cho dashboard, không phải nơi giữ toàn bộ
+business model của lakehouse. Điều này giúp project vừa có dashboard realtime
+nhanh, vừa giữ được khả năng phân tích sâu và rebuild trong lakehouse.
 
 ---
 
 ## 17. Airflow workflows dự kiến
 
-### 17.1. Historical backfill
+### 17.1. Lakehouse backfill
 
 Input:
 
@@ -1150,7 +1384,33 @@ validate_parameters
 → reconciliation
 ```
 
-### 17.2. Silver Iceberg maintenance
+### 17.2. Scheduled Gold modeling and serving refresh
+
+Input:
+
+```text
+refresh_window
+```
+
+Workflow:
+
+```text
+check_silver_freshness
+→ build_gold_modeled_tables_from_silver
+→ validate_gold_modeled_tables
+→ build_gold_aggregates_from_modeled_tables
+→ load_clickhouse_gold_marts
+→ run_gold_reconciliation
+→ publish_refresh_metrics
+```
+
+Luồng này được schedule chậm hơn Bronze -> Silver streaming, ví dụ theo giờ, vì
+Gold lakehouse path thường gồm data modeling và aggregate phức tạp, ưu tiên khả
+năng kiểm chứng/rebuild hơn freshness vài giây. Khi cần mở rộng phân tích, chỉ
+cần thay đổi model hoặc câu query aggregate từ Gold modeled layer, không phải xử
+lý lại raw JSON ở Silver cho mọi dashboard.
+
+### 17.3. Silver Iceberg maintenance
 
 ```text
 compact_small_files
@@ -1161,7 +1421,7 @@ compact_small_files
 
 Chỉ triển khai các operation Iceberg đã được hiểu và thử nghiệm an toàn.
 
-### 17.3. Data quality
+### 17.4. Data quality
 
 ```text
 check_data_freshness
@@ -1171,7 +1431,7 @@ check_data_freshness
 → publish_quality_report
 ```
 
-### 17.4. ClickHouse rebuild
+### 17.5. ClickHouse rebuild
 
 ```text
 identify_missing_period
@@ -1483,7 +1743,8 @@ Không dựng toàn bộ hạ tầng trước khi có data flow.
 - Kafka: replay ngắn hạn.
 - Bronze Parquet: raw history và replay.
 - Silver Iceberg: analytical source of truth.
-- ClickHouse Gold: serving layer.
+- Gold modeled Iceberg: business-ready fact/dim hoặc semantic marts.
+- ClickHouse serving marts: metric store và dashboard serving layer.
 - Dashboard: presentation layer.
 
 ### 23.4. Idempotency
@@ -1625,11 +1886,13 @@ Mục tiêu:
 
 Mục tiêu:
 
+- Gold modeled fact/dim hoặc semantic marts.
 - Event volume.
 - Trending hashtags.
 - Shared domains.
 - Data quality metrics.
 - Window aggregation.
+- Aggregate/serving marts được tính từ Gold modeled layer.
 
 ### Milestone 7 — Apache Iceberg
 
@@ -1649,7 +1912,7 @@ Mục tiêu:
 - Serving tables.
 - Incremental load.
 - Dashboard.
-- Rebuild ClickHouse Gold từ Silver.
+- Rebuild ClickHouse serving marts từ Gold modeled hoặc Silver.
 - Query tuning cơ bản.
 
 ### Milestone 9 — Airflow

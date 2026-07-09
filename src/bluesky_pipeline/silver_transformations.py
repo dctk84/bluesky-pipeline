@@ -6,6 +6,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, concat, from_json, length, lit, when
 
 from bluesky_pipeline.bronze_schemas import (
+    BRONZE_COMMIT_EVENTS_PARQUET_SCHEMA,
     ENGAGEMENT_RECORD_SCHEMA,
     FOLLOW_RECORD_SCHEMA,
     POST_RECORD_SCHEMA,
@@ -28,6 +29,19 @@ def read_bronze_commit_events(spark: SparkSession) -> DataFrame:
     Output là DataFrame chứa raw commit events từ Bronze.
     """
     return spark.read.parquet(BRONZE_COMMIT_EVENTS_PATH)
+
+
+def read_bronze_commit_events_stream(spark: SparkSession) -> DataFrame:
+    """Đọc Bronze commit events dạng streaming từ MinIO.
+
+    Input chính là SparkSession đã cấu hình S3A.
+    Output là streaming DataFrame chứa raw commit events mới ghi vào Bronze.
+    """
+    return (
+        spark.readStream
+        .schema(BRONZE_COMMIT_EVENTS_PARQUET_SCHEMA)
+        .parquet(BRONZE_COMMIT_EVENTS_PATH)
+    )
 
 
 def build_silver_posts(bronze_df: DataFrame) -> DataFrame:

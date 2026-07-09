@@ -1,4 +1,4 @@
-"""Chạy checkpoint tổng hợp cho historical/lakehouse path."""
+"""Chạy checkpoint tổng hợp cho lakehouse path."""
 
 from pathlib import Path
 import os
@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STEPS = [
     (
         "Check Silver Iceberg v1",
-        "scripts.historical.check_iceberg_silver_v1",
+        "scripts.lakehouse.check_iceberg_silver_v1",
     ),
     (
         "Check Gold serving v1",
@@ -38,12 +38,12 @@ def run_step(step_name: str, module_name: str) -> None:
 
 
 def main() -> None:
-    """Chạy toàn bộ checkpoint của historical/lakehouse path."""
+    """Chạy toàn bộ checkpoint của lakehouse path."""
     for step_name, module_name in STEPS:
         # Nếu một checkpoint fail, subprocess.run(check=True) dừng toàn bộ check.
         run_step(step_name, module_name)
 
-    print("\nHistorical lakehouse path check passed")
+    print("\nLakehouse path check passed")
 
 
 if __name__ == "__main__":

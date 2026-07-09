@@ -21,11 +21,11 @@ bài học của bước lớn tương ứng.
 8. [Xây dựng Bronze raw data lake trên MinIO](#bước-8-xây-dựng-bronze-raw-data-lake-trên-minio)
 9. [Thiết kế và build Silver v1](#bước-9-thiết-kế-và-build-silver-v1)
 10. [Chuẩn hóa metadata và schema dùng chung](#bước-10-chuẩn-hóa-metadata-và-schema-dùng-chung)
-11. [Xây dựng ClickHouse Gold serving layer](#bước-11-xây-dựng-clickhouse-gold-serving-layer)
+11. [Xây dựng ClickHouse serving layer cho Gold aggregates](#bước-11-xây-dựng-clickhouse-serving-layer-cho-gold-aggregates)
 12. [Migrate Silver sang Apache Iceberg](#bước-12-migrate-silver-sang-apache-iceberg)
-13. [Chuẩn hóa Gold refresh từ Silver Iceberg](#bước-13-chuẩn-hóa-gold-refresh-từ-silver-iceberg)
+13. [Chuẩn hóa Gold aggregate refresh từ Silver Iceberg](#bước-13-chuẩn-hóa-gold-aggregate-refresh-từ-silver-iceberg)
 14. [Bổ sung reconciliation và checkpoint chất lượng](#bước-14-bổ-sung-reconciliation-và-checkpoint-chất-lượng)
-15. [Chốt hai serving paths: realtime và historical](#bước-15-chốt-hai-serving-paths-realtime-và-historical)
+15. [Chốt hai serving paths: realtime và lakehouse](#bước-15-chốt-hai-serving-paths-realtime-và-lakehouse)
 16. [Xây dựng realtime fast path vào ClickHouse](#bước-16-xây-dựng-realtime-fast-path-vào-clickhouse)
 17. [Hoàn thiện Grafana realtime dashboard và operational health](#bước-17-hoàn-thiện-grafana-realtime-dashboard-và-operational-health)
 18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
@@ -329,8 +329,11 @@ posts, engagements, follows và deleted records.
 
 **Vì sao cần thực hiện**
 
-Bronze giữ dữ liệu gần nguồn nên chưa tối ưu cho phân tích. Silver tách dữ liệu
-theo domain và chuẩn hóa field để downstream có thể build Gold aggregate ổn định.
+Bronze giữ dữ liệu gần nguồn nên chưa tối ưu cho phân tích trực tiếp. Silver có
+thể vẫn giữ cùng grain event-level với Bronze, nhưng dữ liệu được parse, chuẩn
+hóa kiểu dữ liệu, tách theo domain và đặt semantics rõ ràng hơn. Từ nền Silver
+này, downstream có thể build Gold modeled layer hoặc Gold aggregate/serving marts
+ổn định.
 
 **Kết quả sau khi hoàn thành**
 
@@ -350,12 +353,14 @@ từng bảng.
 - `docs/silver-schema-v1.md`
 - `scripts/discovery/profile_bronze_commit_events.py`
 - `src/bluesky_pipeline/silver_transformations.py`
-- `scripts/historical/build_iceberg_silver_v1.py`
-- `scripts/historical/check_iceberg_silver_v1.py`
+- `scripts/lakehouse/build_iceberg_silver_v1.py`
+- `scripts/lakehouse/check_iceberg_silver_v1.py`
 
 **Kiến thức cần ghi nhớ**
 
 - Silver là nơi chuẩn hóa nghĩa của field, không chỉ đổi định dạng lưu trữ.
+- Bronze và Silver không bắt buộc khác nhau về grain; điểm khác chính là chất
+  lượng dữ liệu, schema, typing và semantics.
 - Reply có thể được nhận diện từ `record.reply.root.uri`.
 - Delete event cần bảng riêng vì thường thiếu `record` đầy đủ nhưng vẫn quan trọng
   cho phân tích churn/moderation.
@@ -392,7 +397,7 @@ Thư mục `scripts/` được tách theo vai trò:
 
 - `scripts/discovery/`: probe, phân tích sample và smoke test.
 - `scripts/ingestion/`: publish Kafka sample và ghi Bronze.
-- `scripts/historical/`: build/check Silver Iceberg và historical path runner.
+- `scripts/lakehouse/`: build/check Silver Iceberg và lakehouse path runner.
 - `scripts/gold/`: build/load/reconcile Gold serving.
 - `scripts/realtime/`: realtime fast path và realtime metrics check.
 - `scripts/platform/`: setup các object phục vụ platform, ví dụ ClickHouse tables.
@@ -420,21 +425,23 @@ Thư mục `scripts/` được tách theo vai trò:
 - `src/` là container source code; `src/bluesky_pipeline/` mới là package Python
   chính của project.
 
-## Bước 11: Xây dựng ClickHouse Gold serving layer
+## Bước 11: Xây dựng ClickHouse serving layer cho Gold aggregates
 
 **Mục tiêu**
 
-Dựng ClickHouse local, tạo Gold serving tables và load Gold aggregates phục vụ
-query/dashboard.
+Dựng ClickHouse local, tạo serving tables và load các Gold aggregates đầu tiên
+phục vụ query/dashboard.
 
 **Vì sao cần thực hiện**
 
-Silver phù hợp làm dữ liệu chuẩn hóa/lakehouse, nhưng dashboard cần query aggregate
-có độ trễ thấp. ClickHouse đóng vai trò serving layer cho business metrics.
+Silver phù hợp làm dữ liệu chuẩn hóa/lakehouse, nhưng dashboard không nên phải
+lặp lại các phép `JOIN`, `GROUP BY` hoặc tính toán metric nặng ở mỗi lần refresh.
+ClickHouse đóng vai trò serving/metric store cho các bảng đã được chuẩn bị sẵn để
+Grafana query nhanh.
 
 **Kết quả sau khi hoàn thành**
 
-ClickHouse có database `bluesky` và các bảng Gold serving như:
+ClickHouse có database `bluesky` và các bảng aggregate/serving đầu tiên như:
 
 - `gold_event_volume_by_type`
 - `gold_post_engagement_summary`
@@ -456,8 +463,13 @@ reconciliation và Grafana datasource/panels cho Gold serving v1.
 
 **Kiến thức cần ghi nhớ**
 
-- ClickHouse là serving layer, không phải source of truth duy nhất.
-- Gold tables phải rebuild được từ Silver khi cần.
+- ClickHouse là serving/metric store, không phải toàn bộ tầng Gold và không phải
+  source of truth duy nhất.
+- Các serving tables trong ClickHouse phải rebuild được từ Gold modeled layer
+  hoặc từ Silver khi Gold modeled chưa hoàn chỉnh.
+- Gold aggregated/serving tồn tại để giảm tải dashboard: thay vì tính metric từ
+  dữ liệu chi tiết mỗi lần Grafana refresh, pipeline tính trước các bảng metric
+  phù hợp cho truy vấn lặp lại.
 - Dashboard JSON chưa cần commit ở giai đoạn thử nghiệm; khi dashboard hoàn chỉnh
   có thể screenshot/link hoặc export sau.
 
@@ -483,8 +495,8 @@ với expected metrics được tính lại từ Bronze. Các script Silver Parq
 **Các file liên quan**
 
 - `scripts/discovery/smoke_test_iceberg_minio.py`
-- `scripts/historical/build_iceberg_silver_v1.py`
-- `scripts/historical/check_iceberg_silver_v1.py`
+- `scripts/lakehouse/build_iceberg_silver_v1.py`
+- `scripts/lakehouse/check_iceberg_silver_v1.py`
 - `src/bluesky_pipeline/silver_transformations.py`
 - `src/bluesky_pipeline/iceberg_config.py`
 - `src/bluesky_pipeline/spark_session.py`
@@ -496,44 +508,56 @@ với expected metrics được tính lại từ Bronze. Các script Silver Parq
   future orchestration không phải copy cùng một logic.
 - Không nên giữ mã prototype song song quá lâu khi đã có luồng chính thức.
 
-## Bước 13: Chuẩn hóa Gold refresh từ Silver Iceberg
+## Bước 13: Chuẩn hóa Gold aggregate refresh từ Silver Iceberg
 
 **Mục tiêu**
 
-Build Gold aggregates từ Silver Iceberg và load vào ClickHouse bằng entrypoint
-refresh chính thức.
+Build các Gold aggregates đầu tiên từ Silver Iceberg và load vào ClickHouse bằng
+entrypoint refresh chính thức.
 
 **Vì sao cần thực hiện**
 
 Sau khi Silver Iceberg trở thành source of truth, Gold serving không nên phụ thuộc
-vào Parquet prototype. Luồng chính thức phải là:
+vào Parquet prototype. Ở thời điểm này, luồng đã triển khai là:
 
-`Silver Iceberg -> Gold aggregate -> ClickHouse`.
+`Silver Iceberg -> Gold aggregate/serving mart -> ClickHouse`.
 
-Trong batch/historical path, Spark xử lý dữ liệu ở cả hai đoạn chính:
+Đây là bước thực dụng để có dashboard và reconciliation chạy được trước. Về mặt
+kiến trúc lakehouse đầy đủ, Gold không chỉ là aggregate metric. Target lâu dài là:
+
+`Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse`.
+
+Gold modeled tables có thể là fact/dim hoặc semantic marts phục vụ phân tích sâu.
+Gold aggregate/serving marts là lớp tính trước metric từ dữ liệu đã model để phục
+vụ Grafana và các truy vấn lặp lại với độ trễ thấp hơn.
+
+Trong lakehouse path, Spark xử lý dữ liệu ở các đoạn chính:
 
 - `Bronze -> Spark -> Silver Iceberg`
-- `Silver Iceberg -> Spark -> Gold aggregate -> ClickHouse`
+- `Silver Iceberg -> Spark -> Gold modeled tables`
+- `Gold modeled tables -> Spark -> Gold aggregate/serving marts -> ClickHouse`
 
-ClickHouse chỉ là serving layer cho historical marts, không phải nơi xử lý dữ liệu
+ClickHouse chỉ là serving layer cho lakehouse marts, không phải nơi xử lý dữ liệu
 gốc chính.
 
 **Kết quả sau khi hoàn thành**
 
-Project có scripts build Gold event volume và post engagement summary từ Silver
+Project có scripts build aggregate event volume và post engagement summary từ Silver
 Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.py`
 để chạy refresh Gold serving v1. Checkpoint cuối của Gold serving đối chiếu
 ClickHouse với Silver Iceberg source of truth, không còn quay lại Silver Parquet
-prototype. Project cũng có entrypoint `run_historical_lakehouse_path.py` để chạy
-toàn bộ luồng historical/lakehouse theo thứ tự: build Silver Iceberg, check
-Silver Iceberg, refresh Gold serving và check Gold serving.
+prototype. Project cũng có entrypoint `run_lakehouse_path.py` để chạy
+toàn bộ lakehouse path theo thứ tự: build Silver Iceberg, check
+Silver Iceberg, refresh Gold aggregate/serving và check ClickHouse serving marts.
+Gold modeled layer chưa được tách thành bảng riêng ở bước này; đây là phần cần
+hoàn thiện tiếp khi chuyển từ metric đơn giản sang data modeling đầy đủ.
 
 **Các file liên quan**
 
 - `scripts/gold/build_event_volume_from_iceberg.py`
 - `scripts/gold/build_post_engagement_summary_from_iceberg.py`
 - `scripts/gold/refresh_serving_from_iceberg.py`
-- `scripts/historical/run_lakehouse_path.py`
+- `scripts/lakehouse/run_lakehouse_path.py`
 - `scripts/gold/check_serving_v1.py`
 - `src/bluesky_pipeline/gold_tables.py`
 
@@ -541,9 +565,11 @@ Silver Iceberg, refresh Gold serving và check Gold serving.
 
 - Tên script nên phản ánh đúng vai trò; `refresh` phù hợp hơn `rebuild` khi đây là
   luồng vận hành chính chứ không chỉ là thao tác sửa lỗi.
-- Gold staging trên MinIO là output trung gian; ClickHouse là serving mart cho
-  query/dashboard.
-- Gold historical path ưu tiên khả năng rebuild/reconcile hơn latency thấp.
+- Gold aggregate staging trên MinIO là output trung gian; ClickHouse là
+  serving/metric store cho query/dashboard.
+- Gold modeled layer là hướng mở rộng cần thiết khi project chuyển từ metric đơn
+  giản sang phân tích chuyên sâu bằng fact/dim hoặc semantic marts.
+- Gold lakehouse path ưu tiên khả năng rebuild/reconcile hơn latency thấp.
 - Khi đã chốt Silver Iceberg là source of truth, reconciliation cuối cùng phải
   đọc từ Iceberg để phản ánh đúng kiến trúc chính thức.
 - Một entrypoint end-to-end giúp demo và kiểm tra luồng nhiều lớp dễ hơn, nhưng
@@ -571,20 +597,21 @@ và cũng chưa phải full automated end-to-end test tự khởi động toàn 
 **Kết quả sau khi hoàn thành**
 
 Project có checkpoint cho Silver v1, Iceberg Silver v1, Gold event volume, Gold
-post engagement, ClickHouse Gold và Gold serving tổng hợp. Các script này phục vụ
-debug local và demo pipeline. Với Gold serving v1, expected metrics được tính từ
+post engagement, ClickHouse serving marts và Gold serving tổng hợp. Các script
+này phục vụ debug local và demo pipeline. Với Gold serving v1, expected metrics
+được tính từ
 Silver Iceberg hoặc Gold staging được build từ Silver Iceberg trước khi so sánh
 với ClickHouse. Project cũng có checkpoint tổng hợp
-`check_historical_lakehouse_path.py` để kiểm tra historical/lakehouse path hiện
+`check_lakehouse_path.py` để kiểm tra lakehouse path hiện
 có mà không build hoặc refresh lại dữ liệu.
 
 **Các file liên quan**
 
-- `scripts/historical/check_iceberg_silver_v1.py`
+- `scripts/lakehouse/check_iceberg_silver_v1.py`
 - `scripts/gold/check_event_volume_reconciliation.py`
 - `scripts/gold/check_post_engagement_reconciliation.py`
 - `scripts/gold/check_serving_v1.py`
-- `scripts/historical/check_lakehouse_path.py`
+- `scripts/lakehouse/check_lakehouse_path.py`
 
 **Kiến thức cần ghi nhớ**
 
@@ -599,14 +626,14 @@ có mà không build hoặc refresh lại dữ liệu.
   chuyển sang bảng Iceberg chính thức.
 - Không nên tuyên bố dữ liệu đúng nếu chưa có output kiểm chứng.
 
-## Bước 15: Chốt hai serving paths: realtime và historical
+## Bước 15: Chốt hai serving paths: realtime và lakehouse
 
 **Mục tiêu**
 
 Chốt kiến trúc dashboard có hai path song song:
 
 - Fast path gần thời gian thực.
-- Historical/lakehouse path có khả năng rebuild.
+- Lakehouse path có khả năng rebuild.
 
 **Vì sao cần thực hiện**
 
@@ -620,11 +647,16 @@ vai trò source of truth cho dữ liệu lịch sử, backfill và rebuild.
 `docs/tong-quan-du-an.md` mô tả rõ:
 
 - Fast path: `Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana`.
-- Historical path: `Kafka -> Bronze -> Silver Iceberg -> Gold refresh -> ClickHouse -> Grafana`.
+- Lakehouse path: `Kafka -> Bronze -> Silver Iceberg`, trong đó Bronze -> Silver
+  chạy theo streaming để dữ liệu sạch được cập nhật liên tục.
+- Gold lakehouse path mục tiêu:
+  `Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse -> Grafana`.
+  Trong đó Gold modeled và Gold aggregate/serving có thể schedule chậm hơn bằng
+  Airflow vì ưu tiên data modeling, aggregate, rebuild và reconciliation.
 - Observability path: logs/metrics/checkpoints phục vụ vận hành.
 
 Kiến trúc được mô tả là lambda-like streaming lakehouse architecture: có fast path
-cho realtime metrics, có historical/lakehouse path cho backfill, correction và
+cho realtime metrics, có lakehouse path cho backfill, correction và
 rebuild, nhưng không phải Lambda Architecture cổ điển với hai codebase hoàn toàn
 tách biệt.
 
@@ -640,11 +672,13 @@ tách biệt.
 - Fast path không thay thế Silver Iceberg.
 - ClickHouse realtime marts là serving tables, không phải source of truth duy
   nhất.
+- Lakehouse path không có nghĩa mọi tầng đều chậm: Bronze và Silver là
+  các tầng streaming/continuous, còn Gold có thể refresh chậm hơn.
 - Near-real-time luôn có độ trễ từ Spark trigger, ClickHouse insert và Grafana
   refresh.
 - Project có lai một phần tư duy Kappa vì Kafka là event backbone chung và Spark
   được dùng cho cả streaming lẫn batch, nhưng không phải Kappa thuần vì vẫn có
-  Bronze/Silver Iceberg làm historical source of truth.
+  Bronze/Silver Iceberg làm lakehouse source of truth.
 
 ## Bước 16: Xây dựng realtime fast path vào ClickHouse
 
@@ -655,8 +689,8 @@ ghi vào ClickHouse realtime marts.
 
 **Vì sao cần thực hiện**
 
-Historical path phục vụ baseline/rebuild, nhưng dashboard realtime cần dữ liệu cập
-nhật nhanh hơn mà không chờ Silver/Gold batch refresh.
+Lakehouse path phục vụ baseline/rebuild, nhưng dashboard realtime cần dữ liệu cập
+nhật nhanh hơn mà không chờ lakehouse modeling hoặc Gold aggregate refresh.
 
 **Kết quả sau khi hoàn thành**
 
@@ -740,7 +774,7 @@ theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chư
 **Mục tiêu**
 
 Tóm tắt trạng thái hiện tại của project và các bài học thiết kế quan trọng trước
-khi chuyển sang hoàn thiện historical/lakehouse path.
+khi chuyển sang hoàn thiện lakehouse path.
 
 **Vì sao cần thực hiện**
 
@@ -754,13 +788,16 @@ Project hiện có hai path đã chạy được ở local:
 
 - Realtime fast path:
   `Jetstream -> Gateway -> Kafka -> Spark Streaming -> ClickHouse realtime marts -> Grafana`.
-- Historical/lakehouse path:
-  `Kafka/Bronze -> Silver Iceberg -> Gold refresh -> ClickHouse historical marts -> Grafana`.
+- Lakehouse path:
+  `Kafka -> Bronze -> Silver Iceberg`, với Bronze -> Silver chạy streaming trong
+  live pipeline.
+- Gold lakehouse path:
+  `Silver Iceberg -> Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse lakehouse marts -> Grafana`.
 
-Realtime path đã có business metrics và operational health. Historical path đã có
-Silver Iceberg, Gold refresh và reconciliation, nhưng vẫn cần được hoàn thiện hơn
-ở các bước tiếp theo như entrypoint vận hành rõ ràng, tài liệu runbook cuối dự án
-và orchestration/monitoring nếu milestone yêu cầu.
+Realtime path đã có business metrics và operational health. Lakehouse path đã có
+Silver Iceberg, Gold aggregate refresh và reconciliation. Phần còn cần hoàn thiện
+tiếp là tách Gold modeled layer rõ ràng hơn, sau đó mới chuẩn hóa orchestration,
+runbook và monitoring nếu milestone yêu cầu.
 
 **Các file liên quan**
 
@@ -777,8 +814,10 @@ và orchestration/monitoring nếu milestone yêu cầu.
 - Tài liệu quy trình nên ghi mốc kiến trúc, không ghi mọi command đã chạy.
 - Prototype có giá trị học tập, nhưng khi bị thay thế bởi path chính thức thì nên
   được gom vào bài học thay vì giữ thành bước riêng.
-- Fast path tối ưu latency; historical path tối ưu độ tin cậy, rebuild và
+- Fast path tối ưu latency; lakehouse path tối ưu độ tin cậy, rebuild và
   reconciliation.
+- Với lakehouse analytics, Gold nên được hiểu thành hai vai trò: modeled layer để
+  biểu diễn dữ liệu nghiệp vụ và aggregated/serving layer để tăng tốc dashboard.
 - README/runbook nên hoàn thiện gần cuối project, khi command và entrypoint đã ổn
   định.
 
@@ -799,18 +838,19 @@ ClickHouse, Kafka hoặc checkpoint.
 
 **Kết quả sau khi hoàn thành**
 
-Project có live demo runner để chạy đồng thời Bronze writer, realtime metrics
-stream và ingestion gateway. Gateway hỗ trợ live mode, retry không giới hạn khi
-cấu hình `MAX_RETRIES=0`, và log tách rõ tổng số lỗi kết nối với số lần retry
-liên tiếp để tránh hiểu nhầm lỗi đang tích tụ.
+Project có live demo runner để chạy đồng thời ingestion gateway, Bronze writer,
+realtime metrics stream và Bronze-to-Silver streaming job. Gateway hỗ trợ live
+mode, retry không giới hạn khi cấu hình `MAX_RETRIES=0`, và log tách rõ tổng số
+lỗi kết nối với số lần retry liên tiếp để tránh hiểu nhầm lỗi đang tích tụ.
 
 Project cũng có cleanup utility mặc định chạy dry-run trước, chỉ xóa thật khi
 truyền flag xác nhận. Cleanup dọn Bronze/Silver/Gold/checkpoints trên MinIO,
 truncate ClickHouse serving tables và có tùy chọn purge Kafka raw topic.
 
 Live pipeline đã được chạy lại từ trạng thái sạch sau cleanup: dữ liệu mới đi từ
-Jetstream vào Kafka, Spark ghi Bronze và realtime marts, Grafana cập nhật theo
-time range hiện tại, checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
+Jetstream vào Kafka, Spark ghi Bronze, realtime marts và đẩy Bronze mới sang
+Silver Iceberg bằng streaming job; Grafana cập nhật theo time range hiện tại,
+checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
 
 **Các file liên quan**
 
@@ -823,6 +863,8 @@ time range hiện tại, checkpoint realtime pass và runner dừng được b�
 
 - Live demo runner là entrypoint vận hành local, không thay thế orchestration như
   Airflow trong các workflow batch/backfill có điểm bắt đầu và kết thúc rõ ràng.
+- Bronze -> Silver nên chạy theo streaming trong live pipeline; Gold lakehouse
+  refresh nên tách riêng và schedule bằng Airflow ở milestone orchestration.
 - Cleanup dữ liệu ingest nên có dry-run và flag xác nhận vì đây là thao tác phá
   hủy dữ liệu.
 - Truncate ClickHouse giữ lại schema để Grafana dashboard không mất query/table

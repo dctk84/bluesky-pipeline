@@ -40,6 +40,10 @@ ICEBERG_SILVER_TABLES = {
     "silver_deleted_records": ICEBERG_SILVER_DELETED_RECORDS_TABLE,
 }
 
+ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION = (
+    "s3a://bluesky-lake/checkpoints/silver_iceberg_v1_stream"
+)
+
 
 def create_iceberg_spark_session(app_name: str) -> SparkSession:
     """Tạo SparkSession có cấu hình Iceberg Hadoop catalog trên MinIO.

@@ -1,1 +1,0 @@
-"""Historical/lakehouse path entrypoints."""

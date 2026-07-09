@@ -9,6 +9,8 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOG_DIR = PROJECT_ROOT / "logs" / "live_pipeline"
+LOG_TAIL_LINES = 80
 
 PROCESS_SPECS = [
     (
@@ -19,6 +21,11 @@ PROCESS_SPECS = [
     (
         "realtime-metrics",
         [sys.executable, "scripts/realtime/stream_metrics_to_clickhouse.py"],
+        {},
+    ),
+    (
+        "silver-stream",
+        [sys.executable, "scripts/lakehouse/stream_silver_from_bronze.py"],
         {},
     ),
     (
@@ -39,16 +46,38 @@ def build_env(extra_env: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def tail_log(process_name: str) -> None:
+    """In các dòng cuối của log process để debug khi process chết."""
+    log_path = LOG_DIR / f"{process_name}.log"
+
+    if not log_path.exists():
+        print(f"{process_name}: log file not found: {log_path}", flush=True)
+        return
+
+    lines = log_path.read_text(errors="replace").splitlines()
+    print(f"\n--- {process_name} log tail ({log_path}) ---", flush=True)
+    for line in lines[-LOG_TAIL_LINES:]:
+        print(line, flush=True)
+    print(f"--- end {process_name} log tail ---\n", flush=True)
+
+
 def start_processes() -> list[tuple[str, subprocess.Popen]]:
     """Start các process chính của live pipeline."""
     processes = []
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     for process_name, command, extra_env in PROCESS_SPECS:
         print(f"starting {process_name}: {' '.join(command)}", flush=True)
+        log_path = LOG_DIR / f"{process_name}.log"
+        log_file = log_path.open("w")
+        log_file.write(f"command: {' '.join(command)}\n\n")
+        log_file.flush()
         process = subprocess.Popen(
             command,
             cwd=PROJECT_ROOT,
             env=build_env(extra_env),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
             # Tạo process group riêng để Ctrl+C có thể dừng cả Spark child process.
             start_new_session=True,
         )
@@ -117,6 +146,7 @@ def monitor_processes(processes: list[tuple[str, subprocess.Popen]]) -> None:
             return_code = process.poll()
             if return_code is not None:
                 # Live demo cần cả 3 process cùng sống; một process chết là pipeline lỗi.
+                tail_log(process_name)
                 raise SystemExit(
                     f"{process_name} exited unexpectedly with code {return_code}"
                 )
