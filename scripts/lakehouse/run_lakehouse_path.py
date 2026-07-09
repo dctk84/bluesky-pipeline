@@ -1,4 +1,4 @@
-"""Chạy historical/lakehouse path end-to-end cho project."""
+"""Chạy lakehouse path end-to-end cho project."""
 
 from pathlib import Path
 import subprocess
@@ -11,11 +11,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STEPS = [
     (
         "Build Silver Iceberg v1",
-        "scripts.historical.build_iceberg_silver_v1",
+        "scripts.lakehouse.build_iceberg_silver_v1",
     ),
     (
         "Check Silver Iceberg v1",
-        "scripts.historical.check_iceberg_silver_v1",
+        "scripts.lakehouse.check_iceberg_silver_v1",
     ),
     (
         "Refresh Gold serving from Silver Iceberg",
@@ -41,12 +41,12 @@ def run_step(step_name: str, module_name: str) -> None:
 
 
 def main() -> None:
-    """Chạy toàn bộ historical/lakehouse path theo đúng thứ tự."""
+    """Chạy toàn bộ lakehouse path theo đúng thứ tự."""
     for step_name, script_path in STEPS:
         # check=True trong run_step tạo fail-fast: bước lỗi thì dừng pipeline ngay.
         run_step(step_name, script_path)
 
-    print("\nHistorical lakehouse path passed")
+    print("\nLakehouse path passed")
 
 
 if __name__ == "__main__":

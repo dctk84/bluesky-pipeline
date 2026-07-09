@@ -30,7 +30,10 @@ from bluesky_pipeline.gold_tables import (
     GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION,
     GOLD_REALTIME_STREAM_BATCHES_TABLE,
 )
-from bluesky_pipeline.iceberg_config import ICEBERG_WAREHOUSE_PATH
+from bluesky_pipeline.iceberg_config import (
+    ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION,
+    ICEBERG_WAREHOUSE_PATH,
+)
 from bluesky_pipeline.kafka_config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_EVENTS_TOPIC
 
 
@@ -50,6 +53,7 @@ def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
         BRONZE_COMMIT_CHECKPOINT_LOCATION,
         BRONZE_IDENTITY_CHECKPOINT_LOCATION,
         BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
+        ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION,
         GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION,
     ]
     gold_staging_paths = [

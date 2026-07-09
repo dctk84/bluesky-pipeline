@@ -1,6 +1,14 @@
 """Schema Spark dùng để parse Bronze event envelope."""
 
-from pyspark.sql.types import LongType, StringType, StructField, StructType
+from pyspark.sql.types import (
+    DateType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 
 SUBJECT_OBJECT_SCHEMA = StructType(
@@ -91,3 +99,25 @@ def build_commit_envelope_schema(record_schema: StructType | None = None) -> Str
             StructField("payload", payload_schema),
         ]
     )
+
+
+BRONZE_COMMIT_EVENTS_PARQUET_SCHEMA = StructType(
+    [
+        StructField("message_key", StringType()),
+        StructField("message_value", StringType()),
+        StructField("schema_version", LongType()),
+        StructField("source", StringType()),
+        StructField("event_kind", StringType()),
+        StructField("received_at", StringType()),
+        StructField("operation", StringType()),
+        StructField("repository_did", StringType()),
+        StructField("jetstream_time_us", LongType()),
+        StructField("topic", StringType()),
+        StructField("partition", IntegerType()),
+        StructField("offset", LongType()),
+        StructField("kafka_timestamp", TimestampType()),
+        StructField("ingest_date", DateType()),
+        StructField("ingest_hour", StringType()),
+        StructField("collection", StringType()),
+    ]
+)

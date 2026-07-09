@@ -9,34 +9,37 @@ bước con để debug, và script nào chỉ giữ lại để phục vụ h�
 
 Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra project.
 
-- `scripts/historical/run_lakehouse_path.py`: chạy toàn bộ historical/lakehouse
+- `scripts/lakehouse/run_lakehouse_path.py`: chạy toàn bộ lakehouse
   path, gồm build Silver Iceberg, check Silver, refresh Gold serving và check
   Gold serving.
-- `scripts/historical/check_lakehouse_path.py`: kiểm tra historical/lakehouse path
+- `scripts/lakehouse/check_lakehouse_path.py`: kiểm tra lakehouse path
   hiện có mà không build hoặc refresh lại dữ liệu.
 - `scripts/realtime/stream_metrics_to_clickhouse.py`: chạy realtime fast path từ
   Kafka qua Spark Structured Streaming vào ClickHouse realtime marts.
 - `scripts/realtime/check_clickhouse_metrics.py`: kiểm tra các realtime marts và
   batch health trong ClickHouse.
-- `scripts/e2e/run_live_pipeline.py`: chạy live pipeline gồm Bronze writer,
-  realtime metrics stream và ingestion gateway đọc Bluesky Jetstream.
+- `scripts/e2e/run_live_pipeline.py`: chạy live pipeline gồm ingestion gateway,
+  Bronze writer, realtime metrics stream và Bronze-to-Silver streaming job.
 
-## 2. Historical/lakehouse sub-steps
+## 2. Lakehouse sub-steps
 
-Các script này là bước con của historical/lakehouse path. Chạy riêng khi cần
-debug một tầng cụ thể.
+Các script này là bước con của lakehouse path. Chạy riêng khi cần debug một tầng
+cụ thể.
 
-- `scripts/historical/build_iceberg_silver_v1.py`: build Silver Iceberg v1 trực tiếp từ
+- `scripts/lakehouse/build_iceberg_silver_v1.py`: build Silver Iceberg v1 trực tiếp từ
   Bronze commit events.
-- `scripts/historical/check_iceberg_silver_v1.py`: reconcile Silver Iceberg v1 với expected
+- `scripts/lakehouse/stream_silver_from_bronze.py`: stream Bronze commit events
+  sang Silver Iceberg trong live pipeline local.
+- `scripts/lakehouse/check_iceberg_silver_v1.py`: reconcile Silver Iceberg v1 với expected
   metrics tính lại từ Bronze transformation.
 - `scripts/gold/refresh_serving_from_iceberg.py`: build Gold aggregates từ Silver
   Iceberg, load vào ClickHouse và chạy Gold serving checkpoint.
 - `scripts/gold/check_serving_v1.py`: checkpoint tổng hợp cho Gold serving v1.
 
-## 3. Gold serving sub-steps
+## 3. Gold aggregate/serving sub-steps
 
-Các script này phục vụ build, load và reconcile từng Gold mart.
+Các script này phục vụ build, load và reconcile từng aggregate/serving mart. Đây
+là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled layer.
 
 - `scripts/gold/build_event_volume_from_iceberg.py`: build Gold event volume từ
   Silver Iceberg.

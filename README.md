@@ -12,20 +12,21 @@ Tài liệu kỹ thuật chi tiết:
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
 dashboard:
 
-- Historical/lakehouse path: ưu tiên source of truth, rebuild và reconciliation.
+- Lakehouse path: ưu tiên source of truth, rebuild và reconciliation; Bronze ->
+  Silver chạy theo streaming để dữ liệu sạch được cập nhật liên tục.
 - Realtime fast path: ưu tiên freshness cho dashboard gần thời gian thực.
 
 ## Trạng thái hiện tại
 
-Project hiện có historical/lakehouse path local end-to-end:
+Project hiện có lakehouse path local end-to-end:
 
 ```text
 Jetstream
 → Kafka
 → Spark Bronze trên MinIO
 → Silver Iceberg v1 trên MinIO
-→ Gold aggregates build từ Silver Iceberg
-→ ClickHouse Gold serving tables
+→ Gold modeled / aggregate marts build từ Silver Iceberg
+→ ClickHouse serving tables
 → Reconciliation check
 ```
 
@@ -42,10 +43,11 @@ Lưu ý:
 
 - Bronze hiện là partitioned Parquet trên MinIO.
 - Silver Iceberg v1 hiện là source of truth cho 4 bảng chính trên MinIO.
-- Silver được build trực tiếp từ Bronze qua transformation module dùng chung.
-- Historical Gold aggregates được rebuild từ Silver Iceberg trước khi load vào
-  ClickHouse.
-- Gold serving layer hiện có 2 bảng ClickHouse:
+- Silver được build trực tiếp từ Bronze qua transformation module dùng chung; live
+  pipeline có streaming job đẩy Bronze mới sang Silver Iceberg.
+- Lakehouse Gold không chỉ là metric aggregate; hướng thiết kế tiếp theo là có
+  lớp Gold modeled fact/dim hoặc semantic marts trước khi tính metric.
+- ClickHouse serving layer hiện có 2 bảng lakehouse serving marts:
   - `bluesky.gold_event_volume_by_type`
   - `bluesky.gold_post_engagement_summary`
 - Realtime serving layer có các bảng mart theo phút và bảng stream batch health.
@@ -88,18 +90,18 @@ PYTHONPATH=src python scripts/ingestion/spark_read_kafka_raw.py
 PYTHONPATH=src MAX_EVENTS=300 python -m bluesky_pipeline.ingestion_gateway
 ```
 
-Tạo ClickHouse Gold/realtime tables nếu chưa có:
+Tạo ClickHouse lakehouse/realtime serving tables nếu chưa có:
 
 ```bash
 PYTHONPATH=src python scripts/platform/create_clickhouse_gold_tables.py
 ```
 
-## Historical/lakehouse path
+## Lakehouse path
 
-Chạy toàn bộ historical path:
+Chạy toàn bộ lakehouse path:
 
 ```bash
-PYTHONPATH=src:. python scripts/historical/run_lakehouse_path.py
+PYTHONPATH=src:. python scripts/lakehouse/run_lakehouse_path.py
 ```
 
 Lệnh này thực hiện theo thứ tự:
@@ -109,17 +111,17 @@ Lệnh này thực hiện theo thứ tự:
 - Refresh Gold serving từ Silver Iceberg.
 - Check Gold serving v1.
 
-Kiểm tra historical path hiện có mà không build/refresh lại dữ liệu:
+Kiểm tra lakehouse path hiện có mà không build/refresh lại dữ liệu:
 
 ```bash
-PYTHONPATH=src:. python scripts/historical/check_lakehouse_path.py
+PYTHONPATH=src:. python scripts/lakehouse/check_lakehouse_path.py
 ```
 
 Các script con vẫn có thể chạy riêng khi cần debug từng tầng:
 
 ```bash
-PYTHONPATH=src python scripts/historical/build_iceberg_silver_v1.py
-PYTHONPATH=src python scripts/historical/check_iceberg_silver_v1.py
+PYTHONPATH=src python scripts/lakehouse/build_iceberg_silver_v1.py
+PYTHONPATH=src python scripts/lakehouse/check_iceberg_silver_v1.py
 PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
 PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
 PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py
@@ -134,8 +136,8 @@ Chạy live pipeline từ Bluesky Jetstream tới ClickHouse/Grafana:
 PYTHONPATH=src:. python scripts/e2e/run_live_pipeline.py
 ```
 
-Lệnh này start Bronze writer, realtime metrics stream và ingestion gateway. Nhấn
-`Ctrl+C` để dừng toàn bộ process con.
+Lệnh này start ingestion gateway, Bronze writer, realtime metrics stream và
+Bronze-to-Silver streaming job. Nhấn `Ctrl+C` để dừng toàn bộ process con.
 
 Terminal 1, chạy Spark streaming job ghi realtime metrics vào ClickHouse:
 
