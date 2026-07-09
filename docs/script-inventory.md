@@ -32,6 +32,8 @@ cụ thể.
   sang Silver Iceberg trong live pipeline local.
 - `scripts/lakehouse/check_iceberg_silver_v1.py`: reconcile Silver Iceberg v1 với expected
   metrics tính lại từ Bronze transformation.
+- `scripts/lakehouse/check_trino_silver_v1.py`: kiểm tra Trino query được
+  namespace và các bảng Silver Iceberg v1.
 - `scripts/gold/refresh_serving_from_iceberg.py`: build Gold aggregates từ Silver
   Iceberg, load vào ClickHouse và chạy Gold serving checkpoint.
 - `scripts/gold/check_serving_v1.py`: checkpoint tổng hợp cho Gold serving v1.
