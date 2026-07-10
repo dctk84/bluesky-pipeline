@@ -68,7 +68,12 @@ Bảng Gold modeled v1:
 - `gold_fact_engagement_events`
 - `gold_fact_network_events`
 
-Bảng Gold aggregate/serving hiện có và sẽ được refactor để đọc từ Gold modeled:
+Bảng Gold aggregate/serving sẽ được thiết kế chi tiết trong:
+
+- `docs/gold-analytics-metrics-v1.md`
+
+Các bảng serving cũ dưới đây là phiên bản tối thiểu đã dùng để kiểm chứng
+ClickHouse path, không phải bộ metric phân tích cuối cùng:
 
 - `gold_event_volume_by_type`
 - `gold_post_engagement_summary`
@@ -339,11 +344,23 @@ follow_delete
 - Follow delete có thể cần join ngược theo `follow_uri` để tìm lại
   `target_actor_did`.
 
-## 9. Mapping sang aggregate/serving
+## 9. Mapping sang analytics aggregate/serving
 
-### `gold_event_volume_by_type`
+Gold modeled là nguồn để build các bảng analytics/serving giàu insight hơn, ví dụ:
 
-Sau khi có Gold modeled, bảng này nên đọc từ:
+- `gold_post_performance`
+- `gold_content_quality_hourly`
+- `gold_thread_conversation_summary`
+- `gold_actor_activity_daily`
+- `gold_network_growth_daily`
+
+Chi tiết câu hỏi phân tích, grain, cột và checkpoint của các bảng này được mô tả
+trong `docs/gold-analytics-metrics-v1.md`.
+
+### Mapping legacy `gold_event_volume_by_type`
+
+Nếu vẫn giữ bảng event volume tối thiểu để so sánh với path cũ, bảng này nên đọc
+từ:
 
 - `gold_fact_content_events`
 - `gold_fact_engagement_events`
@@ -361,9 +378,10 @@ follow_create -> follow
 follow_delete -> unfollow
 ```
 
-### `gold_post_engagement_summary`
+### Mapping legacy `gold_post_engagement_summary`
 
-Sau khi có Gold modeled, bảng này nên đọc từ:
+Bảng này nên được thay bằng `gold_post_performance`. Nếu vẫn cần giữ checkpoint
+tối thiểu, nó nên đọc từ:
 
 - `gold_dim_posts`
 - `gold_fact_engagement_events`

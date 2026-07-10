@@ -10,8 +10,8 @@ bước con để debug, và script nào chỉ giữ lại để phục vụ h�
 Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra project.
 
 - `scripts/lakehouse/run_lakehouse_path.py`: chạy toàn bộ lakehouse
-  path, gồm build Silver Iceberg, check Silver, refresh Gold serving và check
-  Gold serving.
+  path, gồm build Silver Iceberg, check Silver, build/check Gold modeled, refresh
+  Gold serving và check Gold serving.
 - `scripts/lakehouse/check_lakehouse_path.py`: kiểm tra lakehouse path
   hiện có mà không build hoặc refresh lại dữ liệu.
 - `scripts/realtime/stream_metrics_to_clickhouse.py`: chạy realtime fast path từ
@@ -34,8 +34,12 @@ cụ thể.
   metrics tính lại từ Bronze transformation.
 - `scripts/lakehouse/check_trino_silver_v1.py`: kiểm tra Trino query được
   namespace và các bảng Silver Iceberg v1.
+- `scripts/lakehouse/build_gold_modeled_v1.py`: build các bảng Gold modeled v1
+  trên Iceberg từ Silver Iceberg.
+- `scripts/lakehouse/check_trino_gold_modeled_v1.py`: kiểm tra Trino query được
+  namespace và các bảng Gold modeled Iceberg v1.
 - `scripts/gold/refresh_serving_from_iceberg.py`: build Gold aggregates từ Silver
-  Iceberg, load vào ClickHouse và chạy Gold serving checkpoint.
+  hoặc Gold modeled Iceberg, load vào ClickHouse và chạy Gold serving checkpoint.
 - `scripts/gold/check_serving_v1.py`: checkpoint tổng hợp cho Gold serving v1.
 
 ## 3. Gold aggregate/serving sub-steps
@@ -45,16 +49,34 @@ là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled
 
 - `scripts/gold/build_event_volume_from_iceberg.py`: build Gold event volume từ
   Silver Iceberg.
-- `scripts/gold/build_post_engagement_summary_from_iceberg.py`: build Gold post
-  engagement summary từ Silver Iceberg.
+- `scripts/gold/build_post_engagement_summary_from_iceberg.py`: build legacy Gold
+  post engagement summary từ Silver Iceberg.
+- `scripts/gold/build_post_performance_from_gold_modeled.py`: build Gold post
+  performance analytics mart từ Gold modeled Iceberg.
+- `scripts/gold/build_content_quality_hourly_from_gold_modeled.py`: build Gold
+  content quality hourly analytics mart từ Gold modeled Iceberg.
+- `scripts/gold/build_thread_conversation_summary_from_gold_modeled.py`: build
+  Gold thread conversation summary analytics mart từ Gold modeled Iceberg.
 - `scripts/gold/load_event_volume_to_clickhouse.py`: load Gold event volume vào
   ClickHouse.
 - `scripts/gold/load_post_engagement_summary_to_clickhouse.py`: load Gold post
   engagement summary vào ClickHouse.
+- `scripts/gold/load_post_performance_to_clickhouse.py`: load Gold post
+  performance analytics mart vào ClickHouse.
+- `scripts/gold/load_content_quality_hourly_to_clickhouse.py`: load Gold content
+  quality hourly analytics mart vào ClickHouse.
+- `scripts/gold/load_thread_conversation_summary_to_clickhouse.py`: load Gold
+  thread conversation summary analytics mart vào ClickHouse.
 - `scripts/gold/check_event_volume_reconciliation.py`: reconcile Gold event volume trong
   ClickHouse với Silver Iceberg.
 - `scripts/gold/check_post_engagement_reconciliation.py`: reconcile Gold post
   engagement summary giữa Gold staging và ClickHouse.
+- `scripts/gold/check_post_performance_reconciliation.py`: reconcile Gold post
+  performance giữa Gold staging và ClickHouse.
+- `scripts/gold/check_content_quality_hourly_reconciliation.py`: reconcile Gold
+  content quality hourly giữa Gold staging và ClickHouse.
+- `scripts/gold/check_thread_conversation_summary_reconciliation.py`: reconcile
+  Gold thread conversation summary giữa Gold staging và ClickHouse.
 - `scripts/platform/create_clickhouse_gold_tables.py`: tạo database và các bảng serving
   trong ClickHouse.
 - `scripts/platform/cleanup_ingested_data.py`: dọn dữ liệu ingest local trên

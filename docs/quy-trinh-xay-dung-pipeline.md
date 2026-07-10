@@ -31,6 +31,15 @@ bài học của bước lớn tương ứng.
 18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
 19. [Bổ sung live demo runner và cleanup dữ liệu local](#bước-19-bổ-sung-live-demo-runner-và-cleanup-dữ-liệu-local)
 20. [Bổ sung Trino Query Engine cho Lakehouse](#bước-20-bổ-sung-trino-query-engine-cho-lakehouse)
+21. [Thiết kế contract Gold modeled v1](#bước-21-thiết-kế-contract-gold-modeled-v1)
+22. [Viết transformation Gold modeled v1](#bước-22-viết-transformation-gold-modeled-v1)
+23. [Build Gold modeled v1 trên Iceberg](#bước-23-build-gold-modeled-v1-trên-iceberg)
+24. [Kiểm chứng Gold modeled v1 bằng Trino](#bước-24-kiểm-chứng-gold-modeled-v1-bằng-trino)
+25. [Thiết kế Gold analytics metrics v1](#bước-25-thiết-kế-gold-analytics-metrics-v1)
+26. [Implement Gold post performance serving mart](#bước-26-implement-gold-post-performance-serving-mart)
+27. [Kết nối SQL client tới Trino để query lakehouse](#bước-27-kết-nối-sql-client-tới-trino-để-query-lakehouse)
+28. [Implement Gold content quality hourly serving mart](#bước-28-implement-gold-content-quality-hourly-serving-mart)
+29. [Implement Gold thread conversation summary serving mart](#bước-29-implement-gold-thread-conversation-summary-serving-mart)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -945,3 +954,428 @@ lập.
 - Lỗi tương thích giữa client Iceberg/Spark và Hive Metastore có thể xuất hiện ở
   tầng RPC/metastore. Trong project này, Hive Metastore 3.1.3 phù hợp hơn Hive 4
   cho stack local hiện tại.
+
+## Bước 21: Thiết kế contract Gold modeled v1
+
+**Mục tiêu**
+
+Xác định các bảng Gold modeled đầu tiên cho lakehouse path và đưa tên namespace,
+table vào metadata dùng chung của project.
+
+**Vì sao cần thực hiện**
+
+Trước đó, Gold trong project chủ yếu là các bảng aggregate/serving để Grafana
+query nhanh. Cách này phù hợp cho fast path và các metric đơn giản, nhưng chưa đủ
+để phục vụ phân tích chuyên sâu. Lakehouse path cần một lớp Gold modeled rõ ràng,
+ví dụ fact/dim hoặc semantic marts, để Trino query trực tiếp và để các bảng
+aggregate/serving trong ClickHouse có nguồn rebuild ổn định.
+
+**Kết quả sau khi hoàn thành**
+
+Project có tài liệu thiết kế Gold modeled v1 và contract Iceberg dùng chung cho
+namespace `gold_v1` với các bảng:
+
+- `gold_dim_actors`
+- `gold_dim_posts`
+- `gold_fact_content_events`
+- `gold_fact_engagement_events`
+- `gold_fact_network_events`
+
+Bước này mới chốt contract và metadata. Transformation build dữ liệu từ Silver
+Iceberg sang Gold modeled Iceberg sẽ được triển khai ở bước tiếp theo.
+
+**Các file liên quan**
+
+- `docs/gold-data-model-v1.md`
+- `src/bluesky_pipeline/iceberg_config.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Gold modeled không đồng nghĩa với aggregate metric. Gold modeled là lớp mô hình
+  phân tích có business semantics rõ ràng.
+- Gold aggregate/serving trong ClickHouse nên được xem là output phục vụ dashboard
+  và phải rebuild được từ Gold modeled khi model đã hoàn chỉnh.
+- Table/namespace contract nên đặt trong module dùng chung trước khi viết nhiều
+  script build/check để tránh hard-code lệch nhau.
+
+## Bước 22: Viết transformation Gold modeled v1
+
+**Mục tiêu**
+
+Viết logic dùng chung để chuyển các bảng Silver event-level thành các bảng Gold
+modeled v1.
+
+**Vì sao cần thực hiện**
+
+Gold modeled là lớp data modeling của lakehouse path. Nếu viết logic trực tiếp
+trong từng script build/check, các rule nghiệp vụ như xác định actor, chọn trạng
+thái post mới nhất, dựng content event type hoặc phân loại follow/delete sẽ dễ bị
+lặp và lệch nhau. Đưa transformation vào module dùng chung giúp build, check,
+reconciliation và orchestration sau này dùng cùng một logic.
+
+**Kết quả sau khi hoàn thành**
+
+Project có module transformation tạo 5 DataFrame Gold modeled từ mapping Silver
+DataFrame:
+
+- `gold_dim_actors`
+- `gold_dim_posts`
+- `gold_fact_content_events`
+- `gold_fact_engagement_events`
+- `gold_fact_network_events`
+
+Module này chưa ghi dữ liệu. Việc ghi ra Iceberg được tách sang script build ở
+bước tiếp theo.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_transformations.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `docs/gold-data-model-v1.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Transformation dùng chung nên trả về DataFrame, không tự ghi output, để dễ tái
+  sử dụng trong build/check/test.
+- Dimension như `gold_dim_posts` cần chọn trạng thái mới nhất theo key, còn fact
+  tables giữ grain event-level.
+- Delete event thường thiếu record body, nên Gold v1 phải join lại state đã biết
+  khi cần suy ra `is_reply` hoặc `target_actor_did`.
+- Các event id trong fact có thể dựng deterministic từ business key, event type
+  và `jetstream_time_us`, nhưng đây chưa phải exactly-once guarantee end-to-end.
+
+## Bước 23: Build Gold modeled v1 trên Iceberg
+
+**Mục tiêu**
+
+Materialize các DataFrame Gold modeled v1 thành bảng Iceberg trong namespace
+`gold_v1`.
+
+**Vì sao cần thực hiện**
+
+Transformation chỉ mô tả logic dữ liệu trong code. Để lakehouse path thật sự có
+lớp Gold modeled, pipeline cần ghi các bảng này vào Iceberg catalog để Spark,
+Trino và các job downstream có thể đọc lại như một dataset ổn định.
+
+**Kết quả sau khi hoàn thành**
+
+Project build được 5 bảng Gold modeled Iceberg từ Silver Iceberg:
+
+- `gold_dim_actors`
+- `gold_dim_posts`
+- `gold_fact_content_events`
+- `gold_fact_engagement_events`
+- `gold_fact_network_events`
+
+Script build đã chạy thành công và đọc lại được row count từ Iceberg catalog cho
+từng bảng. Điều này xác nhận Gold modeled v1 không chỉ tồn tại trong logic
+transformation, mà đã được materialize thành lakehouse tables.
+
+**Các file liên quan**
+
+- `scripts/lakehouse/build_gold_modeled_v1.py`
+- `src/bluesky_pipeline/gold_transformations.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `docs/script-inventory.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Build script nên đọc Silver Iceberg qua catalog, apply transformation dùng
+  chung rồi ghi Gold Iceberg, không đọc trực tiếp từ Bronze.
+- Trong môi trường local, `DROP TABLE` rồi `CREATE` giúp rebuild model dễ hiểu
+  khi schema còn thay đổi. Production thường cần chiến lược incremental,
+  partition overwrite hoặc snapshot management rõ ràng hơn.
+- Sau khi materialize Gold modeled, bước kiểm chứng tiếp theo không chỉ là Spark
+  đọc lại count, mà còn cần Trino query được namespace/table để xác nhận query
+  engine layer hoạt động với Gold.
+
+## Bước 24: Kiểm chứng Gold modeled v1 bằng Trino
+
+**Mục tiêu**
+
+Kiểm tra Trino query được namespace `gold_v1` và các bảng Gold modeled Iceberg
+vừa build.
+
+**Vì sao cần thực hiện**
+
+Spark build thành công chỉ chứng minh compute engine ghi được bảng Iceberg. Với
+kiến trúc lakehouse, Gold modeled còn phải query được qua query engine độc lập để
+phục vụ ad-hoc SQL và phân tích chuyên sâu. Vì vậy cần checkpoint Trino cho Gold,
+tương tự checkpoint đã làm với Silver.
+
+**Kết quả sau khi hoàn thành**
+
+Trino nhìn thấy namespace `gold_v1`, liệt kê được 5 bảng Gold modeled, đọc được
+row count và kiểm tra key chính của từng bảng không null, không duplicate:
+
+- `gold_dim_actors.actor_did`
+- `gold_dim_posts.post_uri`
+- `gold_fact_content_events.content_event_id`
+- `gold_fact_engagement_events.engagement_event_id`
+- `gold_fact_network_events.network_event_id`
+
+Checkpoint kết thúc với `Trino Gold modeled v1 check passed`, xác nhận luồng
+`Silver Iceberg -> Spark build Gold modeled -> Trino query Gold modeled` đã chạy
+được.
+
+**Các file liên quan**
+
+- `scripts/lakehouse/check_trino_gold_modeled_v1.py`
+- `scripts/lakehouse/build_gold_modeled_v1.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `docs/script-inventory.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Query engine checkpoint nên kiểm tra cả metadata visibility và đọc dữ liệu thật.
+- Row count chỉ là kiểm tra cơ bản; key null/duplicate giúp bắt lỗi data modeling
+  quan trọng hơn.
+- Output Trino CLI có thể là CSV có quote, nên script checkpoint cần parse đúng
+  định dạng thay vì tự split chuỗi thủ công.
+- Khi Gold modeled đã query được bằng Trino, bước tiếp theo là refactor các bảng
+  Gold aggregate/serving để đọc từ Gold modeled thay vì đọc trực tiếp từ Silver.
+
+## Bước 25: Thiết kế Gold analytics metrics v1
+
+**Mục tiêu**
+
+Chốt bộ metric Gold aggregate/serving có giá trị phân tích cho lakehouse path
+trước khi implement bảng ClickHouse mới.
+
+**Vì sao cần thực hiện**
+
+Nếu chỉ refactor các bảng aggregate cũ như event volume hoặc post engagement
+summary, Gold aggregate sẽ không khác nhiều so với fast path. Lakehouse path cần
+các metric trả lời được câu hỏi sâu hơn về content quality, engagement quality,
+conversation dynamics, actor behavior và network activity. Vì vậy cần thiết kế
+metric contract trước khi viết transformation và DDL.
+
+**Kết quả sau khi hoàn thành**
+
+Project có tài liệu `docs/gold-analytics-metrics-v1.md` mô tả các câu hỏi phân
+tích, grain, source Gold modeled, cột đề xuất và checkpoint cho các serving marts:
+
+- `gold_post_performance`
+- `gold_content_quality_hourly`
+- `gold_thread_conversation_summary`
+- `gold_actor_activity_daily`
+- `gold_network_growth_daily`
+
+Tài liệu cũng chốt thứ tự implement, trong đó `gold_post_performance` là bảng nên
+làm đầu tiên vì tạo insight rõ nhất và có thể thay thế bảng
+`gold_post_engagement_summary` cũ.
+
+**Các file liên quan**
+
+- `docs/gold-analytics-metrics-v1.md`
+- `docs/gold-data-model-v1.md`
+- `docs/tong-quan-du-an.md`
+- `README.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Gold aggregate/serving không nên chỉ là event count; nó nên trả lời câu hỏi
+  business/analytics cụ thể.
+- Fast path tối ưu freshness; lakehouse aggregate tối ưu insight, khả năng
+  rebuild và metric consistency.
+- Trước khi build dashboard, cần xác định grain, metric formula và checkpoint để
+  tránh mỗi panel tự định nghĩa metric một kiểu.
+
+## Bước 26: Implement Gold post performance serving mart
+
+**Mục tiêu**
+
+Build serving mart phân tích performance từng post từ Gold modeled Iceberg, load
+vào ClickHouse và đưa vào checkpoint tổng hợp của lakehouse path.
+
+**Vì sao cần thực hiện**
+
+`gold_post_engagement_summary` cũ chỉ đếm like/repost đơn giản. Để Gold aggregate
+có giá trị phân tích hơn fast path, cần một bảng trả lời sâu hơn: post nào nhận
+engagement tốt, engagement đến nhanh hay chậm, reply khác original post ra sao,
+repost/like ratio thế nào và post đã bị delete hay chưa.
+
+**Kết quả sau khi hoàn thành**
+
+Project có serving mart `gold_post_performance` được build từ:
+
+- `gold_dim_posts`
+- `gold_fact_engagement_events`
+
+Bảng này được ghi ra staging Parquet trên MinIO, load vào ClickHouse table
+`bluesky.gold_post_performance`, rồi reconcile giữa staging và ClickHouse. Luồng
+`run_lakehouse_path.py` đã chạy pass, xác nhận lakehouse path hiện có thể build
+Silver, build/check Gold modeled, refresh Gold serving và kiểm tra serving marts.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/gold/build_post_performance_from_gold_modeled.py`
+- `scripts/gold/load_post_performance_to_clickhouse.py`
+- `scripts/gold/check_post_performance_reconciliation.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/lakehouse/run_lakehouse_path.py`
+- `scripts/lakehouse/check_lakehouse_path.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `docs/gold-analytics-metrics-v1.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Serving mart phân tích nên đọc từ Gold modeled để giữ đúng kiến trúc
+  `Silver -> Gold modeled -> Gold serving`.
+- `gold_post_performance` giữ cả post chỉ xuất hiện như target của engagement để
+  không làm rơi metric; các metadata như author hoặc text có thể null nếu post
+  create chưa được observe.
+- ClickHouse là nơi phục vụ dashboard cho mart này; nếu muốn query mart tương tự
+  bằng Trino, cần materialize mart đó thành Iceberg hoặc cấu hình thêm connector
+  phù hợp.
+- Reconciliation giữa staging và ClickHouse giúp đảm bảo quá trình load serving
+  không làm lệch các metric quan trọng.
+
+## Bước 27: Kết nối SQL client tới Trino để query lakehouse
+
+**Mục tiêu**
+
+Kết nối một SQL client như DBeaver tới Trino để query trực tiếp các bảng Iceberg
+trong lakehouse.
+
+**Vì sao cần thực hiện**
+
+Checkpoint script xác nhận Trino đọc được dữ liệu, nhưng trong thực tế analyst
+hoặc data engineer thường cần giao diện SQL để khám phá dữ liệu, viết ad-hoc
+query và kiểm tra model. Bước này chứng minh query engine layer có thể dùng được
+qua SQL client, không chỉ qua CLI/script.
+
+**Kết quả sau khi hoàn thành**
+
+DBeaver kết nối được tới Trino local qua JDBC và query được catalog
+`lakehouse`, schema `gold_v1`. Người dùng có thể chạy SQL trực tiếp lên các bảng
+Gold modeled Iceberg như `gold_dim_posts` hoặc `gold_fact_engagement_events`.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `config/trino/catalog/lakehouse.properties`
+- `docs/tong-quan-du-an.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Trino Web UI chủ yếu dùng để xem query history, stage/task và lỗi query; SQL
+  client như DBeaver/DataGrip tiện hơn để viết ad-hoc SQL.
+- Với Trino local chưa bật authentication, không nhập password trong DBeaver.
+  Nếu gửi username kèm password qua HTTP, Trino JDBC có thể báo lỗi cần TLS/SSL.
+- Trino hiện query lakehouse Iceberg tables. Các bảng ClickHouse serving như
+  `bluesky.gold_post_performance` vẫn query qua ClickHouse/Grafana trừ khi cấu
+  hình thêm connector hoặc materialize mart đó thành Iceberg.
+
+## Bước 28: Implement Gold content quality hourly serving mart
+
+**Mục tiêu**
+
+Build serving mart phân tích content lifecycle và content quality theo giờ từ
+Gold modeled Iceberg, load vào ClickHouse và đưa vào checkpoint tổng hợp.
+
+**Vì sao cần thực hiện**
+
+`gold_post_performance` trả lời câu hỏi ở grain từng post. Cần thêm một mart theo
+thời gian để phân tích xu hướng content: mỗi giờ có bao nhiêu original post,
+reply, update, delete; tỷ lệ reply/original ra sao; tỷ lệ update/delete có bất
+thường không; text length trung bình của content mới thay đổi như thế nào.
+
+**Kết quả sau khi hoàn thành**
+
+Project có serving mart `gold_content_quality_hourly` được build từ:
+
+- `gold_fact_content_events`
+- `gold_dim_posts`
+
+Bảng này được ghi ra staging Parquet trên MinIO, load vào ClickHouse table
+`bluesky.gold_content_quality_hourly`, rồi reconcile giữa staging và ClickHouse.
+`run_lakehouse_path.py` đã chạy pass, xác nhận mart này nằm trong luồng tổng hợp
+lakehouse path.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/gold/build_content_quality_hourly_from_gold_modeled.py`
+- `scripts/gold/load_content_quality_hourly_to_clickhouse.py`
+- `scripts/gold/check_content_quality_hourly_reconciliation.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `scripts/platform/cleanup_ingested_data.py`
+- `docs/gold-analytics-metrics-v1.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Mart theo thời gian nên có grain rõ ràng, ở đây là một dòng cho mỗi giờ
+  `window_start`.
+- Ratio như `reply_ratio`, `delete_ratio` và `update_ratio` giúp dashboard phân
+  tích chất lượng/hành vi nội dung tốt hơn chỉ đếm event.
+- Reconciliation nên ưu tiên các count metrics ổn định; các metric float như
+  ratio/average có thể kiểm tra riêng nếu cần để tránh sai khác nhỏ do kiểu số.
+
+## Bước 29: Implement Gold thread conversation summary serving mart
+
+**Mục tiêu**
+
+Build serving mart phân tích conversation theo từng root thread từ Gold modeled
+Iceberg, load vào ClickHouse và đưa vào checkpoint tổng hợp của lakehouse path.
+
+**Vì sao cần thực hiện**
+
+Content volume và content quality theo giờ chưa trả lời được câu hỏi thread nào
+tạo nhiều thảo luận nhất. Bluesky có nhiều nội dung dạng reply, nên cần một mart
+riêng ở grain `reply_root_uri` để phân tích conversation dynamics: số lượng reply,
+số actor tham gia, thời điểm reply đầu/cuối, thời lượng conversation và số reply
+bị delete.
+
+**Kết quả sau khi hoàn thành**
+
+Project có serving mart `gold_thread_conversation_summary` được build từ:
+
+- `gold_dim_posts`
+- `gold_fact_content_events`
+
+Bảng này được ghi ra staging Parquet trên MinIO, load vào ClickHouse table
+`bluesky.gold_thread_conversation_summary`, rồi reconcile giữa staging và
+ClickHouse. `run_lakehouse_path.py` đã chạy pass với các metric chính đều `OK`:
+
+- `row_count`
+- `reply_count`
+- `reply_author_count`
+- `deleted_reply_count`
+
+Điều này xác nhận mart conversation đã nằm trong luồng
+`Gold modeled Iceberg -> Gold analytics mart -> ClickHouse serving -> reconciliation`.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/gold/build_thread_conversation_summary_from_gold_modeled.py`
+- `scripts/gold/load_thread_conversation_summary_to_clickhouse.py`
+- `scripts/gold/check_thread_conversation_summary_reconciliation.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `scripts/platform/cleanup_ingested_data.py`
+- `docs/gold-analytics-metrics-v1.md`
+- `docs/script-inventory.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Thread/conversation mart có grain khác post mart: một dòng đại diện cho một
+  `reply_root_uri`, không phải một dòng cho mỗi post.
+- Root post có thể không nằm trong dữ liệu observe được, nên metadata của root
+  như `root_author_did` hoặc `root_post_created_at` có thể null; vẫn giữ thread
+  để không làm rơi reply metrics.
+- Delete reply chỉ đếm được đầy đủ khi delete event còn lookup được
+  `reply_root_uri` từ trạng thái post đã observe. Đây là giới hạn dữ liệu hợp lý
+  cần hiểu khi giải thích metric.
+- Với mart phục vụ ClickHouse, reconciliation nên tập trung vào các metric count
+  ổn định trước. Các metric thời gian và average có thể kiểm tra riêng khi cần
+  dashboard hoặc phân tích sâu hơn.
