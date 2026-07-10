@@ -15,6 +15,10 @@ STEPS = [
         "scripts.lakehouse.check_iceberg_silver_v1",
     ),
     (
+        "Check Trino Gold modeled v1",
+        "scripts.lakehouse.check_trino_gold_modeled_v1",
+    ),
+    (
         "Check Gold serving v1",
         "scripts.gold.check_serving_v1",
     ),

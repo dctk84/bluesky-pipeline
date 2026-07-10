@@ -2,11 +2,29 @@
 
 from bluesky_pipeline.iceberg_config import create_iceberg_spark_session
 
+from scripts.gold.check_content_quality_hourly_reconciliation import (
+    build_expected_metrics as build_content_quality_expected_metrics,
+    print_reconciliation as print_content_quality_reconciliation,
+    read_clickhouse_metrics as read_content_quality_clickhouse_metrics,
+    read_gold_content_quality_hourly,
+)
 from scripts.gold.check_post_engagement_reconciliation import (
     build_expected_metrics as build_post_engagement_expected_metrics,
     print_reconciliation as print_post_engagement_reconciliation,
     read_clickhouse_metrics as read_post_engagement_clickhouse_metrics,
     read_gold_post_engagement_summary,
+)
+from scripts.gold.check_post_performance_reconciliation import (
+    build_expected_metrics as build_post_performance_expected_metrics,
+    print_reconciliation as print_post_performance_reconciliation,
+    read_clickhouse_metrics as read_post_performance_clickhouse_metrics,
+    read_gold_post_performance,
+)
+from scripts.gold.check_thread_conversation_summary_reconciliation import (
+    build_expected_metrics as build_thread_conversation_expected_metrics,
+    print_reconciliation as print_thread_conversation_reconciliation,
+    read_clickhouse_metrics as read_thread_conversation_clickhouse_metrics,
+    read_gold_thread_conversation_summary,
 )
 from scripts.gold.check_event_volume_reconciliation import (
     build_expected_counts as build_event_volume_expected_counts,
@@ -44,6 +62,51 @@ def check_post_engagement_summary(spark) -> None:
     print_post_engagement_reconciliation(expected_metrics, actual_metrics)
 
 
+def check_post_performance(spark) -> None:
+    """Kiểm tra reconciliation cho Gold post performance.
+
+    Input chính là SparkSession dùng để đọc Gold Parquet source.
+    Output là exception nếu reconciliation bị lệch.
+    """
+    print("=== gold_post_performance ===")
+
+    # So sánh analytics mart từ Gold Parquet với dữ liệu đã load trong ClickHouse.
+    gold_df = read_gold_post_performance(spark)
+    expected_metrics = build_post_performance_expected_metrics(gold_df)
+    actual_metrics = read_post_performance_clickhouse_metrics()
+    print_post_performance_reconciliation(expected_metrics, actual_metrics)
+
+
+def check_content_quality_hourly(spark) -> None:
+    """Kiểm tra reconciliation cho Gold content quality hourly.
+
+    Input chính là SparkSession dùng để đọc Gold Parquet source.
+    Output là exception nếu reconciliation bị lệch.
+    """
+    print("=== gold_content_quality_hourly ===")
+
+    # So sánh hourly mart từ Gold Parquet với dữ liệu đã load trong ClickHouse.
+    gold_df = read_gold_content_quality_hourly(spark)
+    expected_metrics = build_content_quality_expected_metrics(gold_df)
+    actual_metrics = read_content_quality_clickhouse_metrics()
+    print_content_quality_reconciliation(expected_metrics, actual_metrics)
+
+
+def check_thread_conversation_summary(spark) -> None:
+    """Kiểm tra reconciliation cho Gold thread conversation summary.
+
+    Input chính là SparkSession dùng để đọc Gold Parquet source.
+    Output là exception nếu reconciliation bị lệch.
+    """
+    print("=== gold_thread_conversation_summary ===")
+
+    # So sánh thread mart từ Gold Parquet với dữ liệu đã load trong ClickHouse.
+    gold_df = read_gold_thread_conversation_summary(spark)
+    expected_metrics = build_thread_conversation_expected_metrics(gold_df)
+    actual_metrics = read_thread_conversation_clickhouse_metrics()
+    print_thread_conversation_reconciliation(expected_metrics, actual_metrics)
+
+
 def main() -> None:
     """Chạy toàn bộ checkpoint Gold serving v1."""
     # Dùng một Iceberg SparkSession để đọc được Silver source of truth.
@@ -52,6 +115,9 @@ def main() -> None:
 
     check_event_volume(spark)
     check_post_engagement_summary(spark)
+    check_post_performance(spark)
+    check_content_quality_hourly(spark)
+    check_thread_conversation_summary(spark)
 
     print("Gold serving v1 check passed")
 

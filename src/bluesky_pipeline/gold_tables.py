@@ -14,6 +14,26 @@ GOLD_POST_ENGAGEMENT_SUMMARY_CLICKHOUSE_SOURCE_PATH = (
     GOLD_POST_ENGAGEMENT_SUMMARY_PATH
 )
 
+GOLD_POST_PERFORMANCE_TABLE = "bluesky.gold_post_performance"
+GOLD_POST_PERFORMANCE_PATH = "s3a://bluesky-lake/gold/gold_post_performance"
+GOLD_POST_PERFORMANCE_CLICKHOUSE_SOURCE_PATH = GOLD_POST_PERFORMANCE_PATH
+
+GOLD_CONTENT_QUALITY_HOURLY_TABLE = "bluesky.gold_content_quality_hourly"
+GOLD_CONTENT_QUALITY_HOURLY_PATH = (
+    "s3a://bluesky-lake/gold/gold_content_quality_hourly"
+)
+GOLD_CONTENT_QUALITY_HOURLY_CLICKHOUSE_SOURCE_PATH = (
+    GOLD_CONTENT_QUALITY_HOURLY_PATH
+)
+
+GOLD_THREAD_CONVERSATION_SUMMARY_TABLE = "bluesky.gold_thread_conversation_summary"
+GOLD_THREAD_CONVERSATION_SUMMARY_PATH = (
+    "s3a://bluesky-lake/gold/gold_thread_conversation_summary"
+)
+GOLD_THREAD_CONVERSATION_SUMMARY_CLICKHOUSE_SOURCE_PATH = (
+    GOLD_THREAD_CONVERSATION_SUMMARY_PATH
+)
+
 GOLD_EVENT_VOLUME_1M_STREAM_TABLE = "bluesky.gold_event_volume_1m_stream"
 GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE = (
     "bluesky.gold_content_activity_1m_stream"
@@ -45,6 +65,86 @@ def build_gold_post_engagement_summary_ddl() -> str:
     )
     ENGINE = MergeTree
     ORDER BY (engagement_count, post_uri)
+    """
+
+
+def build_gold_post_performance_ddl() -> str:
+    """Tạo câu DDL cho bảng Gold post performance trong ClickHouse."""
+    # Bảng này là serving mart sâu hơn cho phân tích performance từng post.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_POST_PERFORMANCE_TABLE}
+    (
+        post_uri String,
+        author_did Nullable(String),
+        post_created_at Nullable(DateTime),
+        is_reply Nullable(UInt8),
+        reply_root_uri Nullable(String),
+        reply_parent_uri Nullable(String),
+        text_length Nullable(UInt64),
+        is_deleted UInt8,
+        deleted_at Nullable(DateTime),
+        post_lifetime_seconds Nullable(Int64),
+        like_count UInt64,
+        repost_count UInt64,
+        engagement_count UInt64,
+        engagement_actor_count UInt64,
+        first_engagement_at Nullable(DateTime),
+        last_engagement_at Nullable(DateTime),
+        time_to_first_engagement_seconds Nullable(Int64),
+        repost_to_like_ratio Nullable(Float64),
+        engagement_score UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY (engagement_score, engagement_count, post_uri)
+    """
+
+
+def build_gold_content_quality_hourly_ddl() -> str:
+    """Tạo câu DDL cho bảng Gold content quality hourly trong ClickHouse."""
+    # Bảng này phục vụ phân tích content lifecycle và content mix theo giờ.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_CONTENT_QUALITY_HOURLY_TABLE}
+    (
+        window_start DateTime,
+        original_post_create_count UInt64,
+        reply_create_count UInt64,
+        post_update_count UInt64,
+        reply_update_count UInt64,
+        post_delete_count UInt64,
+        reply_delete_count UInt64,
+        total_content_events UInt64,
+        reply_ratio Nullable(Float64),
+        delete_ratio Nullable(Float64),
+        update_ratio Nullable(Float64),
+        avg_text_length Nullable(Float64),
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY window_start
+    """
+
+
+def build_gold_thread_conversation_summary_ddl() -> str:
+    """Tạo DDL cho bảng Gold thread conversation summary trong ClickHouse."""
+    # Bảng này phục vụ phân tích conversation theo từng root thread.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_THREAD_CONVERSATION_SUMMARY_TABLE}
+    (
+        reply_root_uri String,
+        root_author_did Nullable(String),
+        root_post_created_at Nullable(DateTime),
+        reply_count UInt64,
+        reply_author_count UInt64,
+        first_reply_at Nullable(DateTime),
+        last_reply_at Nullable(DateTime),
+        conversation_duration_seconds Nullable(Int64),
+        avg_reply_text_length Nullable(Float64),
+        deleted_reply_count UInt64,
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY (reply_count, reply_root_uri)
     """
 
 

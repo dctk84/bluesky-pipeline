@@ -1328,6 +1328,22 @@ Silver clean events
 → Grafana
 ```
 
+Gold aggregated trong lakehouse path không nên chỉ lặp lại các metric realtime đơn
+giản như event volume theo phút. Các serving marts ở lớp này cần trả lời được câu
+hỏi phân tích sâu hơn, ví dụ:
+
+- Post nào có performance tốt nhất, xét cả like, repost, tốc độ nhận engagement
+  và trạng thái deleted.
+- Reply và original post khác nhau thế nào về engagement.
+- Thread nào tạo nhiều conversation nhất và có bao nhiêu actor tham gia.
+- Actor nào là creator, actor nào là engager, actor nào nhận nhiều engagement.
+- Network growth quan sát được theo target actor thay đổi ra sao.
+
+Bộ metric lakehouse serving v1 được mô tả trong
+`docs/gold-analytics-metrics-v1.md`. Các bảng cũ như
+`gold_event_volume_by_type` và `gold_post_engagement_summary` chỉ là checkpoint
+serving tối thiểu trong giai đoạn đầu, không phải thiết kế analytics cuối cùng.
+
 ClickHouse cũng có một cơ chế mạnh để hỗ trợ lớp serving: Materialized View kết
 hợp với các engine như `SummingMergeTree` hoặc `AggregatingMergeTree`. Nếu sau
 này có use case đưa một phần serving model vào ClickHouse, có thể tạo

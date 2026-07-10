@@ -8,6 +8,7 @@ Tài liệu kỹ thuật chi tiết:
 - [Tổng quan dự án](docs/tong-quan-du-an.md)
 - [Hướng dẫn làm việc với Codex](docs/huong-dan-lam-viec-voi-codex.md)
 - [Gold data model v1](docs/gold-data-model-v1.md)
+- [Gold analytics metrics v1](docs/gold-analytics-metrics-v1.md)
 - [Script inventory](docs/script-inventory.md)
 
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
@@ -27,7 +28,8 @@ Jetstream
 → Spark Bronze trên MinIO
 → Silver Iceberg v1 trên MinIO
 → Trino query layer
-→ Gold modeled / aggregate marts build từ Silver Iceberg
+→ Gold modeled Iceberg
+→ Gold analytics / aggregate marts
 → ClickHouse serving tables
 → Reconciliation check
 ```
@@ -50,11 +52,15 @@ Lưu ý:
 - Trino query Silver/Gold Iceberg qua Hive Metastore catalog.
 - Sau khi bật Trino/Hive Metastore lần đầu, cần build lại Silver Iceberg để các
   bảng được đăng ký vào metastore mới.
-- Lakehouse Gold không chỉ là metric aggregate; hướng thiết kế tiếp theo là có
-  lớp Gold modeled fact/dim hoặc semantic marts trước khi tính metric.
-- ClickHouse serving layer hiện có 2 bảng lakehouse serving marts:
+- Lakehouse Gold không chỉ là metric aggregate; project đã có contract Gold
+  modeled fact/dim và đang chuẩn hóa bộ analytics metrics v1 trước khi load các
+  serving marts sâu hơn vào ClickHouse.
+- ClickHouse serving layer hiện có các bảng lakehouse serving marts:
   - `bluesky.gold_event_volume_by_type`
   - `bluesky.gold_post_engagement_summary`
+  - `bluesky.gold_post_performance`
+  - `bluesky.gold_content_quality_hourly`
+  - `bluesky.gold_thread_conversation_summary`
 - Realtime serving layer có các bảng mart theo phút và bảng stream batch health.
 
 ## Chạy local
@@ -115,7 +121,9 @@ Lệnh này thực hiện theo thứ tự:
 
 - Build Silver Iceberg v1 trực tiếp từ Bronze.
 - Check Silver Iceberg v1.
-- Refresh Gold serving từ Silver Iceberg.
+- Build Gold modeled v1.
+- Check Trino query được Gold modeled v1.
+- Refresh Gold analytics/serving marts từ lakehouse Iceberg.
 - Check Gold serving v1.
 
 Kiểm tra lakehouse path hiện có mà không build/refresh lại dữ liệu:
@@ -133,6 +141,7 @@ PYTHONPATH=src python scripts/lakehouse/check_trino_silver_v1.py
 PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
 PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
 PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py
+PYTHONPATH=src python scripts/gold/check_thread_conversation_summary_reconciliation.py
 PYTHONPATH=src:. python scripts/gold/check_serving_v1.py
 ```
 

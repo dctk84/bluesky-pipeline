@@ -18,7 +18,15 @@ STEPS = [
         "scripts.lakehouse.check_iceberg_silver_v1",
     ),
     (
-        "Refresh Gold serving from Silver Iceberg",
+        "Build Gold modeled v1",
+        "scripts.lakehouse.build_gold_modeled_v1",
+    ),
+    (
+        "Check Trino Gold modeled v1",
+        "scripts.lakehouse.check_trino_gold_modeled_v1",
+    ),
+    (
+        "Refresh Gold serving from lakehouse Iceberg",
         "scripts.gold.refresh_serving_from_iceberg",
     ),
 ]

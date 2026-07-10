@@ -19,6 +19,8 @@ from bluesky_pipeline.bronze_tables import (
 )
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 from bluesky_pipeline.gold_tables import (
+    GOLD_CONTENT_QUALITY_HOURLY_PATH,
+    GOLD_CONTENT_QUALITY_HOURLY_TABLE,
     GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
@@ -27,8 +29,12 @@ from bluesky_pipeline.gold_tables import (
     GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
     GOLD_POST_ENGAGEMENT_SUMMARY_PATH,
     GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
+    GOLD_POST_PERFORMANCE_PATH,
+    GOLD_POST_PERFORMANCE_TABLE,
     GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION,
     GOLD_REALTIME_STREAM_BATCHES_TABLE,
+    GOLD_THREAD_CONVERSATION_SUMMARY_PATH,
+    GOLD_THREAD_CONVERSATION_SUMMARY_TABLE,
 )
 from bluesky_pipeline.iceberg_config import (
     ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION,
@@ -59,6 +65,9 @@ def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
     gold_staging_paths = [
         GOLD_EVENT_VOLUME_PATH,
         GOLD_POST_ENGAGEMENT_SUMMARY_PATH,
+        GOLD_POST_PERFORMANCE_PATH,
+        GOLD_CONTENT_QUALITY_HOURLY_PATH,
+        GOLD_THREAD_CONVERSATION_SUMMARY_PATH,
     ]
 
     minio_paths = [
@@ -71,6 +80,9 @@ def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
     clickhouse_tables = [
         GOLD_EVENT_VOLUME_TABLE,
         GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
+        GOLD_POST_PERFORMANCE_TABLE,
+        GOLD_CONTENT_QUALITY_HOURLY_TABLE,
+        GOLD_THREAD_CONVERSATION_SUMMARY_TABLE,
         GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
         GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
         GOLD_ENGAGEMENT_1M_STREAM_TABLE,
