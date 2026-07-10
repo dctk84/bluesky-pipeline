@@ -14,6 +14,7 @@ from pyspark.sql.functions import (
     max as spark_max,
     min as spark_min,
     sum as spark_sum,
+    to_date,
     unix_timestamp,
     when,
 )
@@ -253,4 +254,181 @@ def build_gold_thread_conversation_summary(
         coalesce(col("deleted_reply_count"), lit(0))
         .cast("long")
         .alias("deleted_reply_count"),
+    )
+
+
+def build_gold_actor_activity_daily(
+    gold_dim_actors_df: DataFrame,
+    gold_dim_posts_df: DataFrame,
+    gold_fact_content_events_df: DataFrame,
+    gold_fact_engagement_events_df: DataFrame,
+    gold_fact_network_events_df: DataFrame,
+) -> DataFrame:
+    """Build mart phân tích hoạt động actor theo ngày.
+
+    Input chính là Gold modeled actor/post dimensions và các content,
+    engagement, network facts.
+    Output là một dòng cho mỗi `activity_date + actor_did`.
+    """
+    known_actors_df = gold_dim_actors_df.select("actor_did").distinct()
+
+    content_daily_df = (
+        gold_fact_content_events_df.filter(col("author_did").isNotNull())
+        .withColumn("activity_date", to_date(col("event_time")))
+        .groupBy("activity_date", "author_did")
+        .agg(
+            spark_sum(
+                when(col("content_event_type") == "post_create", lit(1)).otherwise(
+                    lit(0)
+                )
+            ).alias("original_posts_created"),
+            spark_sum(
+                when(col("content_event_type") == "reply_create", lit(1)).otherwise(
+                    lit(0)
+                )
+            ).alias("replies_created"),
+            spark_sum(
+                when(
+                    col("content_event_type").isin("post_update", "reply_update"),
+                    lit(1),
+                ).otherwise(lit(0))
+            ).alias("posts_updated"),
+            spark_sum(
+                when(
+                    col("content_event_type").isin("post_delete", "reply_delete"),
+                    lit(1),
+                ).otherwise(lit(0))
+            ).alias("posts_deleted"),
+        )
+        .withColumnRenamed("author_did", "actor_did")
+    )
+
+    engagement_given_daily_df = (
+        gold_fact_engagement_events_df.filter(col("actor_did").isNotNull())
+        .withColumn("activity_date", to_date(col("event_time")))
+        .groupBy("activity_date", "actor_did")
+        .agg(
+            spark_sum(
+                when(col("engagement_type") == "like", lit(1)).otherwise(lit(0))
+            ).alias("likes_given"),
+            spark_sum(
+                when(col("engagement_type") == "repost", lit(1)).otherwise(lit(0))
+            ).alias("reposts_given"),
+            count(lit(1)).alias("engagements_given"),
+            countDistinct("target_post_uri").alias("unique_posts_engaged"),
+        )
+    )
+
+    network_daily_df = (
+        gold_fact_network_events_df.filter(col("actor_did").isNotNull())
+        .withColumn("activity_date", to_date(col("event_time")))
+        .groupBy("activity_date", "actor_did")
+        .agg(
+            spark_sum(
+                when(col("network_event_type") == "follow_create", lit(1)).otherwise(
+                    lit(0)
+                )
+            ).alias("follows_created"),
+            spark_sum(
+                when(col("network_event_type") == "follow_delete", lit(1)).otherwise(
+                    lit(0)
+                )
+            ).alias("follows_deleted"),
+            countDistinct(
+                when(
+                    col("network_event_type") == "follow_create",
+                    col("target_actor_did"),
+                )
+            ).alias("unique_actors_followed"),
+        )
+    )
+
+    post_authors_df = gold_dim_posts_df.select(
+        col("post_uri").alias("target_post_uri"),
+        col("author_did").alias("received_actor_did"),
+    ).filter(col("received_actor_did").isNotNull())
+
+    received_engagement_daily_df = (
+        gold_fact_engagement_events_df.join(
+            post_authors_df,
+            "target_post_uri",
+            "inner",
+        )
+        .withColumn("activity_date", to_date(col("event_time")))
+        .groupBy("activity_date", "received_actor_did")
+        .agg(
+            spark_sum(
+                when(col("engagement_type") == "like", lit(1)).otherwise(lit(0))
+            ).alias("received_likes"),
+            spark_sum(
+                when(col("engagement_type") == "repost", lit(1)).otherwise(lit(0))
+            ).alias("received_reposts"),
+            count(lit(1)).alias("received_engagements"),
+        )
+        .withColumnRenamed("received_actor_did", "actor_did")
+    )
+
+    # Base grain lấy từ mọi activity observed được, rồi constrain bằng actor dim.
+    activity_keys_df = (
+        content_daily_df.select("activity_date", "actor_did")
+        .unionByName(engagement_given_daily_df.select("activity_date", "actor_did"))
+        .unionByName(network_daily_df.select("activity_date", "actor_did"))
+        .unionByName(received_engagement_daily_df.select("activity_date", "actor_did"))
+        .distinct()
+        .join(known_actors_df, "actor_did", "inner")
+    )
+
+    joined_df = (
+        activity_keys_df.join(content_daily_df, ["activity_date", "actor_did"], "left")
+        .join(engagement_given_daily_df, ["activity_date", "actor_did"], "left")
+        .join(network_daily_df, ["activity_date", "actor_did"], "left")
+        .join(received_engagement_daily_df, ["activity_date", "actor_did"], "left")
+    )
+
+    original_posts_created = coalesce(col("original_posts_created"), lit(0))
+    replies_created = coalesce(col("replies_created"), lit(0))
+    posts_updated = coalesce(col("posts_updated"), lit(0))
+    posts_deleted = coalesce(col("posts_deleted"), lit(0))
+    likes_given = coalesce(col("likes_given"), lit(0))
+    reposts_given = coalesce(col("reposts_given"), lit(0))
+    follows_created = coalesce(col("follows_created"), lit(0))
+    follows_deleted = coalesce(col("follows_deleted"), lit(0))
+    engagements_given = coalesce(col("engagements_given"), lit(0))
+    received_likes = coalesce(col("received_likes"), lit(0))
+    received_reposts = coalesce(col("received_reposts"), lit(0))
+    received_engagements = coalesce(col("received_engagements"), lit(0))
+    unique_posts_engaged = coalesce(col("unique_posts_engaged"), lit(0))
+    unique_actors_followed = coalesce(col("unique_actors_followed"), lit(0))
+
+    content_events_created = original_posts_created + replies_created
+    activity_score = (
+        content_events_created * lit(2)
+        + engagements_given
+        + follows_created
+        + received_engagements
+    )
+
+    return joined_df.select(
+        col("activity_date"),
+        col("actor_did"),
+        original_posts_created.cast("long").alias("original_posts_created"),
+        replies_created.cast("long").alias("replies_created"),
+        posts_updated.cast("long").alias("posts_updated"),
+        posts_deleted.cast("long").alias("posts_deleted"),
+        likes_given.cast("long").alias("likes_given"),
+        reposts_given.cast("long").alias("reposts_given"),
+        follows_created.cast("long").alias("follows_created"),
+        follows_deleted.cast("long").alias("follows_deleted"),
+        engagements_given.cast("long").alias("engagements_given"),
+        content_events_created.cast("long").alias("content_events_created"),
+        received_likes.cast("long").alias("received_likes"),
+        received_reposts.cast("long").alias("received_reposts"),
+        received_engagements.cast("long").alias("received_engagements"),
+        unique_posts_engaged.cast("long").alias("unique_posts_engaged"),
+        unique_actors_followed.cast("long").alias("unique_actors_followed"),
+        activity_score.cast("long").alias("activity_score"),
+        when(
+            engagements_given > 0,
+            content_events_created.cast("double") / engagements_given.cast("double"),
+        ).alias("creator_engager_ratio"),
     )

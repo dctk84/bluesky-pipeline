@@ -34,6 +34,10 @@ GOLD_THREAD_CONVERSATION_SUMMARY_CLICKHOUSE_SOURCE_PATH = (
     GOLD_THREAD_CONVERSATION_SUMMARY_PATH
 )
 
+GOLD_ACTOR_ACTIVITY_DAILY_TABLE = "bluesky.gold_actor_activity_daily"
+GOLD_ACTOR_ACTIVITY_DAILY_PATH = "s3a://bluesky-lake/gold/gold_actor_activity_daily"
+GOLD_ACTOR_ACTIVITY_DAILY_CLICKHOUSE_SOURCE_PATH = GOLD_ACTOR_ACTIVITY_DAILY_PATH
+
 GOLD_EVENT_VOLUME_1M_STREAM_TABLE = "bluesky.gold_event_volume_1m_stream"
 GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE = (
     "bluesky.gold_content_activity_1m_stream"
@@ -145,6 +149,38 @@ def build_gold_thread_conversation_summary_ddl() -> str:
     )
     ENGINE = MergeTree
     ORDER BY (reply_count, reply_root_uri)
+    """
+
+
+def build_gold_actor_activity_daily_ddl() -> str:
+    """Tạo DDL cho bảng Gold actor activity daily trong ClickHouse."""
+    # Bảng này phục vụ phân tích hành vi creator/engager/network builder.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_ACTOR_ACTIVITY_DAILY_TABLE}
+    (
+        activity_date Date,
+        actor_did String,
+        original_posts_created UInt64,
+        replies_created UInt64,
+        posts_updated UInt64,
+        posts_deleted UInt64,
+        likes_given UInt64,
+        reposts_given UInt64,
+        follows_created UInt64,
+        follows_deleted UInt64,
+        engagements_given UInt64,
+        content_events_created UInt64,
+        received_likes UInt64,
+        received_reposts UInt64,
+        received_engagements UInt64,
+        unique_posts_engaged UInt64,
+        unique_actors_followed UInt64,
+        activity_score UInt64,
+        creator_engager_ratio Nullable(Float64),
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY (activity_date, activity_score, actor_did)
     """
 
 

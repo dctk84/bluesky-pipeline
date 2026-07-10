@@ -1,5 +1,8 @@
 """Refresh toàn bộ Gold serving từ lakehouse Iceberg sources."""
 
+from scripts.gold.build_actor_activity_daily_from_gold_modeled import (
+    main as build_actor_activity_daily,
+)
 from scripts.gold.build_content_quality_hourly_from_gold_modeled import (
     main as build_content_quality_hourly,
 )
@@ -12,6 +15,9 @@ from scripts.gold.build_post_performance_from_gold_modeled import (
 )
 from scripts.gold.build_thread_conversation_summary_from_gold_modeled import (
     main as build_thread_conversation_summary,
+)
+from scripts.gold.load_actor_activity_daily_to_clickhouse import (
+    main as load_actor_activity_daily,
 )
 from scripts.gold.load_content_quality_hourly_to_clickhouse import (
     main as load_content_quality_hourly,
@@ -37,6 +43,7 @@ def main() -> None:
     build_post_performance()
     build_content_quality_hourly()
     build_thread_conversation_summary()
+    build_actor_activity_daily()
 
     # Refresh ClickHouse serving tables từ Gold staging.
     load_event_volume()
@@ -44,6 +51,7 @@ def main() -> None:
     load_post_performance()
     load_content_quality_hourly()
     load_thread_conversation_summary()
+    load_actor_activity_daily()
 
     # Kiểm chứng ClickHouse serving tables sau khi refresh.
     check_gold_serving()
