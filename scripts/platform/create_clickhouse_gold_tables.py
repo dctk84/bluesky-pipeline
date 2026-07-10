@@ -9,6 +9,7 @@ from bluesky_pipeline.gold_tables import (
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_TABLE,
+    GOLD_NETWORK_GROWTH_DAILY_TABLE,
     GOLD_NETWORK_ACTIVITY_1M_STREAM_TABLE,
     GOLD_POST_ENGAGEMENT_SUMMARY_TABLE,
     GOLD_POST_PERFORMANCE_TABLE,
@@ -20,6 +21,7 @@ from bluesky_pipeline.gold_tables import (
     build_gold_engagement_1m_stream_ddl,
     build_gold_event_volume_1m_stream_ddl,
     build_gold_event_volume_ddl,
+    build_gold_network_growth_daily_ddl,
     build_gold_network_activity_1m_stream_ddl,
     build_gold_post_engagement_summary_ddl,
     build_gold_post_performance_ddl,
@@ -68,6 +70,12 @@ def create_gold_actor_activity_daily_table() -> None:
     """Tạo bảng Gold actor activity daily serving nếu chưa tồn tại."""
     # Bảng này phục vụ phân tích hành vi actor theo ngày.
     execute_clickhouse(build_gold_actor_activity_daily_ddl())
+
+
+def create_gold_network_growth_daily_table() -> None:
+    """Tạo bảng Gold network growth daily serving nếu chưa tồn tại."""
+    # Bảng này phục vụ phân tích observed follow/unfollow theo target actor.
+    execute_clickhouse(build_gold_network_growth_daily_ddl())
 
 
 def create_gold_event_volume_1m_stream_table() -> None:
@@ -122,6 +130,9 @@ def main() -> None:
 
     create_gold_actor_activity_daily_table()
     print(f"created_table: {GOLD_ACTOR_ACTIVITY_DAILY_TABLE}")
+
+    create_gold_network_growth_daily_table()
+    print(f"created_table: {GOLD_NETWORK_GROWTH_DAILY_TABLE}")
 
     create_gold_event_volume_1m_stream_table()
     print(f"created_table: {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}")

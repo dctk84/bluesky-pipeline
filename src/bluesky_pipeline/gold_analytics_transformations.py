@@ -432,3 +432,58 @@ def build_gold_actor_activity_daily(
             content_events_created.cast("double") / engagements_given.cast("double"),
         ).alias("creator_engager_ratio"),
     )
+
+
+def build_gold_network_growth_daily(
+    gold_fact_network_events_df: DataFrame,
+) -> DataFrame:
+    """Build mart phân tích observed network growth theo ngày.
+
+    Input chính là Gold fact network events.
+    Output là một dòng cho mỗi `activity_date + target_actor_did`.
+    """
+    network_with_date_df = gold_fact_network_events_df.withColumn(
+        "activity_date",
+        to_date(col("event_time")),
+    )
+
+    daily_counts_df = network_with_date_df.groupBy(
+        "activity_date",
+        "target_actor_did",
+    ).agg(
+        spark_sum(
+            when(col("network_event_type") == "follow_create", lit(1)).otherwise(
+                lit(0)
+            )
+        ).alias("follow_count"),
+        spark_sum(
+            when(col("network_event_type") == "follow_delete", lit(1)).otherwise(
+                lit(0)
+            )
+        ).alias("unfollow_count"),
+        countDistinct(
+            when(col("network_event_type") == "follow_create", col("actor_did"))
+        ).alias("unique_follower_count"),
+        spark_min(
+            when(col("network_event_type") == "follow_create", col("event_time"))
+        ).alias("first_follow_at"),
+        spark_max(
+            when(col("network_event_type") == "follow_create", col("event_time"))
+        ).alias("last_follow_at"),
+    )
+
+    follow_count = coalesce(col("follow_count"), lit(0))
+    unfollow_count = coalesce(col("unfollow_count"), lit(0))
+
+    return daily_counts_df.select(
+        col("activity_date"),
+        col("target_actor_did"),
+        follow_count.cast("long").alias("follow_count"),
+        unfollow_count.cast("long").alias("unfollow_count"),
+        (follow_count - unfollow_count).cast("long").alias("net_follow_count"),
+        coalesce(col("unique_follower_count"), lit(0))
+        .cast("long")
+        .alias("unique_follower_count"),
+        col("first_follow_at"),
+        col("last_follow_at"),
+    )

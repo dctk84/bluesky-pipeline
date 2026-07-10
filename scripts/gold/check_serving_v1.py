@@ -14,6 +14,12 @@ from scripts.gold.check_content_quality_hourly_reconciliation import (
     read_clickhouse_metrics as read_content_quality_clickhouse_metrics,
     read_gold_content_quality_hourly,
 )
+from scripts.gold.check_network_growth_daily_reconciliation import (
+    build_expected_metrics as build_network_growth_expected_metrics,
+    print_reconciliation as print_network_growth_reconciliation,
+    read_clickhouse_metrics as read_network_growth_clickhouse_metrics,
+    read_gold_network_growth_daily,
+)
 from scripts.gold.check_post_engagement_reconciliation import (
     build_expected_metrics as build_post_engagement_expected_metrics,
     print_reconciliation as print_post_engagement_reconciliation,
@@ -128,6 +134,21 @@ def check_actor_activity_daily(spark) -> None:
     print_actor_activity_reconciliation(expected_metrics, actual_metrics)
 
 
+def check_network_growth_daily(spark) -> None:
+    """Kiểm tra reconciliation cho Gold network growth daily.
+
+    Input chính là SparkSession dùng để đọc Gold Parquet source.
+    Output là exception nếu reconciliation bị lệch.
+    """
+    print("=== gold_network_growth_daily ===")
+
+    # So sánh network mart từ Gold Parquet với dữ liệu đã load trong ClickHouse.
+    gold_df = read_gold_network_growth_daily(spark)
+    expected_metrics = build_network_growth_expected_metrics(gold_df)
+    actual_metrics = read_network_growth_clickhouse_metrics()
+    print_network_growth_reconciliation(expected_metrics, actual_metrics)
+
+
 def main() -> None:
     """Chạy toàn bộ checkpoint Gold serving v1."""
     # Dùng một Iceberg SparkSession để đọc được Silver source of truth.
@@ -140,6 +161,7 @@ def main() -> None:
     check_content_quality_hourly(spark)
     check_thread_conversation_summary(spark)
     check_actor_activity_daily(spark)
+    check_network_growth_daily(spark)
 
     print("Gold serving v1 check passed")
 

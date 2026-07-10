@@ -7,6 +7,9 @@ from scripts.gold.build_content_quality_hourly_from_gold_modeled import (
     main as build_content_quality_hourly,
 )
 from scripts.gold.build_event_volume_from_iceberg import main as build_event_volume
+from scripts.gold.build_network_growth_daily_from_gold_modeled import (
+    main as build_network_growth_daily,
+)
 from scripts.gold.build_post_engagement_summary_from_iceberg import (
     main as build_post_engagement_summary,
 )
@@ -23,6 +26,9 @@ from scripts.gold.load_content_quality_hourly_to_clickhouse import (
     main as load_content_quality_hourly,
 )
 from scripts.gold.load_event_volume_to_clickhouse import main as load_event_volume
+from scripts.gold.load_network_growth_daily_to_clickhouse import (
+    main as load_network_growth_daily,
+)
 from scripts.gold.load_post_engagement_summary_to_clickhouse import (
     main as load_post_engagement_summary,
 )
@@ -44,6 +50,7 @@ def main() -> None:
     build_content_quality_hourly()
     build_thread_conversation_summary()
     build_actor_activity_daily()
+    build_network_growth_daily()
 
     # Refresh ClickHouse serving tables từ Gold staging.
     load_event_volume()
@@ -52,6 +59,7 @@ def main() -> None:
     load_content_quality_hourly()
     load_thread_conversation_summary()
     load_actor_activity_daily()
+    load_network_growth_daily()
 
     # Kiểm chứng ClickHouse serving tables sau khi refresh.
     check_gold_serving()

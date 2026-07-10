@@ -59,6 +59,8 @@ là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled
   Gold thread conversation summary analytics mart từ Gold modeled Iceberg.
 - `scripts/gold/build_actor_activity_daily_from_gold_modeled.py`: build Gold
   actor activity daily analytics mart từ Gold modeled Iceberg.
+- `scripts/gold/build_network_growth_daily_from_gold_modeled.py`: build Gold
+  network growth daily analytics mart từ Gold modeled Iceberg.
 - `scripts/gold/load_event_volume_to_clickhouse.py`: load Gold event volume vào
   ClickHouse.
 - `scripts/gold/load_post_engagement_summary_to_clickhouse.py`: load Gold post
@@ -71,6 +73,8 @@ là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled
   thread conversation summary analytics mart vào ClickHouse.
 - `scripts/gold/load_actor_activity_daily_to_clickhouse.py`: load Gold actor
   activity daily analytics mart vào ClickHouse.
+- `scripts/gold/load_network_growth_daily_to_clickhouse.py`: load Gold network
+  growth daily analytics mart vào ClickHouse.
 - `scripts/gold/check_event_volume_reconciliation.py`: reconcile Gold event volume trong
   ClickHouse với Silver Iceberg.
 - `scripts/gold/check_post_engagement_reconciliation.py`: reconcile Gold post
@@ -83,6 +87,8 @@ là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled
   Gold thread conversation summary giữa Gold staging và ClickHouse.
 - `scripts/gold/check_actor_activity_daily_reconciliation.py`: reconcile Gold
   actor activity daily giữa Gold staging và ClickHouse.
+- `scripts/gold/check_network_growth_daily_reconciliation.py`: reconcile Gold
+  network growth daily giữa Gold staging và ClickHouse.
 - `scripts/platform/create_clickhouse_gold_tables.py`: tạo database và các bảng serving
   trong ClickHouse.
 - `scripts/platform/cleanup_ingested_data.py`: dọn dữ liệu ingest local trên
