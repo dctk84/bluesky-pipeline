@@ -41,6 +41,7 @@ bài học của bước lớn tương ứng.
 28. [Implement Gold content quality hourly serving mart](#bước-28-implement-gold-content-quality-hourly-serving-mart)
 29. [Implement Gold thread conversation summary serving mart](#bước-29-implement-gold-thread-conversation-summary-serving-mart)
 30. [Implement Gold actor activity daily serving mart](#bước-30-implement-gold-actor-activity-daily-serving-mart)
+31. [Implement Gold network growth daily serving mart](#bước-31-implement-gold-network-growth-daily-serving-mart)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1431,3 +1432,47 @@ luồng tổng hợp Gold serving.
   khác nhau.
 - `activity_score` là score v1 có trọng số đơn giản để phục vụ dashboard/leaderboard,
   không phải ranking model phức tạp.
+
+## Bước 31: Implement Gold network growth daily serving mart
+
+**Mục tiêu**
+
+Build serving mart phân tích observed network growth theo ngày từ Gold modeled
+Iceberg, load vào ClickHouse và đưa vào checkpoint tổng hợp của lakehouse path.
+
+**Vì sao cần thực hiện**
+
+Sau khi đã có mart về content, conversation và actor behavior, cần một mart riêng
+cho social graph dynamics. `gold_network_growth_daily` trả lời actor nào được
+follow nhiều nhất trong dữ liệu quan sát được, follow/unfollow tạo ra net growth
+như thế nào và có bao nhiêu follower unique trong ngày.
+
+**Kết quả sau khi hoàn thành**
+
+Project có serving mart `gold_network_growth_daily` được build từ
+`gold_fact_network_events`, ghi ra staging Parquet trên MinIO, load vào
+ClickHouse table `bluesky.gold_network_growth_daily`, rồi reconcile giữa staging
+và ClickHouse. `run_lakehouse_path.py` đã chạy pass, đồng thời hoàn thiện đủ bộ
+Gold analytics serving marts v1 đã thiết kế.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/gold/build_network_growth_daily_from_gold_modeled.py`
+- `scripts/gold/load_network_growth_daily_to_clickhouse.py`
+- `scripts/gold/check_network_growth_daily_reconciliation.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `docs/gold-analytics-metrics-v1.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Network growth trong project là observed growth từ stream đã ingest, không phải
+  follower count toàn cục của Bluesky.
+- `target_actor_did` có thể null nếu delete event không lookup được follow target;
+  ClickHouse sorting key cần xử lý nullable column rõ ràng.
+- Khi một bộ mart đã đủ contract ban đầu, nên chuyển sang dashboard/checkpoint và
+  tài liệu hóa cách sử dụng thay vì tiếp tục thêm metric không có câu hỏi phân
+  tích rõ ràng.

@@ -38,6 +38,10 @@ GOLD_ACTOR_ACTIVITY_DAILY_TABLE = "bluesky.gold_actor_activity_daily"
 GOLD_ACTOR_ACTIVITY_DAILY_PATH = "s3a://bluesky-lake/gold/gold_actor_activity_daily"
 GOLD_ACTOR_ACTIVITY_DAILY_CLICKHOUSE_SOURCE_PATH = GOLD_ACTOR_ACTIVITY_DAILY_PATH
 
+GOLD_NETWORK_GROWTH_DAILY_TABLE = "bluesky.gold_network_growth_daily"
+GOLD_NETWORK_GROWTH_DAILY_PATH = "s3a://bluesky-lake/gold/gold_network_growth_daily"
+GOLD_NETWORK_GROWTH_DAILY_CLICKHOUSE_SOURCE_PATH = GOLD_NETWORK_GROWTH_DAILY_PATH
+
 GOLD_EVENT_VOLUME_1M_STREAM_TABLE = "bluesky.gold_event_volume_1m_stream"
 GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE = (
     "bluesky.gold_content_activity_1m_stream"
@@ -181,6 +185,27 @@ def build_gold_actor_activity_daily_ddl() -> str:
     )
     ENGINE = MergeTree
     ORDER BY (activity_date, activity_score, actor_did)
+    """
+
+
+def build_gold_network_growth_daily_ddl() -> str:
+    """Tạo DDL cho bảng Gold network growth daily trong ClickHouse."""
+    # Bảng này phục vụ phân tích observed follow/unfollow theo target actor.
+    return f"""
+    CREATE TABLE IF NOT EXISTS {GOLD_NETWORK_GROWTH_DAILY_TABLE}
+    (
+        activity_date Date,
+        target_actor_did Nullable(String),
+        follow_count UInt64,
+        unfollow_count UInt64,
+        net_follow_count Int64,
+        unique_follower_count UInt64,
+        first_follow_at Nullable(DateTime),
+        last_follow_at Nullable(DateTime),
+        loaded_at DateTime DEFAULT now()
+    )
+    ENGINE = MergeTree
+    ORDER BY (activity_date, net_follow_count, ifNull(target_actor_did, ''))
     """
 
 
