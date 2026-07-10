@@ -2,6 +2,12 @@
 
 from bluesky_pipeline.iceberg_config import create_iceberg_spark_session
 
+from scripts.gold.check_actor_activity_daily_reconciliation import (
+    build_expected_metrics as build_actor_activity_expected_metrics,
+    print_reconciliation as print_actor_activity_reconciliation,
+    read_clickhouse_metrics as read_actor_activity_clickhouse_metrics,
+    read_gold_actor_activity_daily,
+)
 from scripts.gold.check_content_quality_hourly_reconciliation import (
     build_expected_metrics as build_content_quality_expected_metrics,
     print_reconciliation as print_content_quality_reconciliation,
@@ -107,6 +113,21 @@ def check_thread_conversation_summary(spark) -> None:
     print_thread_conversation_reconciliation(expected_metrics, actual_metrics)
 
 
+def check_actor_activity_daily(spark) -> None:
+    """Kiểm tra reconciliation cho Gold actor activity daily.
+
+    Input chính là SparkSession dùng để đọc Gold Parquet source.
+    Output là exception nếu reconciliation bị lệch.
+    """
+    print("=== gold_actor_activity_daily ===")
+
+    # So sánh actor mart từ Gold Parquet với dữ liệu đã load trong ClickHouse.
+    gold_df = read_gold_actor_activity_daily(spark)
+    expected_metrics = build_actor_activity_expected_metrics(gold_df)
+    actual_metrics = read_actor_activity_clickhouse_metrics()
+    print_actor_activity_reconciliation(expected_metrics, actual_metrics)
+
+
 def main() -> None:
     """Chạy toàn bộ checkpoint Gold serving v1."""
     # Dùng một Iceberg SparkSession để đọc được Silver source of truth.
@@ -118,6 +139,7 @@ def main() -> None:
     check_post_performance(spark)
     check_content_quality_hourly(spark)
     check_thread_conversation_summary(spark)
+    check_actor_activity_daily(spark)
 
     print("Gold serving v1 check passed")
 

@@ -40,6 +40,7 @@ bài học của bước lớn tương ứng.
 27. [Kết nối SQL client tới Trino để query lakehouse](#bước-27-kết-nối-sql-client-tới-trino-để-query-lakehouse)
 28. [Implement Gold content quality hourly serving mart](#bước-28-implement-gold-content-quality-hourly-serving-mart)
 29. [Implement Gold thread conversation summary serving mart](#bước-29-implement-gold-thread-conversation-summary-serving-mart)
+30. [Implement Gold actor activity daily serving mart](#bước-30-implement-gold-actor-activity-daily-serving-mart)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1379,3 +1380,54 @@ ClickHouse. `run_lakehouse_path.py` đã chạy pass với các metric chính đ
 - Với mart phục vụ ClickHouse, reconciliation nên tập trung vào các metric count
   ổn định trước. Các metric thời gian và average có thể kiểm tra riêng khi cần
   dashboard hoặc phân tích sâu hơn.
+
+## Bước 30: Implement Gold actor activity daily serving mart
+
+**Mục tiêu**
+
+Build serving mart phân tích hành vi actor theo ngày từ Gold modeled Iceberg,
+load vào ClickHouse và đưa vào checkpoint tổng hợp của lakehouse path.
+
+**Vì sao cần thực hiện**
+
+Các mart trước phân tích post, content lifecycle và conversation. Để trả lời câu
+hỏi về hành vi người dùng quan sát được, cần một mart ở grain
+`activity_date + actor_did`: actor nào tạo nhiều content, actor nào đi tương tác,
+actor nào nhận nhiều engagement và actor nào có hoạt động mạng xã hội qua follow.
+
+**Kết quả sau khi hoàn thành**
+
+Project có serving mart `gold_actor_activity_daily` được build từ Gold modeled:
+
+- `gold_dim_actors`
+- `gold_dim_posts`
+- `gold_fact_content_events`
+- `gold_fact_engagement_events`
+- `gold_fact_network_events`
+
+Bảng này được ghi ra staging Parquet trên MinIO, load vào ClickHouse table
+`bluesky.gold_actor_activity_daily`, rồi reconcile giữa staging và ClickHouse.
+`run_lakehouse_path.py` đã chạy pass, xác nhận mart actor activity nằm trong
+luồng tổng hợp Gold serving.
+
+**Các file liên quan**
+
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+- `scripts/gold/build_actor_activity_daily_from_gold_modeled.py`
+- `scripts/gold/load_actor_activity_daily_to_clickhouse.py`
+- `scripts/gold/check_actor_activity_daily_reconciliation.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `docs/gold-analytics-metrics-v1.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Actor activity mart kết hợp nhiều vai trò của cùng một DID: creator, engager,
+  actor nhận engagement và network builder.
+- `received_*` metrics cần join engagement target post về author trong
+  `gold_dim_posts`, vì actor đi tương tác và actor nhận tương tác là hai vai trò
+  khác nhau.
+- `activity_score` là score v1 có trọng số đơn giản để phục vụ dashboard/leaderboard,
+  không phải ranking model phức tạp.

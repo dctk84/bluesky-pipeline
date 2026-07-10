@@ -61,6 +61,7 @@ Lưu ý:
   - `bluesky.gold_post_performance`
   - `bluesky.gold_content_quality_hourly`
   - `bluesky.gold_thread_conversation_summary`
+  - `bluesky.gold_actor_activity_daily`
 - Realtime serving layer có các bảng mart theo phút và bảng stream batch health.
 
 ## Chạy local
@@ -142,6 +143,7 @@ PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
 PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
 PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py
 PYTHONPATH=src python scripts/gold/check_thread_conversation_summary_reconciliation.py
+PYTHONPATH=src python scripts/gold/check_actor_activity_daily_reconciliation.py
 PYTHONPATH=src:. python scripts/gold/check_serving_v1.py
 ```
 

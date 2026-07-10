@@ -3,6 +3,7 @@
 from bluesky_pipeline.clickhouse_client import execute_clickhouse
 from bluesky_pipeline.gold_tables import (
     CLICKHOUSE_DATABASE,
+    GOLD_ACTOR_ACTIVITY_DAILY_TABLE,
     GOLD_CONTENT_QUALITY_HOURLY_TABLE,
     GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
@@ -13,6 +14,7 @@ from bluesky_pipeline.gold_tables import (
     GOLD_POST_PERFORMANCE_TABLE,
     GOLD_REALTIME_STREAM_BATCHES_TABLE,
     GOLD_THREAD_CONVERSATION_SUMMARY_TABLE,
+    build_gold_actor_activity_daily_ddl,
     build_gold_content_quality_hourly_ddl,
     build_gold_content_activity_1m_stream_ddl,
     build_gold_engagement_1m_stream_ddl,
@@ -60,6 +62,12 @@ def create_gold_thread_conversation_summary_table() -> None:
     """Tạo bảng Gold thread conversation summary serving nếu chưa tồn tại."""
     # Bảng này phục vụ phân tích thread/conversation theo reply root.
     execute_clickhouse(build_gold_thread_conversation_summary_ddl())
+
+
+def create_gold_actor_activity_daily_table() -> None:
+    """Tạo bảng Gold actor activity daily serving nếu chưa tồn tại."""
+    # Bảng này phục vụ phân tích hành vi actor theo ngày.
+    execute_clickhouse(build_gold_actor_activity_daily_ddl())
 
 
 def create_gold_event_volume_1m_stream_table() -> None:
@@ -111,6 +119,9 @@ def main() -> None:
 
     create_gold_thread_conversation_summary_table()
     print(f"created_table: {GOLD_THREAD_CONVERSATION_SUMMARY_TABLE}")
+
+    create_gold_actor_activity_daily_table()
+    print(f"created_table: {GOLD_ACTOR_ACTIVITY_DAILY_TABLE}")
 
     create_gold_event_volume_1m_stream_table()
     print(f"created_table: {GOLD_EVENT_VOLUME_1M_STREAM_TABLE}")
