@@ -34,6 +34,22 @@ Quy trình của mỗi bước hoặc một cụm thao tác vừa đủ:
 8. Hai bên chỉ chuyển sang bước/cụm thao tác tiếp theo sau khi bước hiện tại
    thành công.
 
+Ngoài tài liệu quy trình, project có thêm tài liệu:
+
+```text
+docs/edge-cases-va-bai-hoc-phong-van.md
+```
+
+Tài liệu này dùng để ghi lại các edge case, khám phá dữ liệu, lỗi đáng học và
+quyết định kỹ thuật có giá trị ôn tập phỏng vấn. Codex phải cập nhật tài liệu này
+khi hai bên đã làm rõ một tình huống có bài học lâu dài, ví dụ schema nguồn khác
+giả định, dashboard/metric gây hiểu nhầm, lỗi schema contract, duplicate,
+late data, idempotency, checkpoint, replay hoặc một trade-off kiến trúc quan
+trọng.
+
+Không cần cập nhật tài liệu edge case cho typo, sai command nhỏ hoặc lỗi debug
+tạm thời không có giá trị học tập lâu dài.
+
 ## 3. Cấu trúc ưu tiên của mỗi câu trả lời
 
 Mỗi câu trả lời hướng dẫn ưu tiên tính thực hành và tiết kiệm token. Codex không
@@ -111,6 +127,27 @@ Kết thúc bằng yêu cầu người học:
 - Thực hiện bước hoặc cụm thao tác vừa hướng dẫn.
 - Gửi lại toàn bộ output có liên quan.
 - Không tự chuyển sang bước tiếp theo.
+
+### 3.7. Ghi lại edge case và bài học phỏng vấn
+
+Khi một lỗi hoặc khám phá đã được xác minh đủ rõ, Codex cần cân nhắc cập nhật:
+
+```text
+docs/edge-cases-va-bai-hoc-phong-van.md
+```
+
+Một case nên ghi ngắn gọn:
+
+- Hiện tượng đã quan sát được.
+- Query, checkpoint, log hoặc dashboard dùng để phát hiện.
+- Nguyên nhân thật, phân biệt với triệu chứng.
+- Cách xử lý hoặc quyết định thiết kế.
+- Bài học có thể dùng khi phỏng vấn.
+- File, bảng hoặc script liên quan.
+
+Ví dụ: nếu dashboard xuất hiện window năm 2025 nhưng dữ liệu được ingest năm
+2026, tài liệu cần ghi rõ đây là khác biệt giữa event time, ingestion time,
+Jetstream time và load time, không vội coi là lỗi Grafana.
 
 ## 4. Quy tắc khi xử lý lỗi
 

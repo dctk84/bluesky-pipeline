@@ -42,6 +42,7 @@ bài học của bước lớn tương ứng.
 29. [Implement Gold thread conversation summary serving mart](#bước-29-implement-gold-thread-conversation-summary-serving-mart)
 30. [Implement Gold actor activity daily serving mart](#bước-30-implement-gold-actor-activity-daily-serving-mart)
 31. [Implement Gold network growth daily serving mart](#bước-31-implement-gold-network-growth-daily-serving-mart)
+32. [Dựng Grafana Gold Analytics Dashboard](#bước-32-dựng-grafana-gold-analytics-dashboard)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1476,3 +1477,57 @@ Gold analytics serving marts v1 đã thiết kế.
 - Khi một bộ mart đã đủ contract ban đầu, nên chuyển sang dashboard/checkpoint và
   tài liệu hóa cách sử dụng thay vì tiếp tục thêm metric không có câu hỏi phân
   tích rõ ràng.
+
+## Bước 32: Dựng Grafana Gold Analytics Dashboard
+
+**Mục tiêu**
+
+Dựng dashboard Grafana cho bộ Gold analytics serving marts v1 trên ClickHouse để
+trình bày các insight từ lakehouse path.
+
+**Vì sao cần thực hiện**
+
+Sau khi Gold analytics marts đã được build, load và reconcile, cần một dashboard
+giúp người xem hiểu dữ liệu mà không phải tự query SQL. Dashboard này là
+presentation layer cho các mart đã được Spark build từ Gold modeled Iceberg và
+ClickHouse phục vụ với latency thấp.
+
+**Kết quả sau khi hoàn thành**
+
+Grafana có dashboard `Bluesky Gold Analytics` đọc từ ClickHouse datasource, gồm
+các nhóm:
+
+- Gold serving freshness.
+- Post performance và content quality.
+- Conversation analytics.
+- Actor activity.
+- Network growth.
+- Data quality cho unresolved follow delete targets.
+
+Dashboard dùng wide-format query cho time series để legend rõ ràng, tách count và
+ratio theo panel khi scale khác nhau, và giữ DQ panel cho các giới hạn dữ liệu
+quan sát được.
+
+**Các file liên quan**
+
+- `docs/gold-analytics-metrics-v1.md`
+- `docs/edge-cases-va-bai-hoc-phong-van.md`
+- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `scripts/platform/create_clickhouse_gold_tables.py`
+- `scripts/gold/refresh_serving_from_iceberg.py`
+- `scripts/gold/check_serving_v1.py`
+- `docker-compose.yml`
+
+**Kiến thức cần ghi nhớ**
+
+- Grafana là presentation layer; source of truth vẫn là lakehouse/Gold modeled và
+  ClickHouse chỉ là serving mart có thể rebuild.
+- Dashboard query cũng cần data contract rõ ràng: tránh alias aggregate gây lỗi
+  ClickHouse, cast kiểu khi trộn signed/unsigned metric, và dùng wide-format time
+  series khi muốn legend sạch.
+- Business metrics và data quality panels nên cùng tồn tại: dashboard không chỉ
+  hiển thị insight mà còn giúp giải thích giới hạn dữ liệu như unresolved follow
+  delete targets.
+- `unknown` author/root actor có thể là giới hạn hợp lệ của observed stream,
+  không nhất thiết là lỗi dashboard.

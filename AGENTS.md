@@ -38,29 +38,24 @@ người học và không được tự suy đoán nội dung.
 ## Quy tắc thực thi
 
 - Không tự tạo, sửa, đổi tên hoặc xóa file.
-- Không tự chạy command.
+- Không tự chạy command thay người học, trừ khi người học yêu cầu rõ ràng Codex thực thi command cho một tác vụ cụ thể.
+- Khi được cho phép, Codex có thể chạy các command an toàn để đọc trạng thái,
+  chẩn đoán lỗi và kiểm chứng kết quả trong đúng phạm vi được yêu cầu.
+- Command phá hủy dữ liệu, thay đổi hạ tầng, cài dependency hoặc dừng service vẫn cần được người học cho phép riêng trước khi thực hiện.
 - Không tự cài package hoặc dependency.
 - Không tự khởi động hoặc dừng container.
 - Không tự thực hiện Git commit.
 - Không đưa ra toàn bộ project trong một lần.
-- Mỗi lần chỉ hướng dẫn một bước hoặc một cụm thao tác vừa đủ, có thể kiểm tra
-  được; không chia nhỏ quá mức nếu các thao tác thuộc cùng một mục tiêu.
+- Mỗi lần chỉ hướng dẫn một bước hoặc một cụm thao tác vừa đủ, có thể kiểm tra được; không chia nhỏ quá mức nếu các thao tác thuộc cùng một mục tiêu.
 - Phải dừng sau mỗi bước/cụm thao tác và chờ người học gửi kết quả.
-- Không chuyển sang bước/cụm thao tác tiếp theo khi bước hiện tại chưa được xác
-  nhận thành công.
+- Không chuyển sang bước/cụm thao tác tiếp theo khi bước hiện tại chưa được xác nhận thành công.
 - Không thêm công nghệ ngoài milestone hiện tại.
 - Không che giấu lỗi bằng giải pháp tạm thời mà chưa giải thích nguyên nhân.
 - Không đưa code mà không giải thích vai trò của từng phần quan trọng.
 - Không tuyên bố một bước đã thành công nếu chưa có output kiểm chứng.
 - Trong câu trả lời hướng dẫn, ưu tiên đưa ngay việc người học cần thực hiện,
-  command/code cần chạy và tiêu chí kiểm tra. Phần mô tả mục tiêu, lý do và kiến
-  thức nền chỉ viết ngắn khi thật sự cần trước khi làm; nội dung đầy đủ sẽ được
-  ghi vào `docs/quy-trinh-xay-dung-pipeline.md` sau khi người học xác nhận bước
-  đã hoàn thành.
-- Khi một cụm thay đổi đủ ý nghĩa để commit hoặc push, phải nhắc người học trong
-  cùng câu trả lời, kèm commit message đề xuất theo Conventional Commits và các
-  command cần chạy. Không tách riêng thành câu trả lời chỉ nói về Git trừ khi
-  người học đang hỏi hoặc gặp lỗi Git.
+  command/code cần chạy và tiêu chí kiểm tra. Phần mô tả mục tiêu, lý do và kiến thức nền chỉ viết ngắn khi thật sự cần trước khi làm; nội dung đầy đủ sẽ được ghi vào `docs/quy-trinh-xay-dung-pipeline.md` sau khi người học xác nhận bước đã hoàn thành.
+- Khi một cụm thay đổi đủ ý nghĩa để commit hoặc push, phải nhắc người học trong cùng câu trả lời, kèm commit message đề xuất theo Conventional Commits và các command cần chạy. Không tách riêng thành câu trả lời chỉ nói về Git trừ khi người học đang hỏi hoặc gặp lỗi Git.
 
 ## Ngôn ngữ
 
@@ -203,3 +198,48 @@ Tóm tắt một vài ý quan trọng có thể dùng để:
 - Có thể ghi lại một lỗi hoặc quyết định kỹ thuật nếu nó ảnh hưởng đến kiến trúc hoặc là bài học quan trọng.
 - Các đường dẫn tham chiếu phải khớp với file thực tế trong repository.
 - Khi thêm bước mới, cập nhật mục lục nếu tài liệu có mục lục.
+
+## Tài liệu edge cases và bài học phỏng vấn
+
+Trong thư mục `docs/`, hãy tạo và duy trì file:
+
+`docs/edge-cases-va-bai-hoc-phong-van.md`
+
+### Mục đích của tài liệu
+
+Đây là tài liệu ghi lại các edge case, khám phá dữ liệu, lỗi đáng học và quyết
+định kỹ thuật có giá trị ôn tập phỏng vấn Data Engineer.
+
+Tài liệu này khác với `docs/quy-trinh-xay-dung-pipeline.md`:
+
+- `docs/quy-trinh-xay-dung-pipeline.md` ghi lại các bước chính đã hoàn thành để
+  xây pipeline theo trình tự.
+- `docs/edge-cases-va-bai-hoc-phong-van.md` ghi lại các tình huống đáng nhớ,
+  nguyên nhân, cách debug, trade-off và bài học rút ra.
+
+### Khi nào phải cập nhật
+
+Codex phải cập nhật tài liệu này khi người học xác nhận hoặc hai bên đã làm rõ
+một tình huống có giá trị học tập lâu dài, ví dụ:
+
+- Dữ liệu nguồn có schema hoặc behavior khác giả định ban đầu.
+- Dashboard, metric hoặc checkpoint gây hiểu nhầm và cần phân biệt event time,
+  ingestion time, processing time, load time hoặc freshness.
+- Một lỗi cho thấy vấn đề về schema contract, schema evolution, checkpoint,
+  replay, duplicate, late data, idempotency hoặc delivery semantics.
+- Một quyết định kỹ thuật có trade-off rõ ràng giữa latency, correctness,
+  simplicity, rebuildability, observability hoặc production readiness.
+- Một giới hạn của môi trường local cần trình bày trung thực khi phỏng vấn.
+
+Không cần cập nhật tài liệu này cho lỗi typo, sai command nhỏ, lỗi import đơn
+giản hoặc debug tạm thời không tạo bài học lâu dài.
+
+### Quy tắc cập nhật
+
+- Chỉ ghi case khi đã có quan sát, output, log, query hoặc kết luận rõ ràng.
+- Không ghi suy đoán chưa được kiểm chứng như một sự thật.
+- Nếu case cũ được hiểu đúng hơn, hãy cập nhật lại case đó thay vì tạo phần trùng
+  lặp.
+- Mỗi case nên có các phần: hiện tượng, cách phát hiện, nguyên nhân, cách xử lý
+  hoặc quyết định, bài học phỏng vấn, file hoặc bảng liên quan.
+- Viết hoàn toàn bằng tiếng Việt.
