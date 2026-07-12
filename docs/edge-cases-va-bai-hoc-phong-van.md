@@ -793,3 +793,85 @@ exactly-once guarantee end-to-end.
 - `scripts/lakehouse/check_trino_gold_modeled_v1.py`
 - `lakehouse.silver_v1.silver_follows`
 - `lakehouse.gold_v1.gold_fact_network_events`
+
+## Case 14: Initial refresh marker năm 0001 làm Spark timestamp filter trả về 0 row
+
+**Hiện tượng**
+
+Khi chạy script `refresh_gold_facts_incremental.py --ignore-state`, refresh window
+được tính như initial refresh nhưng tất cả Silver incremental row count đều bằng
+0:
+
+```text
+silver_posts_incremental_rows: 0
+silver_engagements_incremental_rows: 0
+silver_follows_incremental_rows: 0
+silver_deleted_records_incremental_rows: 0
+```
+
+Trong khi các bảng Silver thực tế đã có dữ liệu.
+
+**Cách phát hiện**
+
+Script dùng `--ignore-state`, nên `last_successful_run_at` là `None` và
+`build_refresh_window()` trả về `refresh_from = datetime.min` dạng:
+
+```text
+0001-01-01T00:00:00+00:00
+```
+
+Sau đó script đưa mốc này vào filter Spark:
+
+```text
+received_at >= refresh_from
+```
+
+**Nguyên nhân**
+
+`datetime.min` là marker logic để biểu diễn initial refresh, nhưng Spark không
+parse ổn định timestamp năm 0001 trong biểu thức `to_timestamp`. Khi lower bound
+thành `NULL`, điều kiện so sánh timestamp trả về null/false và loại toàn bộ rows.
+
+Đây là lỗi chuyển đổi giữa marker control-plane trong Python và filter
+data-plane trong Spark.
+
+**Cách xử lý hoặc quyết định**
+
+Với initial refresh, không đưa `datetime.min` vào filter timestamp vật lý. Script
+chỉ áp dụng upper bound:
+
+```text
+received_at < refresh_to
+```
+
+Khi đã có state thật, script mới áp dụng cả lower bound:
+
+```text
+received_at >= refresh_from
+received_at < refresh_to
+```
+
+Sau khi sửa, `--ignore-state` đọc được dữ liệu Silver:
+
+```text
+silver_posts_incremental_rows: 30520
+silver_engagements_incremental_rows: 194588
+silver_follows_incremental_rows: 15129
+silver_deleted_records_incremental_rows: 6406
+```
+
+**Bài học phỏng vấn**
+
+Watermark và marker control-plane không nên được dùng mù quáng như giá trị dữ
+liệu trong engine xử lý. Với Spark, SQL engine hoặc warehouse, cần đảm bảo các
+mốc thời gian nằm trong range parse được và có semantics rõ ràng. Initial load
+thường nên là một branch logic riêng thay vì ép thành một timestamp cực nhỏ.
+
+**File hoặc bảng liên quan**
+
+- `scripts/gold/refresh_gold_facts_incremental.py`
+- `src/bluesky_pipeline/incremental_refresh.py`
+- `lakehouse.silver_v1.silver_posts`
+- `lakehouse.silver_v1.silver_engagements`
+- `lakehouse.silver_v1.silver_follows`
+- `lakehouse.silver_v1.silver_deleted_records`

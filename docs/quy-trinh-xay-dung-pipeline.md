@@ -43,6 +43,7 @@ bài học của bước lớn tương ứng.
 30. [Implement Gold actor activity daily serving mart](#bước-30-implement-gold-actor-activity-daily-serving-mart)
 31. [Implement Gold network growth daily serving mart](#bước-31-implement-gold-network-growth-daily-serving-mart)
 32. [Dựng Grafana Gold Analytics Dashboard](#bước-32-dựng-grafana-gold-analytics-dashboard)
+33. [Thiết kế contract incremental refresh cho Gold](#bước-33-thiết-kế-contract-incremental-refresh-cho-gold)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1539,3 +1540,106 @@ quan sát được.
   delete targets.
 - `unknown` author/root actor có thể là giới hạn hợp lệ của observed stream,
   không nhất thiết là lỗi dashboard.
+
+## Bước 33: Thiết kế contract incremental refresh cho Gold
+
+**Mục tiêu**
+
+Đặt nền tảng để tiến hóa Gold modeled và Gold analytics marts từ full rebuild
+sang incremental batch/micro-batch.
+
+**Vì sao cần thực hiện**
+
+Full rebuild phù hợp với local MVP vì dễ hiểu và dễ kiểm chứng, nhưng không tối
+ưu khi dữ liệu lớn dần. Để Gold xử lý thường xuyên dữ liệu mới từ Silver mà không
+phải scan lại toàn bộ lịch sử, pipeline cần một contract chung mô tả refresh
+window, lookback và cách xác định phạm vi dữ liệu cần xử lý.
+
+**Kết quả sau khi hoàn thành**
+
+Project có tài liệu thiết kế incremental Gold refresh và module dùng chung
+`incremental_refresh.py` để tính refresh window gồm:
+
+- `last_successful_run_at`
+- `refresh_from`
+- `refresh_to`
+- `lookback_hours`
+
+Module cũng có helper đọc/ghi local state file dạng JSON để lưu
+`last_successful_run_at` trong môi trường học/local. Module đã được kiểm tra bằng
+compile Python, ví dụ tính window có lookback 2 giờ và smoke test đọc/ghi state
+file.
+
+Project cũng có script scaffold `refresh_gold_facts_incremental.py` để đọc state,
+tính refresh window và in phạm vi xử lý. Script hỗ trợ `--ignore-state` để chạy
+như initial refresh, đọc các bảng Silver Iceberg trong window và in row count
+incremental. Ở giai đoạn count-only, script chưa update state; state chỉ nên
+được ghi sau khi bước write/check Gold fact thật sự pass.
+
+Script đã build thử 3 Gold fact DataFrames từ subset Silver incremental và kiểm
+tra key uniqueness trước khi ghi Iceberg:
+
+- `gold_fact_content_events`
+- `gold_fact_engagement_events`
+- `gold_fact_network_events`
+
+Với initial refresh bằng `--ignore-state`, cả 3 fact đều có `rows` bằng
+`distinct_keys` và `key_status: OK`.
+
+Script sau đó được nâng cấp thành refresh idempotent cho Gold fact Iceberg:
+
+- Tạo Gold namespace/table nếu chưa tồn tại.
+- Anti-join candidate rows với keys hiện có trong Iceberg.
+- Chỉ append rows mới.
+- Kiểm tra lại key uniqueness của bảng Iceberg sau append.
+- Chỉ update local state sau khi cả 3 fact pass.
+
+Khi chạy lại trên dữ liệu đã được full lakehouse path build trước đó, toàn bộ
+candidate rows overlap với Gold hiện có, `new_rows_to_append = 0`,
+`appended_rows = 0`, key check vẫn `OK` và `state_updated: true`. Điều này xác
+nhận incremental write path có tính idempotent cho nhóm Gold facts.
+
+Khi chạy tiếp không dùng `--ignore-state`, script đọc state thật, tính window mới
+theo lookback, không tìm thấy candidate rows mới, không append thêm dữ liệu, nhưng
+vẫn kiểm tra bảng Gold hiện có và update state thành công.
+
+Project cũng có checkpoint riêng `check_gold_facts_incremental.py` để kiểm tra 3
+Gold fact Iceberg tables độc lập với refresh script. Checkpoint đọc Gold fact
+tables, so sánh `row_count`, `non_null_key_count` và `distinct_key_count`, rồi
+fail nếu có null key hoặc duplicate key. Checkpoint đã chạy pass cho cả 3 fact
+tables.
+
+Refresh script đã được nối với checkpoint này sau bước append. Lần chạy sau đó
+xác nhận checkpoint được gọi trong refresh job và state chỉ được update sau khi
+các bảng Gold fact đều pass key check.
+
+**Các file liên quan**
+
+- `docs/gold-incremental-refresh-design.md`
+- `src/bluesky_pipeline/incremental_refresh.py`
+- `scripts/gold/check_gold_facts_incremental.py`
+- `scripts/gold/refresh_gold_facts_incremental.py`
+- `docs/quy-trinh-xay-dung-pipeline.md`
+
+**Kiến thức cần ghi nhớ**
+
+- Streaming project không có nghĩa mọi layer đều phải continuous streaming. Một
+  kiến trúc thực tế có thể dùng streaming cho ingestion/Bronze/Silver và
+  incremental batch cho Gold analytical layer.
+- Incremental refresh cần watermark hoặc state của lần chạy thành công gần nhất.
+- Lookback window giúp xử lý late data nhưng yêu cầu downstream phải idempotent
+  hoặc có cơ chế merge/replace rõ ràng.
+- Local JSON state phù hợp cho bước học đầu tiên, nhưng production nên chuyển
+  sang metadata table, orchestration state hoặc một durable control store.
+- Count-only hoặc dry-run incremental job không nên cập nhật watermark thành
+  công, vì như vậy có thể khiến lần chạy thật bỏ qua dữ liệu chưa được ghi xuống
+  Gold.
+- Trước khi ghi incremental vào Gold Iceberg, nên build thử DataFrame và kiểm tra
+  key uniqueness trên phạm vi incremental để phát hiện lỗi contract sớm.
+- Với fact append-only, anti-join theo deterministic event id là một cách đơn giản
+  để đạt idempotent append trong bước đầu, trước khi cần `MERGE INTO` phức tạp
+  hơn.
+- Refresh job và checkpoint nên tách được để checkpoint có thể chạy độc lập sau
+  một lần refresh, sau một lần full rebuild hoặc trước demo.
+- Contract refresh window nên được tách thành module dùng chung trước khi viết
+  từng incremental job cụ thể.
