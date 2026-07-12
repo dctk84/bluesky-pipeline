@@ -46,6 +46,7 @@ bài học của bước lớn tương ứng.
 33. [Thiết kế contract incremental refresh cho Gold](#bước-33-thiết-kế-contract-incremental-refresh-cho-gold)
 34. [Incremental hóa Gold content quality hourly mart](#bước-34-incremental-hóa-gold-content-quality-hourly-mart)
 35. [Incremental hóa các Gold analytics marts còn lại](#bước-35-incremental-hóa-các-gold-analytics-marts-còn-lại)
+36. [Đưa incremental Gold vào lakehouse E2E path](#bước-36-đưa-incremental-gold-vào-lakehouse-e2e-path)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1866,3 +1867,88 @@ cho các marts còn lại đều pass.
   delete mutation hoàn tất trước khi insert lại affected rows.
 - Full rebuild scripts vẫn có giá trị làm fallback và reconciliation baseline,
   còn incremental scripts là đường vận hành thường ngày.
+
+## Bước 36: Đưa incremental Gold vào lakehouse E2E path
+
+**Mục tiêu**
+
+Đưa các script incremental Gold đã kiểm chứng riêng lẻ vào một luồng E2E có thứ
+tự rõ ràng, để vận hành Gold không còn phụ thuộc vào việc chạy tay từng mart.
+
+**Vì sao cần thực hiện**
+
+Chạy từng script riêng giúp debug component, nhưng một pipeline thực tế cần
+entrypoint orchestration để đảm bảo thứ tự phụ thuộc, fail-fast khi một bước lỗi
+và tạo một command dễ demo/phỏng vấn. Gold incremental phải chạy theo thứ tự:
+
+```text
+facts -> dimensions -> Gold modeled check -> serving marts
+```
+
+Facts cần refresh trước để các sự kiện mới có mặt trong Gold modeled. Dimensions
+cần refresh sau đó để state của post/actor kịp cập nhật. Sau khi Gold modeled
+pass checkpoint, các serving marts mới được recompute và replace affected keys
+trong ClickHouse.
+
+**Kết quả sau khi hoàn thành**
+
+Project có Gold incremental orchestrator:
+
+```text
+scripts/gold/refresh_gold_incremental.py
+```
+
+Script này chạy:
+
+- `refresh_gold_facts_incremental`
+- `refresh_gold_dimensions_incremental`
+- `check_trino_gold_modeled_v1`
+- `refresh_gold_content_quality_hourly_incremental`
+- `refresh_gold_post_performance_incremental`
+- `refresh_gold_thread_conversation_summary_incremental`
+- `refresh_gold_network_growth_daily_incremental`
+- `refresh_gold_actor_activity_daily_incremental`
+
+Project cũng có lakehouse incremental E2E entrypoint:
+
+```text
+scripts/lakehouse/run_lakehouse_path_incremental.py
+```
+
+Entrypoint này kiểm tra Silver Iceberg trước, sau đó gọi Gold incremental
+orchestrator. Lần chạy E2E incremental đã pass với normal state/no-op path:
+
+```text
+Gold incremental refresh passed
+Lakehouse incremental path passed
+```
+
+Full rebuild path cũ `scripts/lakehouse/run_lakehouse_path.py` vẫn được giữ lại
+để bootstrap, rebuild hoặc recovery khi cần. Incremental path mới là đường vận
+hành thường ngày sau khi Silver đã có dữ liệu mới.
+
+**Các file liên quan**
+
+- `scripts/gold/refresh_gold_incremental.py`
+- `scripts/lakehouse/run_lakehouse_path_incremental.py`
+- `scripts/lakehouse/run_lakehouse_path.py`
+- `scripts/gold/refresh_gold_facts_incremental.py`
+- `scripts/gold/refresh_gold_dimensions_incremental.py`
+- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/refresh_gold_post_performance_incremental.py`
+- `scripts/gold/refresh_gold_thread_conversation_summary_incremental.py`
+- `scripts/gold/refresh_gold_network_growth_daily_incremental.py`
+- `scripts/gold/refresh_gold_actor_activity_daily_incremental.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Component scripts dùng để phát triển/debug; E2E orchestrator dùng để vận hành
+  và demo luồng hoàn chỉnh.
+- Full rebuild và incremental refresh nên cùng tồn tại: full rebuild phục vụ
+  bootstrap/recovery/backfill lớn, incremental refresh phục vụ chạy định kỳ trên
+  dữ liệu mới.
+- Orchestration phải fail-fast: nếu facts, dimensions hoặc checkpoint Gold
+  modeled lỗi thì không nên tiếp tục refresh serving marts.
+- Với hệ thống production, state của các incremental jobs nên được đưa vào
+  durable metadata/control table hoặc orchestrator state thay vì chỉ dùng local
+  JSON file.
