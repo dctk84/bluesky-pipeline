@@ -45,6 +45,7 @@ bài học của bước lớn tương ứng.
 32. [Dựng Grafana Gold Analytics Dashboard](#bước-32-dựng-grafana-gold-analytics-dashboard)
 33. [Thiết kế contract incremental refresh cho Gold](#bước-33-thiết-kế-contract-incremental-refresh-cho-gold)
 34. [Incremental hóa Gold content quality hourly mart](#bước-34-incremental-hóa-gold-content-quality-hourly-mart)
+35. [Incremental hóa các Gold analytics marts còn lại](#bước-35-incremental-hóa-các-gold-analytics-marts-còn-lại)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1778,3 +1779,90 @@ replace. Lần chạy normal sau đó không có fact rows mới, `affected_wind
 - Full rebuild path vẫn nên được giữ như fallback/rebuild mechanism; incremental
   path tối ưu vận hành thường ngày nhưng không thay thế nhu cầu rebuild khi đổi
   logic metric.
+
+## Bước 35: Incremental hóa các Gold analytics marts còn lại
+
+**Mục tiêu**
+
+Hoàn thiện incremental refresh cho các Gold analytics marts còn lại trong
+ClickHouse, thay thế cách vận hành thường ngày kiểu `TRUNCATE` toàn bảng bằng
+replace đúng affected keys hoặc affected partitions.
+
+**Vì sao cần thực hiện**
+
+Sau khi `gold_content_quality_hourly` đã pass, project cần chứng minh pattern
+incremental có thể áp dụng cho nhiều loại grain khác nhau, không chỉ time series
+theo giờ. Mỗi mart có một grain riêng nên affected scope cũng khác nhau:
+
+- `gold_post_performance`: affected theo `post_uri`.
+- `gold_thread_conversation_summary`: affected theo `reply_root_uri`.
+- `gold_network_growth_daily`: affected theo `activity_date + target_actor_did`.
+- `gold_actor_activity_daily`: affected theo `activity_date + actor_did`.
+
+Nếu vẫn rebuild/load toàn bảng, dashboard local vẫn chạy được nhưng kiến trúc
+không phản ánh tốt bài toán dữ liệu lớn. Incremental refresh giúp chỉ recompute
+và replace phần metric thật sự bị ảnh hưởng.
+
+**Kết quả sau khi hoàn thành**
+
+Project có helper dùng chung `incremental_serving_utils.py` cho các thao tác lặp
+lại trong Gold serving incremental:
+
+- Lọc Gold fact rows theo `received_at` refresh window.
+- Đọc Gold modeled Iceberg theo table contract.
+- Build ClickHouse predicates theo single key hoặc tuple key.
+- Chia keys thành chunk để tránh câu SQL quá dài.
+- Gửi SQL dài qua HTTP body.
+- Chạy `ALTER TABLE ... DELETE`, chờ mutation hoàn tất rồi insert rows mới.
+- Tính expected metrics từ affected mart DataFrame và actual metrics từ
+  ClickHouse để reconciliation theo affected scope.
+
+Project có thêm các script incremental:
+
+- `refresh_gold_post_performance_incremental.py`
+- `refresh_gold_thread_conversation_summary_incremental.py`
+- `refresh_gold_network_growth_daily_incremental.py`
+- `refresh_gold_actor_activity_daily_incremental.py`
+
+Tất cả các script đã được kiểm chứng với 3 bước:
+
+- Chạy initial incremental bằng `--ignore-state`.
+- Chạy reconciliation full hiện có để đảm bảo ClickHouse vẫn khớp với staging
+  hoặc source of truth hiện tại.
+- Chạy lại normal mode để kiểm tra state/no-op path.
+
+Trong quá trình kiểm thử, `gold_actor_activity_daily` gặp lỗi Spark ambiguous
+reference ở cột `actor_did` khi join engagement fact với post author. Script đã
+được sửa bằng cách tách rõ `actor_did` của người đi engagement và
+`received_actor_did` của author nhận engagement, sau đó alias lại thành
+`actor_did` cho grain cuối cùng của mart. Sau khi sửa, toàn bộ script incremental
+cho các marts còn lại đều pass.
+
+**Các file liên quan**
+
+- `scripts/gold/incremental_serving_utils.py`
+- `scripts/gold/refresh_gold_post_performance_incremental.py`
+- `scripts/gold/refresh_gold_thread_conversation_summary_incremental.py`
+- `scripts/gold/refresh_gold_network_growth_daily_incremental.py`
+- `scripts/gold/refresh_gold_actor_activity_daily_incremental.py`
+- `scripts/gold/check_post_performance_reconciliation.py`
+- `scripts/gold/check_thread_conversation_summary_reconciliation.py`
+- `scripts/gold/check_network_growth_daily_reconciliation.py`
+- `scripts/gold/check_actor_activity_daily_reconciliation.py`
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/gold_tables.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Incremental serving mart phải bắt đầu từ grain. Chỉ khi biết grain mới xác định
+  được affected keys, delete predicate và reconciliation scope.
+- Mart entity như post performance hoặc thread summary nên replace theo business
+  key; mart daily nên replace theo tuple gồm ngày và entity key.
+- Với metric nhận tương tác, cùng một event có thể ảnh hưởng nhiều actor: người
+  thực hiện engagement và người nhận engagement qua author của target post.
+- Khi join nhiều DataFrame có cột cùng tên, phải alias theo vai trò nghiệp vụ
+  trước khi select; cùng tên kỹ thuật không có nghĩa là cùng semantics.
+- ClickHouse `MergeTree` mutation là bất đồng bộ, nên incremental job phải chờ
+  delete mutation hoàn tất trước khi insert lại affected rows.
+- Full rebuild scripts vẫn có giá trị làm fallback và reconciliation baseline,
+  còn incremental scripts là đường vận hành thường ngày.

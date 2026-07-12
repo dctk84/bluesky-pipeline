@@ -282,6 +282,76 @@ freshness.
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
 
+## Case 16: Cùng tên `actor_did` nhưng khác vai trò nghiệp vụ sau join
+
+**Hiện tượng**
+
+Khi chạy `refresh_gold_actor_activity_daily_incremental.py --ignore-state`,
+script fail ở bước build affected keys cho actor daily:
+
+```text
+pyspark.errors.exceptions.captured.AnalysisException:
+[AMBIGUOUS_REFERENCE] Reference `actor_did` is ambiguous
+```
+
+Lỗi xuất hiện sau khi join engagement fact với post author để tính phần actor
+nhận engagement.
+
+**Cách phát hiện**
+
+Traceback chỉ tới hàm `build_received_engagement_keys()`. Ở đó script join:
+
+```text
+gold_fact_engagement_events.target_post_uri
+    -> gold_dim_posts.post_uri
+```
+
+Sau join, DataFrame có hai cột cùng tên `actor_did`:
+
+- `actor_did` từ engagement fact: actor đi like/repost.
+- `actor_did` từ post dimension: author của post nhận engagement.
+
+Spark không thể biết `select(col("actor_did"))` đang chọn cột nào.
+
+**Nguyên nhân**
+
+Đây không chỉ là lỗi kỹ thuật do trùng tên cột. Nguyên nhân thật là cùng một tên
+`actor_did` đang đại diện cho hai vai trò nghiệp vụ khác nhau trong cùng một
+metric:
+
+- **engagement actor**: người thực hiện tương tác.
+- **received actor**: người nhận tương tác vì họ là author của target post.
+
+Với `gold_actor_activity_daily`, cả hai vai trò đều cần được tính nhưng ở các
+metric khác nhau.
+
+**Cách xử lý hoặc quyết định**
+
+Trong incremental script, cột author của post được alias thành
+`received_actor_did` trước khi join/select:
+
+```text
+author_did AS received_actor_did
+```
+
+Sau khi đã xác định đúng vai trò nhận engagement, script mới alias lại thành
+`actor_did` cho grain cuối cùng `activity_date + actor_did` của mart.
+
+**Bài học phỏng vấn**
+
+Khi join fact và dimension trong analytics mart, không nên chỉ nhìn tên cột mà
+phải nhìn semantics của cột trong từng ngữ cảnh. Một event có thể ảnh hưởng nhiều
+entity khác nhau. Việc alias sớm theo vai trò nghiệp vụ giúp tránh ambiguous
+columns và giúp metric dễ giải thích hơn.
+
+**File hoặc bảng liên quan**
+
+- `scripts/gold/refresh_gold_actor_activity_daily_incremental.py`
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `lakehouse.gold_v1.gold_fact_engagement_events`
+- `lakehouse.gold_v1.gold_dim_posts`
+- `bluesky.gold_actor_activity_daily`
+
 ## Case 5: ClickHouse và Trino không dùng cùng namespace/table path
 
 **Hiện tượng**
