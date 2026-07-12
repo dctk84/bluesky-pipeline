@@ -341,7 +341,15 @@ def build_gold_fact_network_events(
     )
 
     follow_create_df = follows_df.select(
-        col("follow_uri").alias("network_event_id"),
+        sha2(
+            concat_ws(
+                "||",
+                col("follow_uri"),
+                lit("follow_create"),
+                col("jetstream_time_us").cast("string"),
+            ),
+            256,
+        ).alias("network_event_id"),
         col("follow_uri"),
         col("actor_did"),
         col("target_actor_did"),

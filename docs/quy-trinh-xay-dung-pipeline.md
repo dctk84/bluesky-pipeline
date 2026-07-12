@@ -876,7 +876,8 @@ lỗi kết nối với số lần retry liên tiếp để tránh hiểu nhầm
 
 Project cũng có cleanup utility mặc định chạy dry-run trước, chỉ xóa thật khi
 truyền flag xác nhận. Cleanup dọn Bronze/Silver/Gold/checkpoints trên MinIO,
-truncate ClickHouse serving tables và có tùy chọn purge Kafka raw topic.
+drop metadata Iceberg trong Hive Metastore, truncate ClickHouse serving tables và
+có tùy chọn purge Kafka raw topic.
 
 Live pipeline đã được chạy lại từ trạng thái sạch sau cleanup: dữ liệu mới đi từ
 Jetstream vào Kafka, Spark ghi Bronze, realtime marts và đẩy Bronze mới sang
@@ -898,6 +899,9 @@ checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
   refresh nên tách riêng và schedule bằng Airflow ở milestone orchestration.
 - Cleanup dữ liệu ingest nên có dry-run và flag xác nhận vì đây là thao tác phá
   hủy dữ liệu.
+- Khi cleanup Iceberg trong Hive catalog, cần drop table/namespace trong
+  metastore trước khi xóa data files trên object storage để tránh metadata trỏ
+  tới file không còn tồn tại.
 - Truncate ClickHouse giữ lại schema để Grafana dashboard không mất query/table
   contract.
 - Xóa dữ liệu trong Docker volume không nhất thiết làm file disk image của WSL
@@ -1091,6 +1095,10 @@ transformation, mà đã được materialize thành lakehouse tables.
 - Sau khi materialize Gold modeled, bước kiểm chứng tiếp theo không chỉ là Spark
   đọc lại count, mà còn cần Trino query được namespace/table để xác nhận query
   engine layer hoạt động với Gold.
+- Fact event id nên đại diện cho từng event quan sát được, không chỉ business
+  entity. Với network fact, `follow_create` cần kết hợp `follow_uri`,
+  `network_event_type` và `jetstream_time_us` để tránh trùng key khi cùng follow
+  record xuất hiện nhiều lần trong observed stream.
 
 ## Bước 24: Kiểm chứng Gold modeled v1 bằng Trino
 

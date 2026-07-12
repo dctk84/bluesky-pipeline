@@ -41,8 +41,14 @@ from bluesky_pipeline.gold_tables import (
     GOLD_THREAD_CONVERSATION_SUMMARY_TABLE,
 )
 from bluesky_pipeline.iceberg_config import (
+    ICEBERG_CATALOG_NAME,
+    ICEBERG_GOLD_NAMESPACE,
+    ICEBERG_GOLD_TABLES,
+    ICEBERG_SILVER_NAMESPACE,
     ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION,
+    ICEBERG_SILVER_TABLES,
     ICEBERG_WAREHOUSE_PATH,
+    create_iceberg_spark_session,
 )
 from bluesky_pipeline.kafka_config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_EVENTS_TOPIC
 
@@ -54,6 +60,8 @@ class CleanupPlan:
     minio_paths: list[str]
     clickhouse_tables: list[str]
     kafka_topics: list[str]
+    iceberg_tables: list[str]
+    iceberg_namespaces: list[str]
 
 
 def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
@@ -99,11 +107,21 @@ def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
     ]
 
     kafka_topics = [KAFKA_RAW_EVENTS_TOPIC] if include_kafka else []
+    iceberg_tables = [
+        *ICEBERG_GOLD_TABLES.values(),
+        *ICEBERG_SILVER_TABLES.values(),
+    ]
+    iceberg_namespaces = [
+        f"{ICEBERG_CATALOG_NAME}.{ICEBERG_GOLD_NAMESPACE}",
+        f"{ICEBERG_CATALOG_NAME}.{ICEBERG_SILVER_NAMESPACE}",
+    ]
 
     return CleanupPlan(
         minio_paths=minio_paths,
         clickhouse_tables=clickhouse_tables,
         kafka_topics=kafka_topics,
+        iceberg_tables=iceberg_tables,
+        iceberg_namespaces=iceberg_namespaces,
     )
 
 
@@ -114,7 +132,11 @@ def print_plan(plan: CleanupPlan, dry_run: bool) -> None:
 
     print("\nminio_paths:")
     for path in plan.minio_paths:
-        print(f"- {path}")
+        delete_path = normalize_minio_path_for_hadoop(path)
+        if delete_path == path:
+            print(f"- {path}")
+        else:
+            print(f"- {path} delete_as={delete_path}")
 
     print("\nclickhouse_tables:")
     for table in plan.clickhouse_tables:
@@ -127,6 +149,49 @@ def print_plan(plan: CleanupPlan, dry_run: bool) -> None:
     else:
         print("- skipped")
 
+    print("\niceberg_tables:")
+    for table in plan.iceberg_tables:
+        print(f"- {table}")
+
+    print("\niceberg_namespaces:")
+    for namespace in plan.iceberg_namespaces:
+        print(f"- {namespace}")
+
+
+def normalize_minio_path_for_hadoop(path: str) -> str:
+    """Chuẩn hóa scheme S3 để Hadoop FileSystem xóa được object trên MinIO.
+
+    Input là path contract có thể dùng `s3://` hoặc `s3a://`.
+    Output là path dùng `s3a://`, phù hợp với cấu hình Spark/Hadoop local.
+    """
+    if path.startswith("s3://"):
+        return path.replace("s3://", "s3a://", 1)
+
+    return path
+
+
+def drop_iceberg_catalog_objects(tables: list[str], namespaces: list[str]) -> None:
+    """Drop metadata Iceberg trong Hive Metastore trước khi xóa data files.
+
+    Input là danh sách bảng và namespace Iceberg từ contract dùng chung.
+    Output là metastore không còn trỏ tới các bảng Silver/Gold cũ.
+    """
+    spark = create_iceberg_spark_session("bluesky-cleanup-iceberg-catalog")
+    spark.sparkContext.setLogLevel("WARN")
+
+    try:
+        for table in tables:
+            spark.sql(f"DROP TABLE IF EXISTS {table}")
+            print(f"dropped_iceberg_table: {table}")
+
+        for namespace in namespaces:
+            # Không dùng CASCADE để tránh âm thầm bỏ sót table mới chưa có trong plan.
+            spark.sql(f"DROP NAMESPACE IF EXISTS {namespace}")
+            print(f"dropped_iceberg_namespace: {namespace}")
+
+    finally:
+        spark.stop()
+
 
 def delete_minio_paths(paths: list[str]) -> None:
     """Xóa các prefix trên MinIO thông qua Hadoop FileSystem của Spark."""
@@ -137,15 +202,22 @@ def delete_minio_paths(paths: list[str]) -> None:
 
     try:
         for path in paths:
-            hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(path)
+            delete_path = normalize_minio_path_for_hadoop(path)
+            hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(delete_path)
             filesystem = hadoop_path.getFileSystem(hadoop_conf)
 
             # exists() giúp log rõ path không có dữ liệu thay vì coi là lỗi.
             if filesystem.exists(hadoop_path):
                 filesystem.delete(hadoop_path, True)
-                print(f"deleted_minio_path: {path}")
+                if delete_path == path:
+                    print(f"deleted_minio_path: {path}")
+                else:
+                    print(f"deleted_minio_path: {path} delete_as={delete_path}")
             else:
-                print(f"missing_minio_path: {path}")
+                if delete_path == path:
+                    print(f"missing_minio_path: {path}")
+                else:
+                    print(f"missing_minio_path: {path} delete_as={delete_path}")
 
     finally:
         spark.stop()
@@ -263,6 +335,7 @@ def main() -> None:
     if plan.kafka_topics:
         purge_kafka_topics(plan.kafka_topics)
 
+    drop_iceberg_catalog_objects(plan.iceberg_tables, plan.iceberg_namespaces)
     delete_minio_paths(plan.minio_paths)
     truncate_clickhouse_tables(plan.clickhouse_tables)
 

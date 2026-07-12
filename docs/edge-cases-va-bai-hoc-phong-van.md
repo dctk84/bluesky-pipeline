@@ -664,3 +664,132 @@ metric thay vì âm thầm drop hoặc gán sai target.
 - `lakehouse.gold_v1.gold_fact_network_events`
 - `src/bluesky_pipeline/gold_transformations.py`
 - `src/bluesky_pipeline/gold_analytics_transformations.py`
+
+## Case 12: Cleanup Iceberg phải xử lý cả Hive Metastore và data files
+
+**Hiện tượng**
+
+Khi muốn xóa toàn bộ dữ liệu ingest để chạy lại E2E từ trạng thái sạch, nếu chỉ
+xóa Iceberg warehouse trên MinIO thì vẫn có rủi ro Hive Metastore còn metadata
+table/namespace cũ. Lần build hoặc query sau đó có thể gặp trạng thái catalog
+nghĩ rằng bảng còn tồn tại nhưng metadata/data files đã bị xóa.
+
+**Cách phát hiện**
+
+Review `scripts/platform/cleanup_ingested_data.py` cho thấy script ban đầu đã xóa:
+
+- Bronze/Gold/checkpoint paths trên MinIO.
+- ClickHouse serving tables bằng `TRUNCATE`.
+- Kafka raw topic khi truyền `--include-kafka-topic`.
+
+Tuy nhiên Iceberg catalog dùng Hive Metastore, nên cleanup cần xử lý thêm metadata
+catalog chứ không chỉ object storage.
+
+**Nguyên nhân**
+
+Apache Iceberg tách metadata catalog khỏi data files. Trong project này:
+
+- Data files và Iceberg metadata files nằm trên MinIO.
+- Table/namespace registration nằm trong Hive Metastore.
+
+Nếu xóa files trên MinIO nhưng không drop table trong metastore, catalog có thể
+giữ pointer tới metadata location đã không còn tồn tại.
+
+**Cách xử lý hoặc quyết định**
+
+Update cleanup script để:
+
+1. In rõ các Iceberg tables và namespaces trong dry-run.
+2. Drop các bảng Gold/Silver Iceberg trong Hive Metastore.
+3. Drop namespace `lakehouse.gold_v1` và `lakehouse.silver_v1`.
+4. Sau đó mới xóa warehouse/checkpoint paths trên MinIO.
+5. Chuẩn hóa `s3://` thành `s3a://` khi gọi Hadoop FileSystem để xóa MinIO.
+
+Cleanup vẫn giữ nguyên cơ chế an toàn: dry-run mặc định, chỉ xóa thật khi có
+`--confirm-delete`, và chỉ purge Kafka topic khi có `--include-kafka-topic`.
+
+**Bài học phỏng vấn**
+
+Với lakehouse table format như Iceberg, cleanup/rebuild không chỉ là xóa folder
+object storage. Cần hiểu rõ catalog metadata, table metadata và data files đang
+nằm ở đâu. Đây là khác biệt quan trọng giữa “file lake” đơn giản và “table format”
+có catalog.
+
+**File hoặc bảng liên quan**
+
+- `scripts/platform/cleanup_ingested_data.py`
+- `src/bluesky_pipeline/iceberg_config.py`
+- `lakehouse.silver_v1.*`
+- `lakehouse.gold_v1.*`
+- Hive Metastore
+- MinIO Iceberg warehouse
+
+## Case 13: `follow_create` có thể trùng `follow_uri` trong fact event
+
+**Hiện tượng**
+
+Sau khi cleanup dữ liệu và chạy lại live E2E, bước
+`scripts.lakehouse.run_lakehouse_path` fail ở checkpoint Trino Gold modeled:
+
+```text
+gold_fact_network_events key=network_event_id rows=17455 non_null=17455 distinct=17281 MISMATCH
+Trino Gold modeled v1 key check failed
+```
+
+Các bảng Gold modeled khác đều pass key check.
+
+**Cách phát hiện**
+
+Query chẩn đoán trên Trino cho thấy duplicate chỉ nằm ở `follow_create`:
+
+```text
+follow_create rows=15129 distinct_ids=14955
+follow_delete rows=2326 distinct_ids=2326
+```
+
+Kiểm tra Silver cũng cho thấy `silver_follows` có nhiều dòng hơn số
+`follow_uri` distinct:
+
+```text
+rows=15129
+distinct_follow_uri=14955
+```
+
+Một số `follow_uri` xuất hiện nhiều lần với `jetstream_time_us` khác nhau.
+
+**Nguyên nhân**
+
+`gold_fact_network_events` ban đầu dùng `follow_uri` làm `network_event_id` cho
+`follow_create`. Cách này coi follow record URI là key duy nhất của fact event.
+Tuy nhiên trong observed stream, cùng một follow record có thể xuất hiện nhiều
+event create quan sát được. Khi đó fact table có nhiều dòng nhưng dùng chung một
+`network_event_id`, làm checkpoint key uniqueness fail.
+
+Đây là lỗi data contract ở tầng Gold modeled: fact key chưa đại diện đủ cho từng
+event quan sát được.
+
+**Cách xử lý hoặc quyết định**
+
+Đổi `network_event_id` của `follow_create` sang deterministic event key gồm:
+
+```text
+follow_uri + network_event_type + jetstream_time_us
+```
+
+Sau đó build lại lakehouse path. Checkpoint Trino Gold modeled pass và Gold
+serving có dữ liệu trở lại trong Grafana.
+
+**Bài học phỏng vấn**
+
+Cần phân biệt **business entity key** và **event fact key**. `follow_uri` phù hợp
+để nhận diện follow record, nhưng không luôn đủ để nhận diện từng event trong
+fact table. Với streaming/observed data, event id thường cần thêm event type và
+source/event timestamp để giữ uniqueness, đồng thời vẫn phải nói rõ đây chưa phải
+exactly-once guarantee end-to-end.
+
+**File hoặc bảng liên quan**
+
+- `src/bluesky_pipeline/gold_transformations.py`
+- `scripts/lakehouse/check_trino_gold_modeled_v1.py`
+- `lakehouse.silver_v1.silver_follows`
+- `lakehouse.gold_v1.gold_fact_network_events`
