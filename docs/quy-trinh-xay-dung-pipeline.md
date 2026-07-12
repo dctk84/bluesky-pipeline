@@ -1613,11 +1613,60 @@ Refresh script đã được nối với checkpoint này sau bước append. L�
 xác nhận checkpoint được gọi trong refresh job và state chỉ được update sau khi
 các bảng Gold fact đều pass key check.
 
+Sau Gold facts, project bắt đầu scaffold incremental refresh cho Gold dimensions.
+Script `refresh_gold_dimensions_incremental.py` đọc Silver trong refresh window,
+xác định affected `post_uri` và `actor_did`, rồi in count/sample để kiểm chứng
+scope trước khi recompute state. Với initial refresh, script xác định được
+`affected_post_uri_count = 109469` và `affected_actor_did_count = 69868`, đồng
+thời không update state ở bước discovery.
+
+Script dimensions sau đó được tách scope rõ hơn:
+
+- `affected_post_uri_for_dimension`: chỉ post create/update/delete, dùng để
+  refresh `gold_dim_posts`.
+- `affected_post_uri_for_downstream_marts`: post scope cộng thêm engagement
+  subject, dùng cho các mart downstream như post performance.
+- `affected_actor_did`: actor scope dùng để refresh `gold_dim_actors`.
+
+Với initial refresh, `affected_post_uri_for_dimension_count = 31552`,
+`affected_post_uri_for_downstream_marts_count = 109469` và
+`affected_actor_did_count = 69868`. Script đã build thử affected rows cho
+`gold_dim_posts` và `gold_dim_actors` từ full Silver source of truth, cả hai đều
+pass key uniqueness check.
+
+Trước khi implement merge thật cho dimensions, project có smoke test Iceberg
+`MERGE INTO`. Smoke test tạo một bảng Iceberg v2 nhỏ, chạy update/insert bằng
+`MERGE INTO`, verify kết quả và drop bảng test. Kết quả pass, xác nhận stack
+Spark + Iceberg + Hive catalog hiện tại hỗ trợ row-level merge cho bước
+production-like tiếp theo.
+
+Script dimensions sau đó được nâng cấp để dùng Iceberg `MERGE INTO` cho
+`gold_dim_posts` và `gold_dim_actors`. Script đảm bảo bảng target dùng Iceberg
+format version 2, merge affected rows theo business key, kiểm tra lại key
+uniqueness sau merge và chỉ update state khi cả hai dimension pass. Initial merge
+đã chạy thành công với key check `OK` trên cả affected rows và full Iceberg
+table, rồi in `state_updated: true`.
+
+Project cũng có checkpoint riêng `check_gold_dimensions_incremental.py` để kiểm
+tra `gold_dim_posts.post_uri` và `gold_dim_actors.actor_did` độc lập với refresh
+script. Checkpoint đọc full Gold dimension tables, so sánh `row_count`,
+`non_null_key_count` và `distinct_key_count`, rồi fail nếu dimension có null key
+hoặc duplicate key.
+
+Refresh dimensions đã được nối với checkpoint này sau bước `MERGE INTO` và trước
+khi update state. Lần chạy thường không dùng `--ignore-state` không có Silver row
+mới trong refresh window nên affected rows bằng 0, nhưng job vẫn kiểm tra full
+Gold dimension tables và chỉ in `state_updated: true` sau khi cả
+`gold_dim_posts` và `gold_dim_actors` đều pass key check.
+
 **Các file liên quan**
 
 - `docs/gold-incremental-refresh-design.md`
 - `src/bluesky_pipeline/incremental_refresh.py`
+- `scripts/gold/check_gold_dimensions_incremental.py`
 - `scripts/gold/check_gold_facts_incremental.py`
+- `scripts/discovery/smoke_test_iceberg_merge.py`
+- `scripts/gold/refresh_gold_dimensions_incremental.py`
 - `scripts/gold/refresh_gold_facts_incremental.py`
 - `docs/quy-trinh-xay-dung-pipeline.md`
 
@@ -1641,5 +1690,19 @@ các bảng Gold fact đều pass key check.
   hơn.
 - Refresh job và checkpoint nên tách được để checkpoint có thể chạy độc lập sau
   một lần refresh, sau một lần full rebuild hoặc trước demo.
+- Dimension incremental khác fact incremental: cần xác định affected business keys
+  trước, sau đó recompute state cho các key đó từ Silver source of truth thay vì
+  append mù theo event mới.
+- Affected scope cho dimension và affected scope cho downstream marts có thể khác
+  nhau. Engagement mới không đổi `gold_dim_posts`, nhưng vẫn ảnh hưởng các mart
+  phân tích performance của post.
+- Trước khi dùng row-level operation như Iceberg `MERGE INTO` trong pipeline
+  chính, nên smoke test capability của stack local để tránh nhầm lỗi logic với
+  lỗi catalog/table format.
+- Với dimension/state table, production-like incremental refresh nên dùng merge
+  theo business key thay vì append-only hoặc overwrite toàn bảng.
+- Dù incremental window không có row mới, refresh job vẫn nên chạy checkpoint trên
+  bảng đích hiện có trước khi ghi state thành công để tránh che lấp lỗi dữ liệu
+  còn tồn tại từ lần chạy trước.
 - Contract refresh window nên được tách thành module dùng chung trước khi viết
   từng incremental job cụ thể.
