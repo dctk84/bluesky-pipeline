@@ -44,6 +44,7 @@ bài học của bước lớn tương ứng.
 31. [Implement Gold network growth daily serving mart](#bước-31-implement-gold-network-growth-daily-serving-mart)
 32. [Dựng Grafana Gold Analytics Dashboard](#bước-32-dựng-grafana-gold-analytics-dashboard)
 33. [Thiết kế contract incremental refresh cho Gold](#bước-33-thiết-kế-contract-incremental-refresh-cho-gold)
+34. [Incremental hóa Gold content quality hourly mart](#bước-34-incremental-hóa-gold-content-quality-hourly-mart)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1706,3 +1707,74 @@ Gold dimension tables và chỉ in `state_updated: true` sau khi cả
   còn tồn tại từ lần chạy trước.
 - Contract refresh window nên được tách thành module dùng chung trước khi viết
   từng incremental job cụ thể.
+
+## Bước 34: Incremental hóa Gold content quality hourly mart
+
+**Mục tiêu**
+
+Chuyển `gold_content_quality_hourly` từ full rebuild/load sang incremental
+refresh theo affected hourly windows.
+
+**Vì sao cần thực hiện**
+
+Trước bước này, script build mart ghi đè toàn bộ Parquet staging và script load
+ClickHouse `TRUNCATE` toàn bảng rồi insert lại. Cách này dễ hiểu trong MVP local
+nhưng không tối ưu khi dữ liệu lớn, vì mỗi lần refresh đều phải tính và load lại
+toàn bộ lịch sử.
+
+`gold_content_quality_hourly` là mart phù hợp để làm incremental đầu tiên vì
+grain tự nhiên là `window_start` theo giờ. Khi có fact content mới, pipeline chỉ
+cần xác định những giờ bị ảnh hưởng, recompute lại đúng các giờ đó từ Gold modeled
+source of truth và replace các window tương ứng trong ClickHouse.
+
+**Kết quả sau khi hoàn thành**
+
+Project có script `refresh_gold_content_quality_hourly_incremental.py` để:
+
+- Đọc `gold_fact_content_events` trong refresh window theo `received_at`.
+- Xác định affected `window_start` theo `event_time`.
+- Recompute lại mart rows cho affected hours từ full Gold modeled Iceberg.
+- `DELETE` đúng affected windows trong ClickHouse rồi insert lại rows mới.
+- Chờ ClickHouse mutation hoàn tất trước khi insert để tránh duplicate tạm thời.
+- Reconcile metrics cho affected windows.
+- Chỉ update local state sau khi replace và reconciliation pass.
+
+Initial refresh với `--ignore-state` đã replace 276 hourly windows, reconcile
+khớp với các tổng metric:
+
+- `row_count = 276`
+- `total_content_events = 31906`
+- `original_post_create_count = 15749`
+- `reply_create_count = 14754`
+- `post_delete_count = 1234`
+- `reply_delete_count = 152`
+- `post_update_count = 17`
+
+Full reconciliation cũ giữa Parquet staging và ClickHouse vẫn pass sau incremental
+replace. Lần chạy normal sau đó không có fact rows mới, `affected_window_count =
+0`, `affected_rows_replaced = 0` và `state_updated: true`.
+
+**Các file liên quan**
+
+- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/build_content_quality_hourly_from_gold_modeled.py`
+- `scripts/gold/load_content_quality_hourly_to_clickhouse.py`
+- `scripts/gold/check_content_quality_hourly_reconciliation.py`
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/incremental_refresh.py`
+- `src/bluesky_pipeline/gold_tables.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Watermark để biết dữ liệu mới nên dựa trên ingestion/load marker như
+  `received_at`, nhưng affected business window của mart time series phải dựa
+  trên `event_time`.
+- Late data có thể được ingest trong window hiện tại nhưng làm thay đổi metric
+  của một giờ cũ, nên incremental mart phải replace affected windows theo event
+  time thay vì chỉ append giờ mới nhất.
+- Với ClickHouse `MergeTree`, `ALTER TABLE ... DELETE` là mutation bất đồng bộ.
+  Incremental load cần chờ mutation hoàn tất trước khi insert lại rows cùng key
+  để tránh dashboard đọc duplicate tạm thời.
+- Full rebuild path vẫn nên được giữ như fallback/rebuild mechanism; incremental
+  path tối ưu vận hành thường ngày nhưng không thay thế nhu cầu rebuild khi đổi
+  logic metric.

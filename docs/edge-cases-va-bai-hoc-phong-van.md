@@ -875,3 +875,87 @@ thường nên là một branch logic riêng thay vì ép thành một timestamp
 - `lakehouse.silver_v1.silver_engagements`
 - `lakehouse.silver_v1.silver_follows`
 - `lakehouse.silver_v1.silver_deleted_records`
+
+## Case 15: Incremental mart phải phân biệt `received_at` và `event_time`
+
+**Hiện tượng**
+
+Khi incremental hóa `gold_content_quality_hourly`, không thể chỉ lấy giờ hiện tại
+hoặc giờ theo thời điểm job chạy để refresh dashboard. Dữ liệu Bluesky có
+`received_at` là thời điểm pipeline nhận/ghi dữ liệu, nhưng metric hourly trên
+dashboard lại được group theo `event_time`.
+
+Initial run của script incremental replace 276 hourly windows và reconcile pass:
+
+```text
+affected_rows_replaced: 276
+row_count expected=276 actual=276 OK
+total_content_events expected=31906 actual=31906 OK
+Gold content quality hourly incremental check passed
+```
+
+Sau đó full reconciliation cũ giữa Parquet staging và ClickHouse cũng pass, còn
+lần chạy normal không có fact mới:
+
+```text
+gold_fact_content_events_incremental_rows: 0
+affected_window_count: 0
+affected_rows_replaced: 0
+state_updated: true
+```
+
+**Cách phát hiện**
+
+Khi đọc logic transformation, `gold_content_quality_hourly` dùng:
+
+```text
+window_start = date_trunc('hour', event_time)
+```
+
+Trong khi incremental refresh state lại cần lọc fact rows mới theo:
+
+```text
+received_at >= refresh_from
+received_at < refresh_to
+```
+
+Điều này tạo ra hai khái niệm thời gian khác nhau trong cùng một job.
+
+**Nguyên nhân**
+
+`received_at` phù hợp để làm watermark xử lý vì nó biểu diễn dữ liệu nào pipeline
+mới nhận hoặc mới load vào Gold. Nhưng metric hourly phải phản ánh thời gian sự
+kiện xảy ra theo `event_time`. Late data có thể được nhận hôm nay nhưng thuộc về
+một event hour cũ, thậm chí khác ngày/năm.
+
+Nếu incremental mart chỉ append giờ mới nhất theo processing/load time, dashboard
+sẽ bỏ sót việc điều chỉnh metric của các window cũ.
+
+**Cách xử lý hoặc quyết định**
+
+Script `refresh_gold_content_quality_hourly_incremental.py` dùng hai bước rõ
+ràng:
+
+- Lọc fact rows incremental theo `received_at` để biết dữ liệu mới cần xử lý.
+- Tính affected `window_start` theo `event_time`, rồi recompute toàn bộ metric
+  cho các affected hours từ Gold modeled source of truth.
+
+Khi load vào ClickHouse, script không `TRUNCATE` toàn bảng mà `DELETE` đúng
+affected windows, chờ mutation hoàn tất, sau đó insert rows mới và reconcile đúng
+phạm vi affected windows.
+
+**Bài học phỏng vấn**
+
+Trong streaming/lakehouse, cần phân biệt event time, ingestion time, processing
+time và load time. Incremental serving mart thường dùng ingestion/load time để
+xác định dữ liệu mới, nhưng dùng event time hoặc business key để xác định phần
+metric cần replace. Đây là cách xử lý late data thực tế hơn append-only theo thời
+gian chạy job.
+
+**File hoặc bảng liên quan**
+
+- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/check_content_quality_hourly_reconciliation.py`
+- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `lakehouse.gold_v1.gold_fact_content_events`
+- `bluesky.gold_content_quality_hourly`
