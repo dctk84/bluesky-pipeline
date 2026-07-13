@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import json
+import os
 
 DEFAULT_LOOKBACK_HOURS = 2
+LOOKBACK_MINUTES_ENV = "GOLD_INCREMENTAL_LOOKBACK_MINUTES"
+LOOKBACK_HOURS_ENV = "GOLD_INCREMENTAL_LOOKBACK_HOURS"
 
 
 @dataclass(frozen=True)
@@ -20,12 +23,34 @@ class RefreshWindow:
 
     refresh_from: datetime
     refresh_to: datetime
-    lookback_hours: int
+    lookback_hours: float
 
 
 def utc_now() -> datetime:
     """Trả về thời điểm hiện tại theo UTC timezone-aware."""
     return datetime.now(timezone.utc)
+
+
+def resolve_lookback_minutes(default_hours: int = DEFAULT_LOOKBACK_HOURS) -> int:
+    """Đọc lookback cho Gold incremental refresh từ environment.
+
+    Input là số giờ mặc định nếu không có env override.
+    Output là số phút lookback dùng để tạo refresh window.
+    """
+    raw_minutes = os.getenv(LOOKBACK_MINUTES_ENV)
+    raw_hours = os.getenv(LOOKBACK_HOURS_ENV)
+
+    if raw_minutes is not None:
+        lookback_minutes = int(raw_minutes)
+    elif raw_hours is not None:
+        lookback_minutes = int(raw_hours) * 60
+    else:
+        lookback_minutes = default_hours * 60
+
+    if lookback_minutes < 0:
+        raise ValueError("Gold incremental lookback must be >= 0")
+
+    return lookback_minutes
 
 
 def build_refresh_window(
@@ -42,6 +67,7 @@ def build_refresh_window(
     if lookback_hours < 0:
         raise ValueError("lookback_hours must be >= 0")
 
+    lookback_minutes = resolve_lookback_minutes(default_hours=lookback_hours)
     effective_refresh_to = refresh_to or utc_now()
 
     if effective_refresh_to.tzinfo is None:
@@ -53,7 +79,7 @@ def build_refresh_window(
         if last_successful_run_at.tzinfo is None:
             raise ValueError("last_successful_run_at must be timezone-aware")
 
-        refresh_from = last_successful_run_at - timedelta(hours=lookback_hours)
+        refresh_from = last_successful_run_at - timedelta(minutes=lookback_minutes)
 
     if refresh_from > effective_refresh_to:
         raise ValueError("refresh_from must be <= refresh_to")
@@ -61,8 +87,9 @@ def build_refresh_window(
     return RefreshWindow(
         refresh_from=refresh_from,
         refresh_to=effective_refresh_to,
-        lookback_hours=lookback_hours,
+        lookback_hours=lookback_minutes / 60,
     )
+
 
 def read_last_successful_run_at(state_path: Path) -> datetime | None:
     """Đọc thời điểm incremental refresh thành công gần nhất từ local state file.

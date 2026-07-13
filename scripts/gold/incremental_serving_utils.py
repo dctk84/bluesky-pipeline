@@ -22,12 +22,12 @@ from bluesky_pipeline.incremental_refresh import RefreshWindow
 
 
 def format_timestamp_for_spark(value: datetime) -> str:
-    """Format datetime UTC thành chuỗi timestamp Spark parse ổn định.
+    """Format datetime UTC thành chuỗi ISO có timezone để Spark parse ổn định.
 
     Input là datetime timezone-aware.
-    Output là chuỗi `yyyy-MM-dd HH:mm:ss.SSSSSS` theo UTC.
+    Output là chuỗi ISO-8601 kết thúc bằng `Z`, cùng semantics với `received_at`.
     """
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def filter_by_received_at(
@@ -40,7 +40,9 @@ def filter_by_received_at(
     Output là DataFrame chỉ gồm rows được observe/load trong window.
     """
     received_at_ts = to_timestamp(col("received_at"))
-    refresh_to_ts = to_timestamp(lit(format_timestamp_for_spark(refresh_window.refresh_to)))
+    refresh_to_ts = to_timestamp(
+        lit(format_timestamp_for_spark(refresh_window.refresh_to))
+    )
     upper_bounded_df = table_df.filter(received_at_ts < refresh_to_ts)
 
     # Initial refresh dùng datetime.min làm marker control-plane. Không đưa marker
