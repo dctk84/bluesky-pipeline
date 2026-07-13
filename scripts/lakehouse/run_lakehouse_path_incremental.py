@@ -59,6 +59,24 @@ def parse_args() -> argparse.Namespace:
             "Phù hợp khi Bronze/Silver streaming vẫn đang ghi dữ liệu mới."
         ),
     )
+    parser.add_argument(
+        "--gold-mode",
+        choices=["fast", "standard", "strict"],
+        default=None,
+        help=(
+            "Truyền mode xuống Gold incremental refresh. "
+            "`fast` dùng cho demo dashboard thường xuyên, `standard` thêm "
+            "Trino Gold modeled check, `strict` thêm full serving reconciliation."
+        ),
+    )
+    parser.add_argument(
+        "--force-gold-downstream",
+        action="store_true",
+        help=(
+            "Ép Gold incremental chạy dimensions và serving marts kể cả khi "
+            "Gold facts không có rows mới. Dùng khi cần debug/reconcile."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -75,12 +93,16 @@ def run_module(
     module_name: str,
     ignore_state: bool,
     supports_ignore_state: bool,
+    extra_args: list[str] | None = None,
 ) -> None:
     """Chạy một module và dừng pipeline nếu module đó lỗi."""
     command = [sys.executable, "-m", module_name]
 
     if ignore_state and supports_ignore_state:
         command.append("--ignore-state")
+
+    if extra_args:
+        command.extend(extra_args)
 
     print(f"\n=== {step_name} ===", flush=True)
     print(f"command: {' '.join(command)}", flush=True)
@@ -101,13 +123,26 @@ def main() -> None:
         if args.live_mode
         else LAKEHOUSE_INCREMENTAL_STEPS
     )
+    gold_extra_args = []
+
+    if args.gold_mode is not None:
+        gold_extra_args.extend(["--mode", args.gold_mode])
+
+    if args.force_gold_downstream:
+        gold_extra_args.append("--force-downstream")
 
     for step_name, module_name, supports_ignore_state in steps:
+        extra_args = (
+            gold_extra_args
+            if module_name == "scripts.gold.refresh_gold_incremental"
+            else None
+        )
         run_module(
             step_name,
             module_name,
             ignore_state=args.ignore_state,
             supports_ignore_state=supports_ignore_state,
+            extra_args=extra_args,
         )
 
     print("\nLakehouse incremental path passed")

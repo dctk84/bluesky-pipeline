@@ -18,6 +18,7 @@ from bluesky_pipeline.kafka_config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_RAW_EVENTS_TOPIC,
     SPARK_KAFKA_CONNECTOR_PACKAGE,
+    SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER,
 )
 
 RAW_EVENT_SCHEMA = StructType(
@@ -51,6 +52,7 @@ def main() -> None:
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
         .option("subscribe", KAFKA_RAW_EVENTS_TOPIC)
         .option("startingOffsets", "earliest")
+        .option("maxOffsetsPerTrigger", SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER)
         .load()
     )
 
@@ -108,7 +110,7 @@ def main() -> None:
         "ingest_date",
         "ingest_hour",
         "collection",
-    ).outputMode("append").start()
+    ).outputMode("append").trigger(processingTime="60 seconds").start()
 
     # Bước 7: Ghi identity events, không partition theo collection vì không có field này.
     identity_events_df.writeStream.format("parquet").option(
@@ -120,7 +122,7 @@ def main() -> None:
     ).partitionBy(
         "ingest_date",
         "ingest_hour",
-    ).outputMode("append").start()
+    ).outputMode("append").trigger(processingTime="60 seconds").start()
 
     # Bước 8: Ghi account events, không partition theo collection vì không có field này.
     account_events_df.writeStream.format("parquet").option(
@@ -132,7 +134,7 @@ def main() -> None:
     ).partitionBy(
         "ingest_date",
         "ingest_hour",
-    ).outputMode("append").start()
+    ).outputMode("append").trigger(processingTime="60 seconds").start()
 
     # Bước 9: Giữ process chạy cho tới khi có query lỗi hoặc người dùng dừng.
     spark.streams.awaitAnyTermination()

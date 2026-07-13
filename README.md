@@ -93,6 +93,57 @@ ICEBERG_CATALOG_TYPE=hive
 ICEBERG_HIVE_METASTORE_URI=thrift://localhost:9083
 ```
 
+## Demo workflow cho máy local
+
+Với máy cá nhân/WSL, project demo theo hai phase độc lập để tránh chạy quá nhiều
+Spark application cùng lúc:
+
+```text
+Phase 1 - Live streaming:
+Jetstream -> Kafka -> Bronze Parquet -> Silver Iceberg
+          -> realtime ClickHouse metrics -> Grafana hot dashboard
+
+Phase 2 - Gold analytics refresh:
+Silver Iceberg -> Gold modeled Iceberg -> Gold serving marts -> ClickHouse
+```
+
+Trước khi chạy một demo sạch, cleanup toàn bộ dữ liệu cũ đã ingest, bao gồm Kafka
+topic nếu muốn dashboard chỉ phản ánh dữ liệu của lần chạy hiện tại:
+
+```bash
+PYTHONPATH=src:. python scripts/platform/cleanup_ingested_data.py \
+  --confirm-delete \
+  --include-kafka-topic
+```
+
+Sau đó chạy live streaming phase:
+
+```bash
+PYTHONPATH=src:. python scripts/e2e/run_live_pipeline.py
+```
+
+Khi đã ingest đủ dữ liệu để demo, nhấn `Ctrl+C` để dừng live pipeline. Sau đó chạy
+Gold analytics refresh phase:
+
+```bash
+PYTHONPATH=src:. python scripts/lakehouse/run_lakehouse_path_incremental.py \
+  --live-mode \
+  --gold-mode standard
+```
+
+Trong đó:
+
+- `--live-mode` dùng readiness check nhẹ cho Silver Iceberg đã được live pipeline
+  ghi trước đó.
+- `--gold-mode fast` phù hợp khi chỉ muốn refresh dashboard nhanh.
+- `--gold-mode standard` thêm Trino Gold modeled check, phù hợp cho demo/chụp ảnh.
+- `--gold-mode strict` thêm full serving reconciliation, phù hợp cho audit/debug.
+
+Project không còn dùng một runner gộp hot path và Gold path chạy song song trong
+cùng một terminal vì mô hình đó dễ oversubscribe tài nguyên WSL local. Trong môi
+trường production, hai phase này có thể được orchestration bằng Airflow/Spark
+cluster với resource isolation rõ ràng.
+
 Chạy Spark Bronze writer:
 
 ```bash
@@ -158,7 +209,8 @@ PYTHONPATH=src:. python scripts/e2e/run_live_pipeline.py
 ```
 
 Lệnh này start ingestion gateway, Bronze writer, realtime metrics stream và
-Bronze-to-Silver streaming job. Nhấn `Ctrl+C` để dừng toàn bộ process con.
+Bronze-to-Silver streaming job. Nhấn `Ctrl+C` để dừng toàn bộ process con trước
+khi chạy Gold analytics refresh phase.
 
 Terminal 1, chạy Spark streaming job ghi realtime metrics vào ClickHouse:
 
