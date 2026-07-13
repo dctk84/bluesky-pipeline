@@ -47,6 +47,7 @@ bài học của bước lớn tương ứng.
 34. [Incremental hóa Gold content quality hourly mart](#bước-34-incremental-hóa-gold-content-quality-hourly-mart)
 35. [Incremental hóa các Gold analytics marts còn lại](#bước-35-incremental-hóa-các-gold-analytics-marts-còn-lại)
 36. [Đưa incremental Gold vào lakehouse E2E path](#bước-36-đưa-incremental-gold-vào-lakehouse-e2e-path)
+37. [Cố định Hive Metastore Derby DB trong volume persist](#bước-37-cố-định-hive-metastore-derby-db-trong-volume-persist)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1964,3 +1965,79 @@ hành thường ngày sau khi Silver đã có dữ liệu mới.
 - Với hệ thống production, state của các incremental jobs nên được đưa vào
   durable metadata/control table hoặc orchestrator state thay vì chỉ dùng local
   JSON file.
+
+## Bước 37: Cố định Hive Metastore Derby DB trong volume persist
+
+**Mục tiêu**
+
+Sửa cấu hình Hive Metastore local để Derby metastore database được lưu đúng trong
+Docker named volume, giúp service restart/recreate không làm mất catalog metadata
+hoặc rơi vào trạng thái schema init dở dang.
+
+**Vì sao cần thực hiện**
+
+Lakehouse path phụ thuộc vào Hive Metastore để Spark, Iceberg và Trino cùng nhìn
+thấy namespace/table metadata. Khi Metastore không chạy, các bước đọc Silver
+Iceberg readiness, build Gold modeled và validate bằng Trino đều fail dù MinIO,
+Trino hoặc ClickHouse vẫn đang chạy.
+
+Trong image `apache/hive:3.1.3`, Derby connection URL mặc định là relative:
+
+```text
+jdbc:derby:;databaseName=metastore_db;create=true
+```
+
+Image chạy trong `/opt/hive`, nên database thật nằm ở `/opt/hive/metastore_db`.
+Compose trước đó mount volume vào `/opt/hive/data`, khiến Derby DB không được
+persist đúng path. Khi container bị recreate, Hive có thể gặp hai lỗi ngược nhau:
+
+- Init lại schema thì fail vì object đã tồn tại một phần.
+- Resume mode thì fail vì bảng `VERSION` không tồn tại.
+
+**Kết quả sau khi hoàn thành**
+
+Project có cấu hình `config/hive/hive-site.xml` để cố định Derby DB vào path nằm
+trong volume persist:
+
+```text
+jdbc:derby:/opt/hive/data/metastore_db;create=true
+```
+
+`docker-compose.yml` mount named volume `hive-metastore-db` vào `/opt/hive/data`
+và mount `hive-site.xml` vào `/opt/hive/conf/hive-site.xml`. Sau khi chỉnh quyền
+volume cho user `hive`, chạy `schematool -initSchema` một lần thành công, rồi
+start Metastore với `IS_RESUME=true`.
+
+Hive Metastore đã lên lại, và Trino query metadata qua catalog `lakehouse` được:
+
+```text
+SHOW SCHEMAS
+```
+
+Metastore mới chỉ có các schema mặc định, vì vậy các bảng Silver/Gold Iceberg cần
+được rebuild/đăng ký lại bằng pipeline sau khi cleanup dữ liệu cũ.
+
+Sau khi cleanup dữ liệu ingest cũ, bao gồm Kafka topic, ClickHouse serving
+tables, checkpoint/state files và object storage paths liên quan, hệ thống sẵn
+sàng chạy lại clean E2E để bootstrap lại Silver/Gold metadata trên metastore mới.
+
+**Các file liên quan**
+
+- `docker-compose.yml`
+- `config/hive/hive-site.xml`
+- `config/hive/core-site.xml`
+- `config/trino/catalog/lakehouse.properties`
+- `scripts/lakehouse/check_silver_iceberg_readiness.py`
+- `scripts/lakehouse/run_lakehouse_path_incremental.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Hive Metastore là metadata catalog, không phải nơi chứa data files. Data files
+  nằm trên MinIO, còn table/namespace metadata nằm trong metastore database.
+- Embedded Derby trong container nhạy với working directory và mount path. Cần
+  kiểm tra connection URL thật sự, không chỉ nhìn tên volume.
+- `schematool -initSchema` chỉ nên chạy một lần trên DB trống; sau khi schema đã
+  có, container nên chạy với resume mode.
+- Derby embedded chỉ phù hợp cho môi trường local học tập. Trong production nên
+  dùng external database như PostgreSQL/MySQL cho Hive Metastore để tránh vấn đề
+  persistence, lock và recovery.

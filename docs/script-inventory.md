@@ -12,6 +12,9 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
 - `scripts/lakehouse/run_lakehouse_path.py`: chạy toàn bộ lakehouse
   path, gồm build Silver Iceberg, check Silver, build/check Gold modeled, refresh
   Gold serving và check Gold serving.
+- `scripts/lakehouse/run_lakehouse_path_incremental.py`: chạy phase Gold
+  incremental sau khi live pipeline đã ghi dữ liệu vào Silver Iceberg; đây là
+  entrypoint chính cho demo Gold dashboard trên máy local.
 - `scripts/lakehouse/check_lakehouse_path.py`: kiểm tra lakehouse path
   hiện có mà không build hoặc refresh lại dữ liệu.
 - `scripts/realtime/stream_metrics_to_clickhouse.py`: chạy realtime fast path từ
@@ -20,10 +23,12 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
   batch health trong ClickHouse.
 - `scripts/e2e/run_live_pipeline.py`: chạy live pipeline gồm ingestion gateway,
   Bronze writer, realtime metrics stream và Bronze-to-Silver streaming job.
-- `scripts/e2e/run_full_live_pipeline.py`: chạy live pipeline đầy đủ gồm fast
-  path và Gold incremental worker định kỳ. Entry point này dùng live-mode
-  readiness check cho Silver thay vì reconciliation toàn phần vì dữ liệu vẫn đang
-  được ghi liên tục.
+
+Trong môi trường local, không có entrypoint gộp hot path và Gold path chạy song
+song. Demo chuẩn của project là chạy `scripts/e2e/run_live_pipeline.py`, dừng
+pipeline khi đã ingest đủ dữ liệu, rồi chạy
+`scripts/lakehouse/run_lakehouse_path_incremental.py` để refresh Gold modeled và
+Gold serving marts.
 
 ## 2. Lakehouse sub-steps
 

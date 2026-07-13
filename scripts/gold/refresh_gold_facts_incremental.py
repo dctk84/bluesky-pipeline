@@ -198,11 +198,11 @@ def append_new_fact_rows(
     table_name: str,
     candidate_df: DataFrame,
     key_column: str,
-) -> None:
+) -> int:
     """Append các Gold fact rows chưa tồn tại theo event id.
 
     Input là candidate fact DataFrame trong refresh window và key column.
-    Output là bảng Gold fact Iceberg được append thêm rows mới nếu có.
+    Output là số rows mới đã append vào bảng Gold fact Iceberg.
     """
     print_gold_fact_key_metrics(table_name, candidate_df, key_column)
 
@@ -227,12 +227,18 @@ def append_new_fact_rows(
     finally:
         new_rows_df.unpersist()
 
+    if new_rows == 0:
+        # Bảng không đổi, nên bỏ qua full-table key check để giảm tải local.
+        print(f"{table_name}_iceberg_key_check_skipped: no_new_rows")
+        return new_rows
+
     final_df = spark.table(iceberg_table)
     print_gold_fact_key_metrics(
         f"{table_name}_iceberg",
         final_df,
         key_column,
     )
+    return new_rows
 
 
 def main() -> None:
@@ -267,21 +273,35 @@ def main() -> None:
     try:
         ensure_gold_namespace(spark)
         incremental_silver_tables = {}
+        incremental_silver_row_counts = {}
 
         for table_name in SILVER_FACT_SOURCE_TABLES:
             table_df = spark.table(ICEBERG_SILVER_TABLES[table_name])
             incremental_df = filter_by_received_at(table_df, refresh_window)
             incremental_silver_tables[table_name] = incremental_df.cache()
+            incremental_silver_row_counts[table_name] = incremental_silver_tables[
+                table_name
+            ].count()
             print(
                 f"{table_name}_incremental_rows: "
-                f"{incremental_silver_tables[table_name].count()}"
+                f"{incremental_silver_row_counts[table_name]}"
             )
+
+        if sum(incremental_silver_row_counts.values()) == 0:
+            print("gold_facts_new_rows_to_append_total: 0")
+            print("gold_facts_has_changes: false")
+            print("gold_fact_key_checks_skipped: empty_refresh_window")
+            write_last_successful_run_at(DEFAULT_STATE_PATH, refresh_to)
+            print("state_updated: true")
+            return
+
+        total_new_rows_to_append = 0
 
         for table_name, build_fact_df, key_column in GOLD_FACT_SPECS:
             fact_df = build_fact_df(incremental_silver_tables).cache()
 
             try:
-                append_new_fact_rows(
+                total_new_rows_to_append += append_new_fact_rows(
                     spark,
                     table_name,
                     fact_df,
@@ -290,7 +310,17 @@ def main() -> None:
             finally:
                 fact_df.unpersist()
 
-        check_gold_fact_keys(spark)
+        print(f"gold_facts_new_rows_to_append_total: {total_new_rows_to_append}")
+        print(
+            "gold_facts_has_changes: "
+            f"{str(total_new_rows_to_append > 0).lower()}"
+        )
+
+        if total_new_rows_to_append > 0:
+            check_gold_fact_keys(spark)
+        else:
+            print("gold_fact_key_checks_skipped: no_new_rows")
+
         write_last_successful_run_at(DEFAULT_STATE_PATH, refresh_to)
         print("state_updated: true")
 

@@ -1040,8 +1040,9 @@ gian chạy job.
 
 **Hiện tượng**
 
-Khi chạy full live pipeline có Gold incremental worker, pipeline dừng ở bước
-`scripts.lakehouse.check_iceberg_silver_v1` với nhiều mismatch:
+Khi thử nghiệm chạy Gold incremental trong lúc Bronze/Silver streaming vẫn đang
+ghi dữ liệu, pipeline dừng ở bước `scripts.lakehouse.check_iceberg_silver_v1`
+với nhiều mismatch:
 
 ```text
 silver_posts expected 10071 iceberg 8250 MISMATCH
@@ -1050,8 +1051,7 @@ silver_follows expected 4291 iceberg 5904 MISMATCH
 silver_deleted_records expected 2355 iceberg 3211 MISMATCH
 ```
 
-Sau đó `run_full_live_pipeline` nhận lỗi từ Gold worker và dừng các process live
-còn lại.
+Sau đó orchestrator nhận lỗi từ Gold refresh và dừng các process live còn lại.
 
 **Cách phát hiện**
 
@@ -1067,10 +1067,10 @@ CalledProcessError: scripts.lakehouse.check_iceberg_silver_v1 returned non-zero
 **Nguyên nhân**
 
 `check_iceberg_silver_v1` là full reconciliation kiểu snapshot tĩnh: script đọc
-Bronze để tính expected metrics, rồi đọc Silver Iceberg để so sánh. Trong full
-live pipeline, Bronze writer và Silver streaming job vẫn đang ghi thêm dữ liệu.
-Hai lần đọc này không đảm bảo cùng một thời điểm snapshot, nên expected count và
-Iceberg count có thể lệch dù pipeline không nhất thiết ghi sai dữ liệu.
+Bronze để tính expected metrics, rồi đọc Silver Iceberg để so sánh. Nếu Bronze
+writer và Silver streaming job vẫn đang ghi thêm dữ liệu, hai lần đọc này không
+đảm bảo cùng một thời điểm snapshot. Vì vậy expected count và Iceberg count có
+thể lệch dù pipeline không nhất thiết ghi sai dữ liệu.
 
 Đây là khác biệt giữa validation cho batch/backfill ổn định và validation cho
 live stream đang chuyển động.
@@ -1080,11 +1080,12 @@ live stream đang chuyển động.
 Giữ `check_iceberg_silver_v1` cho các lần kiểm tra hữu hạn khi dữ liệu đã đứng
 yên, ví dụ backfill, rebuild hoặc sau khi dừng ingestion.
 
-Với full live pipeline, thêm `--live-mode` cho
-`scripts.lakehouse.run_lakehouse_path_incremental`. Live mode thay full
-reconciliation bằng `scripts.lakehouse.check_silver_iceberg_readiness`, chỉ kiểm
-tra Silver tables tồn tại, đọc được và có dữ liệu tối thiểu trước khi chạy Gold
-incremental.
+Với demo local, chốt lại workflow hai phase: chạy
+`scripts.e2e.run_live_pipeline` để ingest tới Silver, dừng live pipeline, rồi
+chạy `scripts.lakehouse.run_lakehouse_path_incremental --live-mode` để refresh
+Gold. `--live-mode` dùng `scripts.lakehouse.check_silver_iceberg_readiness`, chỉ
+kiểm tra Silver tables tồn tại, đọc được và có dữ liệu tối thiểu trước khi chạy
+Gold incremental.
 
 **Bài học phỏng vấn**
 
@@ -1096,7 +1097,7 @@ readiness/freshness checks nhẹ để bảo vệ orchestration, còn reconcilia
 
 **File hoặc bảng liên quan**
 
-- `scripts/e2e/run_full_live_pipeline.py`
+- `scripts/e2e/run_live_pipeline.py`
 - `scripts/lakehouse/run_lakehouse_path_incremental.py`
 - `scripts/lakehouse/check_iceberg_silver_v1.py`
 - `scripts/lakehouse/check_silver_iceberg_readiness.py`
@@ -1107,8 +1108,9 @@ readiness/freshness checks nhẹ để bảo vệ orchestration, còn reconcilia
 
 **Hiện tượng**
 
-Khi chạy full live pipeline, realtime hot path đã có dữ liệu trong Grafana nhưng
-Gold/cold path vẫn không có dữ liệu. Bảng freshness của Gold serving hiển thị
+Khi thử chạy Gold/cold path sau một live run, realtime hot path đã có dữ liệu
+trong Grafana nhưng Gold/cold path vẫn không có dữ liệu. Bảng freshness của Gold
+serving hiển thị
 `row_count = 0` và `last_loaded_at = 1970-01-01`.
 
 Log `gold-incremental.log` cho thấy Silver readiness đã pass và Silver Iceberg có
@@ -1269,3 +1271,124 @@ khả năng vận hành.
 - `config/hive/hive-site.xml`
 - `config/hive/core-site.xml`
 - `config/trino/catalog/lakehouse.properties`
+
+## Case 20: WSL/Docker restart khi local Spark bị oversubscribe
+
+**Hiện tượng**
+
+Khi thử nghiệm runner gộp hot path và Gold path trên WSL local, VS Code/WSL bị
+reload. Sau đó toàn bộ service trong Docker Compose đều dừng cùng lúc với trạng
+thái:
+
+```text
+Exited (255)
+```
+
+Pipeline process không còn chạy. Các log trong `logs/live_pipeline/` bị dừng giữa
+Spark stage, có file xuất hiện ký tự null ở cuối log thay vì stacktrace Python
+rõ ràng.
+
+Sau khi tăng tần suất Gold incremental, tình trạng này xuất hiện dễ hơn. Điều đó
+cho thấy vấn đề chính là oversubscription tài nguyên local khi nhiều Spark app
+và Docker services cùng chạy trên một máy cá nhân.
+
+**Cách phát hiện**
+
+`docker compose ps -a` cho thấy tất cả service chính như Kafka, MinIO, Hive
+Metastore, Trino, ClickHouse và Grafana cùng exit tại gần như cùng một timestamp.
+`docker inspect` cho thấy:
+
+```text
+exit=255
+oom=false
+finished=2026-07-13T10:59:08Z
+```
+
+Trong khi `uptime -s` của WSL là khoảng `2026-07-13 17:58:50` giờ local, gần
+trùng với thời điểm container dừng. Điều này cho thấy WSL/Docker daemon bị
+restart hoặc bị tắt đột ngột, không phải từng service tự fail độc lập.
+
+**Nguyên nhân**
+
+Đây là lỗi vận hành môi trường local: WSL hoặc Docker Desktop bị restart trong
+lúc pipeline đang chạy. Các Spark streaming jobs, ingestion gateway và Gold
+incremental process chạy trong terminal/WSL nên cũng bị kết thúc theo phiên WSL.
+
+Nguyên nhân kỹ thuật phía project là oversubscription tài nguyên local. Runner
+gộp từng thử nghiệm chạy đồng thời nhiều Spark application:
+
+```text
+bronze-writer Spark
+realtime-metrics Spark
+silver-stream Spark
+Gold incremental Spark jobs
+```
+
+Trước khi tối ưu, helper Spark dùng `local[*]`, nghĩa là mỗi Spark application cố
+dùng toàn bộ core WSL. Bronze writer cũng chưa giới hạn `maxOffsetsPerTrigger`,
+nên khi Kafka backlog lớn, batch đầu có thể đọc hàng chục nghìn events. Log từng
+ghi nhận:
+
+```text
+silver_stream_batch_id=0 input_rows=70307
+ProcessingTimeExecutor: trigger interval is 60000 ms, but spent 137526 ms
+```
+
+Khi nhiều Spark JVM, Docker containers và VS Code cùng chạy trên WSL khoảng 8 GiB
+RAM, Docker Desktop/WSL có thể bị restart thay vì chỉ một process Python fail.
+
+**Cách xử lý hoặc quyết định**
+
+Không coi đây là lỗi business logic của pipeline. Khi muốn chạy lại một lần quan
+sát sạch, cần start lại Docker services, cleanup dữ liệu ingest dở dang bao gồm
+Kafka topic, ClickHouse tables, checkpoints/state files và object storage paths,
+rồi chạy lại demo theo hai phase độc lập.
+
+Để giảm tải local, cấu hình Spark được chuyển sang các default bảo thủ hơn:
+
+```text
+SPARK_MASTER=local[2]
+SPARK_SQL_SHUFFLE_PARTITIONS=8
+SPARK_DEFAULT_PARALLELISM=8
+SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER=5000
+SPARK_LOCAL_IP=127.0.0.1
+```
+
+Bronze writer cũng được giới hạn `maxOffsetsPerTrigger` và đặt trigger 60 giây
+để tránh chạy batch liên tục khi Kafka backlog lớn. Sau thay đổi này, baseline
+live path không Gold đã chạy ổn trong môi trường local.
+
+Quyết định cuối cùng cho demo cá nhân là loại bỏ runner gộp hot/cold path. Demo
+chuẩn của repo là:
+
+```text
+scripts.e2e.run_live_pipeline
+-> dừng live pipeline
+-> scripts.lakehouse.run_lakehouse_path_incremental --live-mode
+```
+
+**Bài học phỏng vấn**
+
+Trong local learning environment, failure mode của platform có thể khác production.
+Exit code 255 đồng loạt trên nhiều container thường là dấu hiệu runtime bị dừng
+đột ngột, không phải lỗi business logic. Khi debug pipeline, cần phân biệt:
+
+- Lỗi ứng dụng: một job có stacktrace rõ và các service nền vẫn chạy.
+- Lỗi platform/runtime: nhiều service cùng chết một thời điểm.
+- Partial run: dữ liệu/checkpoint có thể đã ghi một phần, nên rerun sạch cần
+  cleanup trước.
+- Local Spark `local[*]` tiện cho học API nhưng nguy hiểm khi nhiều Spark app
+  chạy đồng thời; production cần resource manager/cluster scheduler rõ ràng.
+- Với project cá nhân trên WSL, workflow demo hai phase độc lập trung thực hơn
+  việc cố chạy hot path và Gold path song song trên cùng máy.
+
+**File hoặc bảng liên quan**
+
+- `logs/live_pipeline/*.log`
+- `docker-compose.yml`
+- `scripts/e2e/run_live_pipeline.py`
+- `scripts/lakehouse/run_lakehouse_path_incremental.py`
+- `scripts/ingestion/spark_read_kafka_raw.py`
+- `src/bluesky_pipeline/spark_session.py`
+- `src/bluesky_pipeline/kafka_config.py`
+- `scripts/platform/cleanup_ingested_data.py`
