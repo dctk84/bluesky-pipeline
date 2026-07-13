@@ -20,6 +20,10 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
   batch health trong ClickHouse.
 - `scripts/e2e/run_live_pipeline.py`: chạy live pipeline gồm ingestion gateway,
   Bronze writer, realtime metrics stream và Bronze-to-Silver streaming job.
+- `scripts/e2e/run_full_live_pipeline.py`: chạy live pipeline đầy đủ gồm fast
+  path và Gold incremental worker định kỳ. Entry point này dùng live-mode
+  readiness check cho Silver thay vì reconciliation toàn phần vì dữ liệu vẫn đang
+  được ghi liên tục.
 
 ## 2. Lakehouse sub-steps
 
@@ -32,6 +36,8 @@ cụ thể.
   sang Silver Iceberg trong live pipeline local.
 - `scripts/lakehouse/check_iceberg_silver_v1.py`: reconcile Silver Iceberg v1 với expected
   metrics tính lại từ Bronze transformation.
+- `scripts/lakehouse/check_silver_iceberg_readiness.py`: kiểm tra các bảng
+  Silver Iceberg tồn tại, đọc được và có dữ liệu tối thiểu trong live mode.
 - `scripts/lakehouse/check_trino_silver_v1.py`: kiểm tra Trino query được
   namespace và các bảng Silver Iceberg v1.
 - `scripts/lakehouse/build_gold_modeled_v1.py`: build các bảng Gold modeled v1
@@ -92,7 +98,8 @@ là phần ClickHouse serving hiện tại, chưa phải toàn bộ Gold modeled
 - `scripts/platform/create_clickhouse_gold_tables.py`: tạo database và các bảng serving
   trong ClickHouse.
 - `scripts/platform/cleanup_ingested_data.py`: dọn dữ liệu ingest local trên
-  Kafka, MinIO và ClickHouse bằng cơ chế dry-run trước khi xóa thật.
+  Kafka, MinIO, Iceberg catalog, ClickHouse và local incremental state bằng cơ
+  chế dry-run trước khi xóa thật.
 
 ## 4. Ingestion và Bronze
 

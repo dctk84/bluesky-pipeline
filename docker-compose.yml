@@ -73,13 +73,15 @@ services:
       SERVICE_NAME: metastore
       DB_DRIVER: derby
       HADOOP_CLASSPATH: /opt/hadoop/share/hadoop/tools/lib/*
+      IS_RESUME: "true"
 
     volumes:
-      # Lưu metadata catalog local qua các lần restart container.
-      - hive-metastore-data-v3:/opt/hive/data
+      # Lưu Derby metastore DB local qua các lần restart container.
+      - hive-metastore-db:/opt/hive/data
       # Hive Metastore cũng cần biết cách truy cập MinIO khi tạo database/table location.
       - ./config/hive/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
       - ./config/hive/core-site.xml:/opt/hive/conf/core-site.xml:ro
+      - ./config/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
 
     depends_on:
       - minio
@@ -143,6 +145,6 @@ services:
 
 volumes:
   minio-data:
-  hive-metastore-data-v3:
+  hive-metastore-db:
   clickhouse-data:
   grafana-data:

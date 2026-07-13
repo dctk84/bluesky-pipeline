@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from bluesky_pipeline.bronze_tables import (
     BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
@@ -53,6 +54,12 @@ from bluesky_pipeline.iceberg_config import (
 from bluesky_pipeline.kafka_config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_EVENTS_TOPIC
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_INCREMENTAL_STATE_PATTERNS = [
+    "data/state/*.json",
+]
+
+
 @dataclass(frozen=True)
 class CleanupPlan:
     """Danh sách dữ liệu pipeline sẽ được dọn."""
@@ -62,6 +69,7 @@ class CleanupPlan:
     kafka_topics: list[str]
     iceberg_tables: list[str]
     iceberg_namespaces: list[str]
+    local_state_paths: list[str]
 
 
 def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
@@ -122,6 +130,7 @@ def build_cleanup_plan(include_kafka: bool) -> CleanupPlan:
         kafka_topics=kafka_topics,
         iceberg_tables=iceberg_tables,
         iceberg_namespaces=iceberg_namespaces,
+        local_state_paths=LOCAL_INCREMENTAL_STATE_PATTERNS,
     )
 
 
@@ -156,6 +165,10 @@ def print_plan(plan: CleanupPlan, dry_run: bool) -> None:
     print("\niceberg_namespaces:")
     for namespace in plan.iceberg_namespaces:
         print(f"- {namespace}")
+
+    print("\nlocal_state_paths:")
+    for path in plan.local_state_paths:
+        print(f"- {path}")
 
 
 def normalize_minio_path_for_hadoop(path: str) -> str:
@@ -295,6 +308,37 @@ def purge_kafka_topics(topics: list[str]) -> None:
         )
 
 
+def delete_local_state_paths(paths: list[str]) -> None:
+    """Xóa local incremental state để lần chạy sạch không dùng marker cũ.
+
+    Input là danh sách path hoặc glob pattern tương đối từ project root.
+    Output là các state file cũ bị xóa nếu tồn tại.
+    """
+    for path in paths:
+        matches = (
+            sorted(PROJECT_ROOT.glob(path))
+            if "*" in path
+            else [PROJECT_ROOT / path]
+        )
+
+        if not matches:
+            print(f"missing_local_state_path: {path}")
+            continue
+
+        for matched_path in matches:
+            if matched_path.is_file():
+                matched_path.unlink()
+                print(
+                    "deleted_local_state_path: "
+                    f"{matched_path.relative_to(PROJECT_ROOT)}"
+                )
+            else:
+                print(
+                    "skipped_local_state_path: "
+                    f"{matched_path.relative_to(PROJECT_ROOT)}"
+                )
+
+
 def parse_args() -> argparse.Namespace:
     """Đọc CLI flags cho cleanup script."""
     parser = argparse.ArgumentParser(
@@ -338,6 +382,7 @@ def main() -> None:
     drop_iceberg_catalog_objects(plan.iceberg_tables, plan.iceberg_namespaces)
     delete_minio_paths(plan.minio_paths)
     truncate_clickhouse_tables(plan.clickhouse_tables)
+    delete_local_state_paths(plan.local_state_paths)
 
     print("cleanup_finished")
 

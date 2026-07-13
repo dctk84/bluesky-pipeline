@@ -881,7 +881,12 @@ lỗi kết nối với số lần retry liên tiếp để tránh hiểu nhầm
 Project cũng có cleanup utility mặc định chạy dry-run trước, chỉ xóa thật khi
 truyền flag xác nhận. Cleanup dọn Bronze/Silver/Gold/checkpoints trên MinIO,
 drop metadata Iceberg trong Hive Metastore, truncate ClickHouse serving tables và
-có tùy chọn purge Kafka raw topic.
+có tùy chọn purge Kafka raw topic. Cleanup cũng xóa local incremental state trong
+`data/state/*.json` để lần chạy mới không dùng lại watermark/marker cũ của lần
+trước. Khi cần chạy lại demo từ trạng thái chỉ có dữ liệu mới của lần chạy hiện
+tại, cleanup được chạy với cả `--confirm-delete` và `--include-kafka-topic` để
+xóa/recreate raw Kafka topic, drop Silver/Gold Iceberg metadata, xóa MinIO paths,
+truncate ClickHouse tables và reset incremental state.
 
 Live pipeline đã được chạy lại từ trạng thái sạch sau cleanup: dữ liệu mới đi từ
 Jetstream vào Kafka, Spark ghi Bronze, realtime marts và đẩy Bronze mới sang
@@ -893,6 +898,7 @@ checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
 - `scripts/e2e/run_live_pipeline.py`
 - `src/bluesky_pipeline/ingestion_gateway.py`
 - `scripts/platform/cleanup_ingested_data.py`
+- `data/state/`
 - `docs/script-inventory.md`
 
 **Kiến thức cần ghi nhớ**
@@ -903,6 +909,12 @@ checkpoint realtime pass và runner dừng được bằng `Ctrl+C`.
   refresh nên tách riêng và schedule bằng Airflow ở milestone orchestration.
 - Cleanup dữ liệu ingest nên có dry-run và flag xác nhận vì đây là thao tác phá
   hủy dữ liệu.
+- Muốn reset hoàn toàn cho một lần demo mới thì phải purge cả Kafka raw topic;
+  nếu chỉ xóa MinIO/ClickHouse/Iceberg mà giữ Kafka log, Spark consumer có thể
+  đọc lại event cũ tùy checkpoint/offset.
+- Với incremental jobs, cleanup dữ liệu cũng cần reset local state marker; nếu
+  giữ `last_successful_run_at` cũ sau khi xóa data, lần chạy mới có thể bỏ qua
+  dữ liệu cần xử lý.
 - Khi cleanup Iceberg trong Hive catalog, cần drop table/namespace trong
   metastore trước khi xóa data files trên object storage để tránh metadata trỏ
   tới file không còn tồn tại.

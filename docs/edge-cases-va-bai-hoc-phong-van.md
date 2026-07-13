@@ -753,7 +753,9 @@ Review `scripts/platform/cleanup_ingested_data.py` cho thấy script ban đầu 
 - Kafka raw topic khi truyền `--include-kafka-topic`.
 
 Tuy nhiên Iceberg catalog dùng Hive Metastore, nên cleanup cần xử lý thêm metadata
-catalog chứ không chỉ object storage.
+catalog chứ không chỉ object storage. Sau khi project có Gold incremental, cleanup
+cũng cần xóa local state files trong `data/state/*.json`; nếu giữ marker cũ trong
+khi dữ liệu lakehouse đã bị xóa, lần chạy mới có thể bỏ qua dữ liệu cần xử lý.
 
 **Nguyên nhân**
 
@@ -774,6 +776,8 @@ Update cleanup script để:
 3. Drop namespace `lakehouse.gold_v1` và `lakehouse.silver_v1`.
 4. Sau đó mới xóa warehouse/checkpoint paths trên MinIO.
 5. Chuẩn hóa `s3://` thành `s3a://` khi gọi Hadoop FileSystem để xóa MinIO.
+6. Xóa local incremental state trong `data/state/*.json` để lần chạy sạch không
+   dùng lại watermark/marker cũ.
 
 Cleanup vẫn giữ nguyên cơ chế an toàn: dry-run mặc định, chỉ xóa thật khi có
 `--confirm-delete`, và chỉ purge Kafka topic khi có `--include-kafka-topic`.
@@ -782,8 +786,9 @@ Cleanup vẫn giữ nguyên cơ chế an toàn: dry-run mặc định, chỉ xó
 
 Với lakehouse table format như Iceberg, cleanup/rebuild không chỉ là xóa folder
 object storage. Cần hiểu rõ catalog metadata, table metadata và data files đang
-nằm ở đâu. Đây là khác biệt quan trọng giữa “file lake” đơn giản và “table format”
-có catalog.
+nằm ở đâu. Với incremental pipeline, còn phải hiểu cả control-plane state như
+watermark hoặc last successful run marker. Đây là khác biệt quan trọng giữa “file
+lake” đơn giản và “table format” có catalog cộng với incremental orchestration.
 
 **File hoặc bảng liên quan**
 
@@ -793,6 +798,7 @@ có catalog.
 - `lakehouse.gold_v1.*`
 - Hive Metastore
 - MinIO Iceberg warehouse
+- `data/state/*.json`
 
 ## Case 13: `follow_create` có thể trùng `follow_uri` trong fact event
 
@@ -1029,3 +1035,237 @@ gian chạy job.
 - `src/bluesky_pipeline/gold_analytics_transformations.py`
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
+
+## Case 17: Full reconciliation không phù hợp khi Bronze/Silver đang streaming
+
+**Hiện tượng**
+
+Khi chạy full live pipeline có Gold incremental worker, pipeline dừng ở bước
+`scripts.lakehouse.check_iceberg_silver_v1` với nhiều mismatch:
+
+```text
+silver_posts expected 10071 iceberg 8250 MISMATCH
+silver_engagements expected 78726 iceberg 98447 MISMATCH
+silver_follows expected 4291 iceberg 5904 MISMATCH
+silver_deleted_records expected 2355 iceberg 3211 MISMATCH
+```
+
+Sau đó `run_full_live_pipeline` nhận lỗi từ Gold worker và dừng các process live
+còn lại.
+
+**Cách phát hiện**
+
+Log của `logs/live_pipeline/gold-incremental.log` có một số Spark heartbeat/NPE
+message nhìn giống lỗi chính, nhưng Spark vẫn chạy tiếp các stage. Lỗi thật nằm
+ở cuối log:
+
+```text
+Iceberg Silver v1 reconciliation failed
+CalledProcessError: scripts.lakehouse.check_iceberg_silver_v1 returned non-zero
+```
+
+**Nguyên nhân**
+
+`check_iceberg_silver_v1` là full reconciliation kiểu snapshot tĩnh: script đọc
+Bronze để tính expected metrics, rồi đọc Silver Iceberg để so sánh. Trong full
+live pipeline, Bronze writer và Silver streaming job vẫn đang ghi thêm dữ liệu.
+Hai lần đọc này không đảm bảo cùng một thời điểm snapshot, nên expected count và
+Iceberg count có thể lệch dù pipeline không nhất thiết ghi sai dữ liệu.
+
+Đây là khác biệt giữa validation cho batch/backfill ổn định và validation cho
+live stream đang chuyển động.
+
+**Cách xử lý hoặc quyết định**
+
+Giữ `check_iceberg_silver_v1` cho các lần kiểm tra hữu hạn khi dữ liệu đã đứng
+yên, ví dụ backfill, rebuild hoặc sau khi dừng ingestion.
+
+Với full live pipeline, thêm `--live-mode` cho
+`scripts.lakehouse.run_lakehouse_path_incremental`. Live mode thay full
+reconciliation bằng `scripts.lakehouse.check_silver_iceberg_readiness`, chỉ kiểm
+tra Silver tables tồn tại, đọc được và có dữ liệu tối thiểu trước khi chạy Gold
+incremental.
+
+**Bài học phỏng vấn**
+
+Không phải mọi data quality check đều phù hợp với mọi chế độ vận hành. Full
+reconciliation cần snapshot boundary rõ ràng; nếu source và target đang thay đổi
+liên tục, count mismatch có thể là false failure. Trong live pipeline, nên dùng
+readiness/freshness checks nhẹ để bảo vệ orchestration, còn reconciliation đầy
+đủ nên chạy trên snapshot ổn định hoặc trong workflow backfill/recovery.
+
+**File hoặc bảng liên quan**
+
+- `scripts/e2e/run_full_live_pipeline.py`
+- `scripts/lakehouse/run_lakehouse_path_incremental.py`
+- `scripts/lakehouse/check_iceberg_silver_v1.py`
+- `scripts/lakehouse/check_silver_iceberg_readiness.py`
+- `logs/live_pipeline/gold-incremental.log`
+- `lakehouse.silver_v1.*`
+
+## Case 18: Timestamp literal thiếu timezone làm incremental window rỗng
+
+**Hiện tượng**
+
+Khi chạy full live pipeline, realtime hot path đã có dữ liệu trong Grafana nhưng
+Gold/cold path vẫn không có dữ liệu. Bảng freshness của Gold serving hiển thị
+`row_count = 0` và `last_loaded_at = 1970-01-01`.
+
+Log `gold-incremental.log` cho thấy Silver readiness đã pass và Silver Iceberg có
+dữ liệu:
+
+```text
+silver_posts 12021 READABLE
+silver_engagements 94012 READABLE
+silver_follows 5565 READABLE
+silver_deleted_records 3920 READABLE
+```
+
+Nhưng ngay sau đó Gold facts incremental lại lọc ra 0 row:
+
+```text
+silver_posts_incremental_rows: 0
+silver_engagements_incremental_rows: 0
+silver_follows_incremental_rows: 0
+silver_deleted_records_incremental_rows: 0
+```
+
+**Cách phát hiện**
+
+So sánh log của `check_silver_iceberg_readiness` với
+`refresh_gold_facts_incremental` cho thấy dữ liệu đã có trong Silver, nhưng biến
+mất tại bước filter theo `received_at`. `received_at` trong event envelope có
+dạng ISO-8601 UTC kết thúc bằng `Z`, ví dụ `2026-07-12T16:00:00Z`, trong khi
+`refresh_to` được format thành chuỗi không có timezone như
+`2026-07-12 16:02:18.871463`.
+
+**Nguyên nhân**
+
+Spark parse timestamp có timezone và timestamp không timezone theo semantics khác
+nhau. `received_at` có `Z` nên được hiểu là UTC rồi hiển thị/tính theo session
+timezone. Literal `refresh_to` không có timezone nên được hiểu như giờ local của
+Spark session.
+
+Trong môi trường local Asia/Bangkok, dữ liệu nhận lúc `16:00Z` có thể được Spark
+diễn giải thành khoảng `23:00` local, còn `refresh_to` không có `Z` bị hiểu là
+`16:02` local. Điều kiện:
+
+```text
+received_at < refresh_to
+```
+
+vì vậy loại sạch dữ liệu vừa ingest.
+
+**Cách xử lý hoặc quyết định**
+
+Sửa các helper format timestamp cho incremental filters để literal refresh window
+cũng dùng ISO-8601 UTC kết thúc bằng `Z`, cùng semantics với `received_at`.
+
+Các filter `received_at` ở Gold facts, Gold dimensions và Gold serving mart
+incremental đều phải dùng cùng quy ước này.
+
+**Bài học phỏng vấn**
+
+Trong Spark/lakehouse, timezone bug có thể không gây exception mà tạo ra kết quả
+rỗng hoặc sai âm thầm. Khi incremental job trả 0 row bất thường, cần kiểm tra
+song song:
+
+- Source table có dữ liệu không.
+- Refresh window đang dùng mốc nào.
+- Cột timestamp và literal timestamp có cùng timezone semantics không.
+- Session timezone của engine là gì.
+
+Đây là ví dụ thực tế cho thấy watermark/incremental state là control-plane logic
+nhưng vẫn phải tương thích chính xác với data-plane timestamp.
+
+**File hoặc bảng liên quan**
+
+- `scripts/gold/refresh_gold_facts_incremental.py`
+- `scripts/gold/refresh_gold_dimensions_incremental.py`
+- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/incremental_serving_utils.py`
+- `src/bluesky_pipeline/event_envelope.py`
+- `logs/live_pipeline/gold-incremental.log`
+- `lakehouse.silver_v1.*`
+
+## Case 19: Hive Metastore Derby volume mount sai path làm schema init lặp hoặc mất VERSION
+
+**Hiện tượng**
+
+Hive Metastore không start được. Ban đầu log báo schema initialization failed vì
+object đã tồn tại:
+
+```text
+FUNCTION 'NUCLEUS_ASCII' already exists
+Schema initialization failed!
+```
+
+Sau khi bật resume mode bằng `IS_RESUME=true`, container bỏ qua init schema nhưng
+lại fail với lỗi:
+
+```text
+Version information not found in metastore.
+Table/View 'VERSION' does not exist.
+```
+
+**Cách phát hiện**
+
+Kiểm tra `docker compose logs hive-metastore` cho thấy image
+`apache/hive:3.1.3` dùng Derby URL mặc định:
+
+```text
+jdbc:derby:;databaseName=metastore_db;create=true
+```
+
+Image chạy với working directory `/opt/hive`, nên Derby DB thật nằm ở
+`/opt/hive/metastore_db`. Trong khi đó compose ban đầu mount volume vào
+`/opt/hive/data`, khiến metastore DB không được persist đúng path.
+
+**Nguyên nhân**
+
+Có hai vấn đề chồng lên nhau:
+
+- Derby embedded metastore DB dùng path relative `metastore_db` dưới
+  `/opt/hive`.
+- Docker volume lại được mount vào `/opt/hive/data`, không phải nơi Derby tạo DB.
+
+Khi container bị recreate, metadata DB thật không còn. Nếu để Hive tự init lại,
+schema có thể bị init dở dang và gặp object đã tồn tại. Nếu bật resume mode khi
+DB chưa được init đầy đủ, Hive không tìm thấy bảng `VERSION`.
+
+**Cách xử lý hoặc quyết định**
+
+Cố định Derby connection URL bằng `config/hive/hive-site.xml`:
+
+```text
+jdbc:derby:/opt/hive/data/metastore_db;create=true
+```
+
+Sau đó mount named volume vào `/opt/hive/data`, chỉnh quyền volume cho user
+`hive`, chạy `schematool -initSchema` đúng một lần, rồi start metastore với
+`IS_RESUME=true`.
+
+Không mount volume trực tiếp vào `/opt/hive/metastore_db` khi vẫn dùng Derby
+database name `metastore_db`, vì Docker sẽ tạo sẵn thư mục đó còn Derby lại muốn
+tự tạo thư mục database.
+
+**Bài học phỏng vấn**
+
+Embedded database trong container rất nhạy với working directory và mount path.
+Khi dùng Hive Metastore với Derby local, cần phân biệt:
+
+- Path chứa volume persist.
+- Connection URL mà Derby thật sự dùng.
+- Thời điểm chạy `schematool -initSchema`.
+- Resume mode sau khi schema đã được init.
+
+Trong production, Hive Metastore thường dùng database ngoài như PostgreSQL hoặc
+MySQL thay vì embedded Derby để tránh các vấn đề về lock, persistence và
+khả năng vận hành.
+
+**File hoặc bảng liên quan**
+
+- `docker-compose.yml`
+- `config/hive/hive-site.xml`
+- `config/hive/core-site.xml`
+- `config/trino/catalog/lakehouse.properties`

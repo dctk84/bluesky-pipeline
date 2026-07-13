@@ -34,6 +34,11 @@ Quy trình của mỗi bước hoặc một cụm thao tác vừa đủ:
 8. Hai bên chỉ chuyển sang bước/cụm thao tác tiếp theo sau khi bước hiện tại
    thành công.
 
+Khi chuẩn bị chạy lại live pipeline hoặc E2E pipeline từ đầu, Codex phải nhắc
+người học cleanup toàn bộ dữ liệu cũ đã ingest trước. Nếu mục tiêu là quan sát
+một lần chạy sạch chỉ có dữ liệu mới, cần cleanup cả Kafka topic bằng flag tương
+ứng của cleanup script.
+
 Ngoài tài liệu quy trình, project có thêm tài liệu:
 
 ```text

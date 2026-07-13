@@ -49,12 +49,12 @@ COUNT_METRICS = [
 
 
 def _format_timestamp_for_spark(value: datetime) -> str:
-    """Format datetime UTC thành chuỗi timestamp Spark parse ổn định.
+    """Format datetime UTC thành chuỗi ISO có timezone để Spark parse ổn định.
 
     Input là datetime timezone-aware.
-    Output là chuỗi `yyyy-MM-dd HH:mm:ss.SSSSSS` theo UTC.
+    Output là chuỗi ISO-8601 kết thúc bằng `Z`, cùng semantics với `received_at`.
     """
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _format_datetime_for_clickhouse(value: datetime) -> str:

@@ -53,6 +53,9 @@ người học và không được tự suy đoán nội dung.
 - Không che giấu lỗi bằng giải pháp tạm thời mà chưa giải thích nguyên nhân.
 - Không đưa code mà không giải thích vai trò của từng phần quan trọng.
 - Không tuyên bố một bước đã thành công nếu chưa có output kiểm chứng.
+- Trước mỗi lần hướng dẫn hoặc chạy lại live/E2E pipeline từ đầu, phải nhắc người
+  học cleanup toàn bộ dữ liệu cũ đã ingest, bao gồm Kafka topic nếu mục tiêu là
+  quan sát một lần chạy sạch chỉ có dữ liệu mới của lần chạy hiện tại.
 - Trong câu trả lời hướng dẫn, ưu tiên đưa ngay việc người học cần thực hiện,
   command/code cần chạy và tiêu chí kiểm tra. Phần mô tả mục tiêu, lý do và kiến thức nền chỉ viết ngắn khi thật sự cần trước khi làm; nội dung đầy đủ sẽ được ghi vào `docs/quy-trinh-xay-dung-pipeline.md` sau khi người học xác nhận bước đã hoàn thành.
 - Khi một cụm thay đổi đủ ý nghĩa để commit hoặc push, phải nhắc người học trong cùng câu trả lời, kèm commit message đề xuất theo Conventional Commits và các command cần chạy. Không tách riêng thành câu trả lời chỉ nói về Git trừ khi người học đang hỏi hoặc gặp lỗi Git.

@@ -24,6 +24,19 @@ LAKEHOUSE_INCREMENTAL_STEPS = [
     ),
 ]
 
+LIVE_LAKEHOUSE_INCREMENTAL_STEPS = [
+    (
+        "Check Silver Iceberg readiness",
+        "scripts.lakehouse.check_silver_iceberg_readiness",
+        False,
+    ),
+    (
+        "Refresh Gold incremental",
+        "scripts.gold.refresh_gold_incremental",
+        True,
+    ),
+]
+
 
 def parse_args() -> argparse.Namespace:
     """Đọc CLI flags cho lakehouse incremental path."""
@@ -36,6 +49,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Truyền `--ignore-state` xuống Gold incremental refresh. "
             "Dùng khi cần bootstrap hoặc verify lại toàn bộ incremental path."
+        ),
+    )
+    parser.add_argument(
+        "--live-mode",
+        action="store_true",
+        help=(
+            "Dùng readiness check cho Silver thay vì full reconciliation. "
+            "Phù hợp khi Bronze/Silver streaming vẫn đang ghi dữ liệu mới."
         ),
     )
     return parser.parse_args()
@@ -75,8 +96,13 @@ def run_module(
 def main() -> None:
     """Chạy lakehouse incremental path theo thứ tự có checkpoint."""
     args = parse_args()
+    steps = (
+        LIVE_LAKEHOUSE_INCREMENTAL_STEPS
+        if args.live_mode
+        else LAKEHOUSE_INCREMENTAL_STEPS
+    )
 
-    for step_name, module_name, supports_ignore_state in LAKEHOUSE_INCREMENTAL_STEPS:
+    for step_name, module_name, supports_ignore_state in steps:
         run_module(
             step_name,
             module_name,
