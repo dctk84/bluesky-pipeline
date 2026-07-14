@@ -169,6 +169,37 @@ cùng một terminal vì mô hình đó dễ oversubscribe tài nguyên WSL loca
 trường production, hai phase này có thể được orchestration bằng Airflow/Spark
 cluster với resource isolation rõ ràng.
 
+## Kết quả dashboard demo
+
+Sau một clean demo run, project có hai dashboard Grafana dùng để trình bày hai
+nhánh serving khác nhau của kiến trúc.
+
+### Realtime hot path dashboard
+
+Dashboard realtime hot path đọc các bảng ClickHouse theo phút, phục vụ quan sát
+freshness, event volume, content activity, engagement, network activity và health
+của Spark micro-batches.
+
+![Bluesky realtime hot path dashboard 1](docs/assets/dashboard-realtime-hot-path-1.png)
+
+![Bluesky realtime hot path dashboard 2](docs/assets/dashboard-realtime-hot-path-2.png)
+
+### Gold analytics dashboard
+
+Dashboard Gold analytics đọc các serving marts được refresh từ Gold modeled
+Iceberg, phục vụ phân tích sâu hơn về post performance, content quality,
+conversation, actor activity, network growth và data quality.
+
+![Bluesky Gold analytics dashboard 1](docs/assets/dashboard-gold-analytics-1.png)
+
+![Bluesky Gold analytics dashboard 2](docs/assets/dashboard-gold-analytics-2.png)
+
+![Bluesky Gold analytics dashboard 3](docs/assets/dashboard-gold-analytics-3.png)
+
+![Bluesky Gold analytics dashboard 4](docs/assets/dashboard-gold-analytics-4.png)
+
+![Bluesky Gold analytics dashboard 5](docs/assets/dashboard-gold-analytics-5.png)
+
 Chạy Spark Bronze writer:
 
 ```bash
