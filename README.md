@@ -78,8 +78,8 @@ Lưu ý:
 - Sau khi bật Trino/Hive Metastore lần đầu, cần build lại Silver Iceberg để các
   bảng được đăng ký vào metastore mới.
 - Lakehouse Gold không chỉ là metric aggregate; project đã có contract Gold
-  modeled fact/dim và đang chuẩn hóa bộ analytics metrics v1 trước khi load các
-  serving marts sâu hơn vào ClickHouse.
+  modeled fact/dim, bộ analytics metrics v1, incremental refresh và dashboard
+  Grafana cho các serving marts chính.
 - ClickHouse serving layer hiện có các bảng lakehouse serving marts:
   - `bluesky.gold_event_volume_by_type`
   - `bluesky.gold_post_engagement_summary`
@@ -153,6 +153,7 @@ Gold analytics refresh phase:
 ```bash
 PYTHONPATH=src:. python scripts/lakehouse/run_lakehouse_path_incremental.py \
   --live-mode \
+  --ignore-state \
   --gold-mode standard
 ```
 
@@ -160,6 +161,9 @@ Trong đó:
 
 - `--live-mode` dùng readiness check nhẹ cho Silver Iceberg đã được live pipeline
   ghi trước đó.
+- `--ignore-state` dùng cho lần bootstrap Gold sau cleanup để xử lý toàn bộ dữ
+  liệu Silver hiện có. Với các lần refresh định kỳ sau đó, có thể bỏ flag này để
+  chạy incremental theo state.
 - `--gold-mode fast` phù hợp khi chỉ muốn refresh dashboard nhanh.
 - `--gold-mode standard` thêm Trino Gold modeled check, phù hợp cho demo/chụp ảnh.
 - `--gold-mode strict` thêm full serving reconciliation, phù hợp cho audit/debug.
@@ -199,6 +203,8 @@ conversation, actor activity, network growth và data quality.
 ![Bluesky Gold analytics dashboard 4](docs/assets/dashboard-gold-analytics-4.png)
 
 ![Bluesky Gold analytics dashboard 5](docs/assets/dashboard-gold-analytics-5.png)
+
+## Các lệnh chạy riêng khi debug
 
 Chạy Spark Bronze writer:
 
@@ -306,6 +312,34 @@ ORDER BY
 Nếu query có `$__timeFilter` không trả dữ liệu, kiểm tra trước bằng query không có
 time filter hoặc chỉnh time picker để bao đúng khoảng `window_start` đang có trong
 ClickHouse.
+
+## Known Limitations
+
+Project này là bản MVP/portfolio chạy trên máy local, chưa phải production
+deployment. Các giới hạn chính cần trình bày trung thực:
+
+- Spark hiện chạy ở `local[2]` để phù hợp tài nguyên WSL/local. Production nên
+  chạy Spark Standalone, Kubernetes hoặc một resource manager tương đương để có
+  resource isolation, retry và scaling rõ ràng hơn.
+- Airflow chưa được triển khai trong MVP. Gold analytics refresh đang chạy thủ
+  công sau live pipeline; Airflow là hướng mở rộng để schedule Gold incremental,
+  data quality, compaction, snapshot expiration và backfill.
+- Demo local chạy theo hai phase độc lập: live streaming trước, dừng pipeline,
+  rồi chạy Gold analytics refresh. Cách này giúp tránh oversubscribe tài nguyên
+  local, nhưng production nên tách tài nguyên và orchestration thay vì phụ thuộc
+  thao tác thủ công.
+- State của Gold incremental hiện lưu bằng local JSON trong `data/state/`. Cách
+  này đủ cho học tập/demo, nhưng production nên dùng durable metadata store hoặc
+  orchestrator state.
+- Project chưa tuyên bố exactly-once end-to-end. Luồng hiện tại có checkpoint,
+  deterministic keys và reconciliation, nhưng ClickHouse serving writes vẫn cần
+  được xem theo hướng at-least-once/idempotent-by-design tùy từng mart.
+- Network growth là observed network activity từ public stream đã ingest, không
+  phải follower count toàn cục của Bluesky. Một số delete/follow event có thể
+  thiếu context nếu create event tương ứng không nằm trong dữ liệu đã observe.
+- Dashboard operational hiện tại đủ cho demo local, nhưng production monitoring
+  cần bổ sung Prometheus metrics, Kafka consumer lag, alerting, service health,
+  resource usage và runbook xử lý sự cố.
 
 ## Hướng phát triển tiếp theo
 

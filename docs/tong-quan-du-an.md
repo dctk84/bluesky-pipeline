@@ -1323,13 +1323,13 @@ Spark Structured Streaming tính trước các bảng theo phút như
 `gold_engagement_1m_stream` và `gold_network_activity_1m_stream`, sau đó ghi vào
 ClickHouse để Grafana query nhẹ.
 
-Với lakehouse path, hướng thiết kế dài hạn là:
+Với lakehouse path, thiết kế hiện tại là:
 
 ```text
 Silver clean events
 → Gold modeled fact/dim hoặc semantic marts
 → Trino ad-hoc analytics
-→ Gold aggregated metrics
+→ Gold analytics / serving metrics
 → ClickHouse serving marts
 → Grafana
 ```
@@ -1346,7 +1346,8 @@ hỏi phân tích sâu hơn, ví dụ:
 - Network growth quan sát được theo target actor thay đổi ra sao.
 
 Bộ metric lakehouse serving v1 được mô tả trong
-`docs/gold-analytics-metrics-v1.md`. Các bảng cũ như
+`docs/gold-analytics-metrics-v1.md` và đã được triển khai cho dashboard
+`Bluesky Gold Analytics`. Các bảng cũ như
 `gold_event_volume_by_type` và `gold_post_engagement_summary` chỉ là checkpoint
 serving tối thiểu trong giai đoạn đầu, không phải thiết kế analytics cuối cùng.
 
@@ -1358,7 +1359,7 @@ mới được insert. Trong project hiện tại, realtime marts đang được
 bằng Spark trước khi insert vào ClickHouse; Materialized View là hướng tối ưu có
 thể cân nhắc sau khi Gold modeled tables và serving use case ổn định.
 
-Bảng dự kiến:
+Bảng có thể cân nhắc trong các milestone mở rộng sau:
 
 ```text
 gold_event_volume_1m
@@ -1370,11 +1371,16 @@ gold_activity_spike_alerts
 gold_pipeline_quality_metrics
 ```
 
-Trong MVP hiện tại, project đã có một số bảng aggregate/serving như:
+Trong MVP hiện tại, project đã có các bảng aggregate/serving chính như:
 
 ```text
 bluesky.gold_event_volume_by_type
 bluesky.gold_post_engagement_summary
+bluesky.gold_post_performance
+bluesky.gold_content_quality_hourly
+bluesky.gold_thread_conversation_summary
+bluesky.gold_actor_activity_daily
+bluesky.gold_network_growth_daily
 bluesky.gold_event_volume_1m_stream
 bluesky.gold_content_activity_1m_stream
 bluesky.gold_engagement_1m_stream
@@ -1386,7 +1392,7 @@ Các bảng realtime marts thuộc fast path có thể được tính trực ti�
 Spark Structured Streaming để đạt freshness thấp. Chúng không đại diện cho toàn
 bộ tầng Gold lakehouse. Chúng là **serving marts tối ưu latency**.
 
-Không cần triển khai toàn bộ bảng trong MVP đầu tiên.
+Không cần triển khai toàn bộ bảng mở rộng trong MVP đầu tiên.
 
 ---
 
@@ -2129,25 +2135,28 @@ Không thuộc phạm vi core streaming analytics.
 
 ## 27. Deliverables cuối dự án
 
-Repository cần có:
+Repository MVP hiện tại cần có:
 
 - Docker Compose có thể chạy lại.
 - Hướng dẫn setup.
-- Architecture diagram.
-- Data flow diagram.
 - Event schema.
 - Topic design.
 - Bronze/Silver storage layout.
 - ClickHouse schema.
-- Airflow DAGs.
 - Grafana dashboards.
 - Unit tests.
-- Integration tests.
-- Failure experiment results.
-- Performance benchmark results.
 - Design decisions.
 - Trade-offs và limitations.
 - Demo video hoặc screenshots.
+
+Các deliverables phù hợp cho milestone production-like tiếp theo:
+
+- Architecture diagram và data flow diagram dạng hình hóa chính thức.
+- Airflow DAGs cho Gold incremental, data quality, compaction và backfill.
+- Integration tests chạy với hạ tầng container.
+- Failure experiment results.
+- Performance benchmark results.
+- Alerting rules và runbook vận hành.
 
 ---
 

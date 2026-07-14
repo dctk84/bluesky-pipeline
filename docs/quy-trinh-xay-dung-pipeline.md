@@ -48,6 +48,7 @@ bài học của bước lớn tương ứng.
 35. [Incremental hóa các Gold analytics marts còn lại](#bước-35-incremental-hóa-các-gold-analytics-marts-còn-lại)
 36. [Đưa incremental Gold vào lakehouse E2E path](#bước-36-đưa-incremental-gold-vào-lakehouse-e2e-path)
 37. [Cố định Hive Metastore Derby DB trong volume persist](#bước-37-cố-định-hive-metastore-derby-db-trong-volume-persist)
+38. [Final verification cho bản portfolio](#bước-38-final-verification-cho-bản-portfolio)
 
 ## Bước 1: Xác định mục tiêu và kiến trúc tổng thể
 
@@ -1992,3 +1993,54 @@ sàng chạy lại clean E2E để bootstrap lại Silver/Gold metadata trên me
 - Derby embedded chỉ phù hợp cho môi trường local học tập. Trong production nên
   dùng external database như PostgreSQL/MySQL cho Hive Metastore để tránh vấn đề
   persistence, lock và recovery.
+
+## Bước 38: Final verification cho bản portfolio
+
+**Mục tiêu**
+
+Kiểm tra lần cuối rằng repo ở trạng thái sạch, code Python không lỗi cú pháp,
+test tự động pass và tài liệu demo có đủ ảnh dashboard trước khi xem project là
+bản portfolio sẵn sàng giới thiệu.
+
+**Vì sao cần thực hiện**
+
+Một data project không chỉ cần pipeline chạy được một lần. Trước khi đưa vào
+portfolio hoặc trình bày phỏng vấn, cần có bằng chứng tối thiểu rằng repository
+đang nhất quán: không còn thay đổi chưa commit, test pass, script compile được và
+tài liệu demo có artifact quan sát được.
+
+**Kết quả sau khi hoàn thành**
+
+Final sanity check đã pass:
+
+```text
+git status: working tree clean
+pytest: 11 passed
+docs/assets:
+- dashboard-gold-analytics-1.png
+- dashboard-gold-analytics-2.png
+- dashboard-gold-analytics-3.png
+- dashboard-gold-analytics-4.png
+- dashboard-gold-analytics-5.png
+- dashboard-realtime-hot-path-1.png
+- dashboard-realtime-hot-path-2.png
+```
+
+Ngoài `pytest`, toàn bộ file Python trong `src/`, `scripts/` và `tests/` đã được
+kiểm tra bằng `py_compile`.
+
+**Các file liên quan**
+
+- `README.md`
+- `docs/assets/`
+- `tests/test_event_envelope.py`
+- `tests/test_gold_incremental_orchestrator.py`
+
+**Kiến thức cần ghi nhớ**
+
+- Final verification nên kiểm tra cả code, test, trạng thái Git và artifact demo,
+  không chỉ nhìn dashboard đang có dữ liệu.
+- Ảnh dashboard giúp người xem nhanh chóng hiểu output của project, nhưng vẫn
+  cần README/runbook mô tả cách reproduce.
+- Working tree clean sau khi test pass là tín hiệu tốt để tạo tag, push hoặc bắt
+  đầu viết phần thuyết trình phỏng vấn.
