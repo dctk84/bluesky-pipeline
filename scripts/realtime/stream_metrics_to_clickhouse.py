@@ -6,7 +6,17 @@ from time import perf_counter
 
 from pyspark import StorageLevel
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, count, date_trunc, from_json, lit, when
+from pyspark.sql.functions import (
+    coalesce,
+    col,
+    count,
+    date_trunc,
+    date_format,
+    from_json,
+    lit,
+    to_timestamp,
+    when,
+)
 
 from bluesky_pipeline.schemas.bronze_schemas import (
     POST_RECORD_SCHEMA,
@@ -50,9 +60,16 @@ def build_clickhouse_payload(
     Input chính là DataFrame gồm window_start, metric column và count column.
     Output là chuỗi JSONEachRow dùng làm HTTP body cho ClickHouse.
     """
-    # Realtime metrics hiện có cardinality thấp. Nếu metric mở rộng sang top user,
-    # hashtag hoặc domain, cần đổi sang JDBC/connector hoặc foreachPartition.
-    rows = batch_df.select("window_start", metric_column, count_column).collect()
+    # Format timestamp trong Spark để tránh Python driver đổi TimestampType sang
+    # timezone local khi collect về memory.
+    rows = batch_df.select(
+        date_format(
+            col("window_start"),
+            "yyyy-MM-dd HH:mm:ss",
+        ).alias("window_start"),
+        metric_column,
+        count_column,
+    ).collect()
     lines = []
 
     for row in rows:
@@ -460,7 +477,12 @@ def main() -> None:
         col("event.collection").alias("collection"),
         col("event.operation").alias("operation"),
         col("event.payload.commit.record.reply.root.uri").alias("reply_root_uri"),
-        col("kafka_timestamp").alias("event_timestamp"),
+        # Hot path dashboard dùng ingestion time để phản ánh thời điểm pipeline
+        # nhận event. Kafka timestamp chỉ là fallback cho event cũ thiếu envelope.
+        coalesce(
+            to_timestamp(col("event.received_at")),
+            col("kafka_timestamp"),
+        ).alias("event_timestamp"),
     ).filter(
         col("event_kind") == "commit"
     ).withColumn(
