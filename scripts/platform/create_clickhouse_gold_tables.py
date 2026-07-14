@@ -1,7 +1,7 @@
 """Tạo database và các Gold serving tables trong ClickHouse local."""
 
-from bluesky_pipeline.clickhouse_client import execute_clickhouse
-from bluesky_pipeline.gold_tables import (
+from bluesky_pipeline.clients.clickhouse import execute_clickhouse
+from bluesky_pipeline.schemas.gold_tables import (
     CLICKHOUSE_DATABASE,
     GOLD_ACTOR_ACTIVITY_DAILY_TABLE,
     GOLD_CONTENT_QUALITY_HOURLY_TABLE,

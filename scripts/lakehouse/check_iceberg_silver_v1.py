@@ -3,11 +3,11 @@
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count, sum as spark_sum, when
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.silver_transformations import (
+from bluesky_pipeline.transforms.silver_transformations import (
     SILVER_TRANSFORMATIONS,
     read_bronze_commit_events,
 )

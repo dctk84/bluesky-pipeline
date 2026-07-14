@@ -4,8 +4,8 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, from_json
 from pyspark.sql.types import BooleanType, LongType, StringType, StructField, StructType
 
-from bluesky_pipeline.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
-from bluesky_pipeline.spark_session import create_spark_session
+from bluesky_pipeline.schemas.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
+from bluesky_pipeline.config.spark import create_spark_session
 
 
 SUBJECT_SCHEMA = StructType(

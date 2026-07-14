@@ -20,7 +20,7 @@ STEPS = [
     ),
     (
         "Check Gold serving v1",
-        "scripts.gold.check_serving_v1",
+        "scripts.gold.check.check_serving_v1",
     ),
 ]
 

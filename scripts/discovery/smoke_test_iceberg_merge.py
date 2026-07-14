@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pyspark.sql import SparkSession
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_GOLD_NAMESPACE,
     create_iceberg_spark_session,

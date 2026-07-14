@@ -8,12 +8,12 @@ from pyspark import StorageLevel
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count, date_trunc, from_json, lit, when
 
-from bluesky_pipeline.bronze_schemas import (
+from bluesky_pipeline.schemas.bronze_schemas import (
     POST_RECORD_SCHEMA,
     build_commit_envelope_schema,
 )
-from bluesky_pipeline.clickhouse_client import execute_clickhouse
-from bluesky_pipeline.gold_tables import (
+from bluesky_pipeline.clients.clickhouse import execute_clickhouse
+from bluesky_pipeline.schemas.gold_tables import (
     GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,
@@ -21,13 +21,13 @@ from bluesky_pipeline.gold_tables import (
     GOLD_REALTIME_METRICS_1M_STREAM_CHECKPOINT_LOCATION,
     GOLD_REALTIME_STREAM_BATCHES_TABLE,
 )
-from bluesky_pipeline.kafka_config import (
+from bluesky_pipeline.config.kafka import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_RAW_EVENTS_TOPIC,
     SPARK_KAFKA_MAX_OFFSETS_PER_TRIGGER,
     SPARK_KAFKA_CONNECTOR_PACKAGE,
 )
-from bluesky_pipeline.spark_session import create_spark_session
+from bluesky_pipeline.config.spark import create_spark_session
 
 
 def format_clickhouse_datetime(value: datetime) -> str:

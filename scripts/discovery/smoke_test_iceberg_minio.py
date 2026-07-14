@@ -1,6 +1,6 @@
 """Smoke test Spark Iceberg table trên MinIO."""
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     create_iceberg_spark_session,
 )

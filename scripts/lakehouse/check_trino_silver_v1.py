@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_SILVER_NAMESPACE,
     ICEBERG_SILVER_TABLES,

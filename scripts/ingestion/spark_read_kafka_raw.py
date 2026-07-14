@@ -3,7 +3,7 @@
 from pyspark.sql.functions import col, date_format, from_json, to_date
 from pyspark.sql.types import LongType, MapType, StringType, StructField, StructType
 
-from bluesky_pipeline.bronze_tables import (
+from bluesky_pipeline.schemas.bronze_tables import (
     BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
     BRONZE_ACCOUNT_EVENTS_PATH,
     BRONZE_COMMIT_CHECKPOINT_LOCATION,
@@ -12,9 +12,9 @@ from bluesky_pipeline.bronze_tables import (
     BRONZE_IDENTITY_EVENTS_PATH,
 )
 
-from bluesky_pipeline.spark_session import create_spark_session
+from bluesky_pipeline.config.spark import create_spark_session
 
-from bluesky_pipeline.kafka_config import (
+from bluesky_pipeline.config.kafka import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_RAW_EVENTS_TOPIC,
     SPARK_KAFKA_CONNECTOR_PACKAGE,

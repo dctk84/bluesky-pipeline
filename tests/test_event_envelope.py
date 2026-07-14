@@ -1,4 +1,4 @@
-from bluesky_pipeline.event_envelope import build_event_envelope
+from bluesky_pipeline.transforms.event_envelope import build_event_envelope
 
 
 def test_build_event_envelope_adds_expected_metadata_for_create_event():

@@ -1,12 +1,12 @@
 """Build toàn bộ Silver v1 dạng Iceberg trực tiếp từ Bronze."""
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_SILVER_NAMESPACE,
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.silver_transformations import (
+from bluesky_pipeline.transforms.silver_transformations import (
     SILVER_TRANSFORMATIONS,
     read_bronze_commit_events,
 )

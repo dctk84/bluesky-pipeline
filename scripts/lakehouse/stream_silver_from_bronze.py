@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pyspark.errors import AnalysisException
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_SILVER_NAMESPACE,
     ICEBERG_SILVER_STREAM_CHECKPOINT_LOCATION,
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
-from bluesky_pipeline.silver_transformations import (
+from bluesky_pipeline.schemas.bronze_tables import BRONZE_COMMIT_EVENTS_PATH
+from bluesky_pipeline.transforms.silver_transformations import (
     SILVER_TRANSFORMATIONS,
     read_bronze_commit_events_stream,
 )

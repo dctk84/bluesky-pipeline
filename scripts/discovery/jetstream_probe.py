@@ -4,7 +4,7 @@ from pathlib import Path
 
 import websockets
 
-from bluesky_pipeline.event_envelope import build_event_envelope
+from bluesky_pipeline.transforms.event_envelope import build_event_envelope
 
 WANTED_COLLECTIONS = [
     "app.bsky.feed.post",

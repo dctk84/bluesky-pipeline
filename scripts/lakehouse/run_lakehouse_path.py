@@ -27,7 +27,7 @@ STEPS = [
     ),
     (
         "Refresh Gold serving from lakehouse Iceberg",
-        "scripts.gold.refresh_serving_from_iceberg",
+        "scripts.gold.refresh.refresh_serving_from_iceberg",
     ),
 ]
 

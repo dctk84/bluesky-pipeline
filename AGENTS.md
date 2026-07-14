@@ -175,7 +175,7 @@ Mô tả hệ thống đã có thêm khả năng hoặc thành phần gì sau b�
 Chỉ ghi đường dẫn tham chiếu đến các file hoặc thư mục trong repository, ví dụ:
 
 - `docker-compose.yml`
-- `src/bluesky_pipeline/event_envelope.py`
+- `src/bluesky_pipeline/transforms/event_envelope.py`
 - `tests/test_event_envelope.py`
 - `docs/tong-quan-du-an.md`
 

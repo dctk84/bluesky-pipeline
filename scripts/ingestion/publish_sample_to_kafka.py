@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from confluent_kafka import Producer
-from bluesky_pipeline.kafka_config import (
+from bluesky_pipeline.config.kafka import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_RAW_EVENTS_TOPIC,
 )

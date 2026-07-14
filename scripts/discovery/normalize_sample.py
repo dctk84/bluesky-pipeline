@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from bluesky_pipeline.normalize_event import normalize_event
+from bluesky_pipeline.transforms.normalize_event import normalize_event
 
 
 SAMPLE_PATH = Path("data/probe/jetstream_sample.jsonl")

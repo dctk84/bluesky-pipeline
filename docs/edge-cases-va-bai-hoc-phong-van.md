@@ -90,7 +90,7 @@ event là cần thiết để downstream hiểu lifecycle của dữ liệu.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/silver_transformations.py`
+- `src/bluesky_pipeline/transforms/silver_transformations.py`
 - `docs/silver-schema-v1.md`
 - `lakehouse.silver_v1.silver_deleted_records`
 
@@ -131,8 +131,8 @@ profile dữ liệu thật và normalize theo domain semantics, không chỉ the
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/bronze_schemas.py`
-- `src/bluesky_pipeline/silver_transformations.py`
+- `src/bluesky_pipeline/schemas/bronze_schemas.py`
+- `src/bluesky_pipeline/transforms/silver_transformations.py`
 - `docs/jetstream-schema-notes.md`
 
 ## Case 3: Non-commit events không nên ép vào layout commit
@@ -171,9 +171,9 @@ cho các event không cùng schema chỉ vì chúng đến từ cùng WebSocket.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/event_envelope.py`
+- `src/bluesky_pipeline/transforms/event_envelope.py`
 - `scripts/ingestion/spark_read_kafka_raw.py`
-- `src/bluesky_pipeline/bronze_tables.py`
+- `src/bluesky_pipeline/schemas/bronze_tables.py`
 
 ## Case 4: Window năm 2025 trong dashboard năm 2026
 
@@ -277,8 +277,8 @@ freshness.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/gold_transformations.py`
-- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/transforms/gold_transformations.py`
+- `src/bluesky_pipeline/transforms/gold_analytics_transformations.py`
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
 
@@ -346,8 +346,8 @@ columns và giúp metric dễ giải thích hơn.
 
 **File hoặc bảng liên quan**
 
-- `scripts/gold/refresh_gold_actor_activity_daily_incremental.py`
-- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `scripts/gold/refresh/refresh_gold_actor_activity_daily_incremental.py`
+- `src/bluesky_pipeline/transforms/gold_analytics_transformations.py`
 - `lakehouse.gold_v1.gold_fact_engagement_events`
 - `lakehouse.gold_v1.gold_dim_posts`
 - `bluesky.gold_actor_activity_daily`
@@ -441,7 +441,7 @@ duplicate.
 **File hoặc bảng liên quan**
 
 - `scripts/realtime/stream_metrics_to_clickhouse.py`
-- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/schemas/gold_tables.py`
 - `docs/tong-quan-du-an.md`
 
 ## Case 7: Local Spark hiện chưa phải Spark Standalone multi-worker
@@ -457,7 +457,7 @@ Spark Standalone, nhưng helper hiện tại tạo SparkSession bằng:
 
 **Cách phát hiện**
 
-Đọc `src/bluesky_pipeline/spark_session.py` và đối chiếu với mục tiêu dài hạn
+Đọc `src/bluesky_pipeline/config/spark.py` và đối chiếu với mục tiêu dài hạn
 trong `docs/tong-quan-du-an.md`.
 
 **Nguyên nhân**
@@ -479,7 +479,7 @@ worker, executor failure hoặc cluster resource management.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/spark_session.py`
+- `src/bluesky_pipeline/config/spark.py`
 - `docs/tong-quan-du-an.md`
 
 ## Case 8: Bronze Parquet schema mismatch cột `partition`
@@ -521,7 +521,7 @@ Bronze cũng cần ổn định, dù Bronze là raw layer.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/bronze_schemas.py`
+- `src/bluesky_pipeline/schemas/bronze_schemas.py`
 - `scripts/ingestion/spark_read_kafka_raw.py`
 - `scripts/lakehouse/stream_silver_from_bronze.py`
 - `logs/live_pipeline/silver-stream.log`
@@ -603,7 +603,7 @@ subquery trước, alias không trùng cột gốc, rồi sort/filter ở tầng
 **File hoặc bảng liên quan**
 
 - `bluesky.gold_actor_activity_daily`
-- `src/bluesky_pipeline/gold_tables.py`
+- `src/bluesky_pipeline/schemas/gold_tables.py`
 - `docs/gold-analytics-metrics-v1.md`
 
 ## Case 10: ClickHouse `NO_COMMON_TYPE` khi `UNION ALL` trộn `UInt64` và `Int64`
@@ -665,8 +665,8 @@ type contract ở tầng serving/dashboard.
 **File hoặc bảng liên quan**
 
 - `bluesky.gold_network_growth_daily`
-- `src/bluesky_pipeline/gold_tables.py`
-- `scripts/gold/build_network_growth_daily_from_gold_modeled.py`
+- `src/bluesky_pipeline/schemas/gold_tables.py`
+- `scripts/gold/build/build_network_growth_daily_from_gold_modeled.py`
 
 ## Case 11: Follow delete không luôn lookup được `target_actor_did`
 
@@ -732,8 +732,8 @@ metric thay vì âm thầm drop hoặc gán sai target.
 
 - `bluesky.gold_network_growth_daily`
 - `lakehouse.gold_v1.gold_fact_network_events`
-- `src/bluesky_pipeline/gold_transformations.py`
-- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `src/bluesky_pipeline/transforms/gold_transformations.py`
+- `src/bluesky_pipeline/transforms/gold_analytics_transformations.py`
 
 ## Case 12: Cleanup Iceberg phải xử lý cả Hive Metastore và data files
 
@@ -793,7 +793,7 @@ lake” đơn giản và “table format” có catalog cộng với incremental
 **File hoặc bảng liên quan**
 
 - `scripts/platform/cleanup_ingested_data.py`
-- `src/bluesky_pipeline/iceberg_config.py`
+- `src/bluesky_pipeline/config/iceberg.py`
 - `lakehouse.silver_v1.*`
 - `lakehouse.gold_v1.*`
 - Hive Metastore
@@ -865,7 +865,7 @@ exactly-once guarantee end-to-end.
 
 **File hoặc bảng liên quan**
 
-- `src/bluesky_pipeline/gold_transformations.py`
+- `src/bluesky_pipeline/transforms/gold_transformations.py`
 - `scripts/lakehouse/check_trino_gold_modeled_v1.py`
 - `lakehouse.silver_v1.silver_follows`
 - `lakehouse.gold_v1.gold_fact_network_events`
@@ -945,8 +945,8 @@ thường nên là một branch logic riêng thay vì ép thành một timestamp
 
 **File hoặc bảng liên quan**
 
-- `scripts/gold/refresh_gold_facts_incremental.py`
-- `src/bluesky_pipeline/incremental_refresh.py`
+- `scripts/gold/refresh/refresh_gold_facts_incremental.py`
+- `src/bluesky_pipeline/state/incremental_refresh.py`
 - `lakehouse.silver_v1.silver_posts`
 - `lakehouse.silver_v1.silver_engagements`
 - `lakehouse.silver_v1.silver_follows`
@@ -1030,9 +1030,9 @@ gian chạy job.
 
 **File hoặc bảng liên quan**
 
-- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
-- `scripts/gold/check_content_quality_hourly_reconciliation.py`
-- `src/bluesky_pipeline/gold_analytics_transformations.py`
+- `scripts/gold/refresh/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/check/check_content_quality_hourly_reconciliation.py`
+- `src/bluesky_pipeline/transforms/gold_analytics_transformations.py`
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
 
@@ -1182,11 +1182,11 @@ nhưng vẫn phải tương thích chính xác với data-plane timestamp.
 
 **File hoặc bảng liên quan**
 
-- `scripts/gold/refresh_gold_facts_incremental.py`
-- `scripts/gold/refresh_gold_dimensions_incremental.py`
-- `scripts/gold/refresh_gold_content_quality_hourly_incremental.py`
-- `scripts/gold/incremental_serving_utils.py`
-- `src/bluesky_pipeline/event_envelope.py`
+- `scripts/gold/refresh/refresh_gold_facts_incremental.py`
+- `scripts/gold/refresh/refresh_gold_dimensions_incremental.py`
+- `scripts/gold/refresh/refresh_gold_content_quality_hourly_incremental.py`
+- `scripts/gold/common/incremental_serving_utils.py`
+- `src/bluesky_pipeline/transforms/event_envelope.py`
 - `logs/live_pipeline/gold-incremental.log`
 - `lakehouse.silver_v1.*`
 
@@ -1389,6 +1389,6 @@ Exit code 255 đồng loạt trên nhiều container thường là dấu hiệu 
 - `scripts/e2e/run_live_pipeline.py`
 - `scripts/lakehouse/run_lakehouse_path_incremental.py`
 - `scripts/ingestion/spark_read_kafka_raw.py`
-- `src/bluesky_pipeline/spark_session.py`
-- `src/bluesky_pipeline/kafka_config.py`
+- `src/bluesky_pipeline/config/spark.py`
+- `src/bluesky_pipeline/config/kafka.py`
 - `scripts/platform/cleanup_ingested_data.py`
