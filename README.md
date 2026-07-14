@@ -10,6 +10,7 @@ Tài liệu kỹ thuật chi tiết:
 - [Gold data model v1](docs/gold-data-model-v1.md)
 - [Gold analytics metrics v1](docs/gold-analytics-metrics-v1.md)
 - [Script inventory](docs/script-inventory.md)
+- [Project walkthrough khi phỏng vấn](docs/phong-van-project-walkthrough.md)
 
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
 dashboard:
