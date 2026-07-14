@@ -1,7 +1,7 @@
 """Kiểm tra toàn bộ realtime metrics trong ClickHouse."""
 
-from bluesky_pipeline.clickhouse_client import execute_clickhouse
-from bluesky_pipeline.gold_tables import (
+from bluesky_pipeline.clients.clickhouse import execute_clickhouse
+from bluesky_pipeline.schemas.gold_tables import (
     GOLD_CONTENT_ACTIVITY_1M_STREAM_TABLE,
     GOLD_ENGAGEMENT_1M_STREAM_TABLE,
     GOLD_EVENT_VOLUME_1M_STREAM_TABLE,

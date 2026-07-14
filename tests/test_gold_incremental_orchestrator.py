@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from scripts.gold.refresh_gold_incremental import (
+from scripts.gold.refresh.refresh_gold_incremental import (
     MODE_ENV,
     MODE_FAST,
     MODE_STANDARD,

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pyspark.sql import DataFrame, SparkSession
 
-from bluesky_pipeline.gold_transformations import GOLD_TRANSFORMATIONS
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.transforms.gold_transformations import GOLD_TRANSFORMATIONS
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_GOLD_NAMESPACE,
     ICEBERG_GOLD_TABLES,

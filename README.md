@@ -18,6 +18,31 @@ dashboard:
   Silver chạy theo streaming để dữ liệu sạch được cập nhật liên tục.
 - Realtime fast path: ưu tiên freshness cho dashboard gần thời gian thực.
 
+## Cấu trúc repository
+
+```text
+src/bluesky_pipeline/
+  clients/      helper giao tiếp service bên ngoài, ví dụ ClickHouse
+  config/       cấu hình runtime cho Kafka, Spark, Iceberg
+  schemas/      schema, table name và path contract
+  state/        contract/state cho incremental refresh
+  transforms/   logic biến đổi Bronze, Silver, Gold
+
+scripts/
+  discovery/    probe và phân tích dữ liệu nguồn
+  ingestion/    publish sample và ghi Bronze
+  e2e/          live pipeline runner cho demo local
+  lakehouse/    build/check Silver, Gold modeled và lakehouse runners
+  gold/
+    build/      build Gold serving marts
+    load/       load marts vào ClickHouse
+    check/      reconciliation và validation
+    refresh/    incremental refresh orchestration
+    common/     helper dùng chung cho Gold scripts
+  realtime/     hot-path metrics vào ClickHouse
+  platform/     cleanup và setup object local
+```
+
 ## Trạng thái hiện tại
 
 Project hiện có lakehouse path local end-to-end:
@@ -191,13 +216,13 @@ Các script con vẫn có thể chạy riêng khi cần debug từng tầng:
 PYTHONPATH=src python scripts/lakehouse/build_iceberg_silver_v1.py
 PYTHONPATH=src python scripts/lakehouse/check_iceberg_silver_v1.py
 PYTHONPATH=src python scripts/lakehouse/check_trino_silver_v1.py
-PYTHONPATH=src:. python scripts/gold/refresh_serving_from_iceberg.py
-PYTHONPATH=src python scripts/gold/check_event_volume_reconciliation.py
-PYTHONPATH=src python scripts/gold/check_post_engagement_reconciliation.py
-PYTHONPATH=src python scripts/gold/check_thread_conversation_summary_reconciliation.py
-PYTHONPATH=src python scripts/gold/check_actor_activity_daily_reconciliation.py
-PYTHONPATH=src python scripts/gold/check_network_growth_daily_reconciliation.py
-PYTHONPATH=src:. python scripts/gold/check_serving_v1.py
+PYTHONPATH=src:. python scripts/gold/refresh/refresh_serving_from_iceberg.py
+PYTHONPATH=src python scripts/gold/check/check_event_volume_reconciliation.py
+PYTHONPATH=src python scripts/gold/check/check_post_engagement_reconciliation.py
+PYTHONPATH=src python scripts/gold/check/check_thread_conversation_summary_reconciliation.py
+PYTHONPATH=src python scripts/gold/check/check_actor_activity_daily_reconciliation.py
+PYTHONPATH=src python scripts/gold/check/check_network_growth_daily_reconciliation.py
+PYTHONPATH=src:. python scripts/gold/check/check_serving_v1.py
 ```
 
 ## Realtime fast path
@@ -250,3 +275,30 @@ ORDER BY
 Nếu query có `$__timeFilter` không trả dữ liệu, kiểm tra trước bằng query không có
 time filter hoặc chỉnh time picker để bao đúng khoảng `window_start` đang có trong
 ClickHouse.
+
+## Hướng phát triển tiếp theo
+
+### Orchestration bằng Airflow
+
+Trong MVP local hiện tại, Gold analytics refresh được chạy thủ công sau khi dừng
+live streaming pipeline:
+
+```bash
+PYTHONPATH=src:. python scripts/lakehouse/run_lakehouse_path_incremental.py \
+  --live-mode \
+  --gold-mode standard
+```
+
+Trong phiên bản production-like tiếp theo, Airflow có thể được thêm vào để
+orchestrate các workflow hữu hạn:
+
+- Gold incremental refresh từ Silver Iceberg sang Gold modeled.
+- Refresh Gold serving marts vào ClickHouse.
+- Data quality checks và reconciliation.
+- Iceberg compaction.
+- Snapshot expiration.
+- Backfill hoặc rebuild khi cần replay dữ liệu.
+
+Airflow không xử lý từng streaming event và không thay thế Kafka/Spark Structured
+Streaming trên hot path. Vai trò của Airflow là lập lịch, retry, theo dõi lịch sử
+chạy và điều phối các job batch/incremental có điểm bắt đầu và kết thúc rõ ràng.

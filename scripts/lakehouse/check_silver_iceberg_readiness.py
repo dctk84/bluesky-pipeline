@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pyspark.errors import AnalysisException
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_SILVER_TABLES,
     create_iceberg_spark_session,
 )

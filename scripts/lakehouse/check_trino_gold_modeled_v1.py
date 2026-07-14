@@ -6,7 +6,7 @@ import csv
 import os
 import subprocess
 
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_GOLD_NAMESPACE,
     ICEBERG_GOLD_TABLES,

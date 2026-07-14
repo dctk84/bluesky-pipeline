@@ -12,14 +12,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from bluesky_pipeline.bronze_tables import (
+from bluesky_pipeline.schemas.bronze_tables import (
     BRONZE_ACCOUNT_CHECKPOINT_LOCATION,
     BRONZE_COMMIT_CHECKPOINT_LOCATION,
     BRONZE_EVENT_PATHS,
     BRONZE_IDENTITY_CHECKPOINT_LOCATION,
 )
-from bluesky_pipeline.clickhouse_client import execute_clickhouse
-from bluesky_pipeline.gold_tables import (
+from bluesky_pipeline.clients.clickhouse import execute_clickhouse
+from bluesky_pipeline.schemas.gold_tables import (
     GOLD_ACTOR_ACTIVITY_DAILY_PATH,
     GOLD_ACTOR_ACTIVITY_DAILY_TABLE,
     GOLD_CONTENT_QUALITY_HOURLY_PATH,
@@ -41,7 +41,7 @@ from bluesky_pipeline.gold_tables import (
     GOLD_THREAD_CONVERSATION_SUMMARY_PATH,
     GOLD_THREAD_CONVERSATION_SUMMARY_TABLE,
 )
-from bluesky_pipeline.iceberg_config import (
+from bluesky_pipeline.config.iceberg import (
     ICEBERG_CATALOG_NAME,
     ICEBERG_GOLD_NAMESPACE,
     ICEBERG_GOLD_TABLES,
@@ -51,7 +51,7 @@ from bluesky_pipeline.iceberg_config import (
     ICEBERG_WAREHOUSE_PATH,
     create_iceberg_spark_session,
 )
-from bluesky_pipeline.kafka_config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_EVENTS_TOPIC
+from bluesky_pipeline.config.kafka import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_EVENTS_TOPIC
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -208,7 +208,7 @@ def drop_iceberg_catalog_objects(tables: list[str], namespaces: list[str]) -> No
 
 def delete_minio_paths(paths: list[str]) -> None:
     """Xóa các prefix trên MinIO thông qua Hadoop FileSystem của Spark."""
-    from bluesky_pipeline.spark_session import create_spark_session
+    from bluesky_pipeline.config.spark import create_spark_session
 
     spark = create_spark_session("bluesky-cleanup-ingested-data")
     hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()

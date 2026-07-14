@@ -558,32 +558,24 @@ Vai trò:
 - `data/`: dữ liệu local sinh ra khi chạy probe hoặc sample; không commit.
 - `requirements.txt`: dependency Python cho milestone hiện tại.
 
-Khi code tăng lên, package `src/bluesky_pipeline/` có thể được tách tiếp theo các
-nhóm trách nhiệm như:
+Package `src/bluesky_pipeline/` được tách theo các nhóm trách nhiệm chính:
 
 ```text
 src/bluesky_pipeline/
-├── ingestion/
-├── events/
-├── normalization/
-├── storage/
-├── streaming/
-├── quality/
-└── config/
+├── clients/
+├── config/
+├── schemas/
+├── state/
+└── transforms/
 ```
 
-Ý nghĩa định hướng:
+Ý nghĩa:
 
-- `ingestion/`: kết nối nguồn, WebSocket, Kafka producer, retry và logging.
-- `events/`: event envelope, schema contract và Kafka key.
-- `normalization/`: parse và chuẩn hóa event theo collection.
-- `storage/`: helper liên quan Bronze, Silver, Gold hoặc object storage.
-- `streaming/`: Spark Structured Streaming jobs.
-- `quality/`: validation, data quality checks và reconciliation.
-- `config/`: đọc cấu hình từ biến môi trường hoặc file config không chứa secret.
-
-Các thư mục này chỉ được tạo khi có nhu cầu thực tế. Không tạo trước toàn bộ cấu
-trúc nếu milestone hiện tại chưa dùng đến.
+- `clients/`: helper giao tiếp service bên ngoài, ví dụ ClickHouse HTTP API.
+- `config/`: đọc cấu hình Kafka, Spark và Iceberg từ environment/local config.
+- `schemas/`: schema, table name, path contract và DDL dùng chung.
+- `state/`: contract/state cho incremental refresh.
+- `transforms/`: logic biến đổi dữ liệu Bronze, Silver, Gold và event envelope.
 
 Quy ước:
 

@@ -3,8 +3,8 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
 
-from bluesky_pipeline.bronze_tables import BRONZE_EVENT_PATHS
-from bluesky_pipeline.spark_session import create_spark_session
+from bluesky_pipeline.schemas.bronze_tables import BRONZE_EVENT_PATHS
+from bluesky_pipeline.config.spark import create_spark_session
 
 
 def read_bronze_events(spark: SparkSession, event_kind: str) -> DataFrame:

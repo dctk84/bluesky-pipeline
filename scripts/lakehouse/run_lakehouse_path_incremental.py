@@ -19,7 +19,7 @@ LAKEHOUSE_INCREMENTAL_STEPS = [
     ),
     (
         "Refresh Gold incremental",
-        "scripts.gold.refresh_gold_incremental",
+        "scripts.gold.refresh.refresh_gold_incremental",
         True,
     ),
 ]
@@ -32,7 +32,7 @@ LIVE_LAKEHOUSE_INCREMENTAL_STEPS = [
     ),
     (
         "Refresh Gold incremental",
-        "scripts.gold.refresh_gold_incremental",
+        "scripts.gold.refresh.refresh_gold_incremental",
         True,
     ),
 ]
@@ -134,7 +134,7 @@ def main() -> None:
     for step_name, module_name, supports_ignore_state in steps:
         extra_args = (
             gold_extra_args
-            if module_name == "scripts.gold.refresh_gold_incremental"
+            if module_name == "scripts.gold.refresh.refresh_gold_incremental"
             else None
         )
         run_module(
