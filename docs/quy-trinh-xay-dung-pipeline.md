@@ -1884,7 +1884,8 @@ Sau lần clean demo cuối, Silver đã có dữ liệu từ live pipeline, ch�
 `Bluesky Gold Analytics` trong Grafana đã có dữ liệu cho các nhóm Post
 Performance, Content Quality, Conversation Analytics, Actor Activity, Network
 Growth và Data Quality. Người học đã chụp lại ảnh màn hình dashboard realtime
-hot path và Gold analytics để dùng làm tư liệu giới thiệu dự án.
+hot path và Gold analytics để dùng làm tư liệu giới thiệu dự án. Các ảnh được
+lưu trong `docs/assets/` và được nhúng vào `README.md` theo thứ tự đánh số.
 
 Full rebuild path cũ `scripts/lakehouse/run_lakehouse_path.py` vẫn được giữ lại
 để bootstrap, rebuild hoặc recovery khi cần. Incremental path mới là đường vận
