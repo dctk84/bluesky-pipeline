@@ -441,7 +441,7 @@ envelope từ sample JSONL vào raw topic.
 Topic hiện tại:
 
 ```text
-bluesky.raw.events.v1
+bluesky.raw.events.v2
 ```
 
 Cấu hình local đã kiểm chứng:
@@ -484,7 +484,7 @@ Luồng đã kiểm chứng:
 ```text
 data/probe/jetstream_sample.jsonl
         -> Python Producer
-        -> Kafka topic bluesky.raw.events.v1
+        -> Kafka topic bluesky.raw.events.v2
         -> Kafka Console Consumer
 ```
 
@@ -508,7 +508,7 @@ Luồng đã kiểm chứng:
 Bluesky Jetstream WebSocket
         -> Python ingestion gateway
         -> event envelope
-        -> Kafka topic bluesky.raw.events.v1
+        -> Kafka topic bluesky.raw.events.v2
         -> Kafka Console Consumer
 ```
 
@@ -521,7 +521,7 @@ Jetstream WebSocket live events
 Output:
 
 ```text
-Kafka topic bluesky.raw.events.v1
+Kafka topic bluesky.raw.events.v2
 ```
 
 Scope collection hiện tại:
@@ -559,7 +559,7 @@ RETRY_BACKOFF_SECONDS
 
 - `KAFKA_BOOTSTRAP_SERVERS`: Kafka bootstrap server, mặc định
   `localhost:9092`.
-- `KAFKA_TOPIC`: topic raw event, mặc định `bluesky.raw.events.v1`.
+- `KAFKA_TOPIC`: topic raw event, mặc định `bluesky.raw.events.v2`.
 - `MAX_EVENTS`: số event tối đa gateway publish trong local discovery, mặc định
   `100`.
 - `MAX_RETRIES`: số lần retry tối đa khi WebSocket gặp lỗi, mặc định `3`.

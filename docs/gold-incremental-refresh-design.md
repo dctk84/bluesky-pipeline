@@ -7,9 +7,16 @@ Mục tiêu của tài liệu là chốt contract thiết kế trước khi impl
 nhầm lẫn giữa streaming ingestion, incremental lakehouse refresh và realtime
 serving.
 
+Trạng thái hiện tại: contract này đã được triển khai cho Gold facts, Gold
+dimensions và các Gold analytics serving marts v1. Entrypoint vận hành hiện tại
+là `scripts/lakehouse/run_lakehouse_path_incremental.py`, gọi orchestrator
+`scripts/gold/refresh/refresh_gold_incremental.py`. Tài liệu này vẫn giữ vai trò
+giải thích thiết kế, trade-off và cách trình bày incremental Gold khi phỏng vấn.
+
 ## 1. Bối cảnh
 
-Hiện tại lakehouse path đã chạy được theo hướng full rebuild:
+Bối cảnh ban đầu khi thiết kế incremental: lakehouse path đã chạy được theo hướng
+full rebuild:
 
 ```text
 Bronze -> Silver Iceberg
@@ -23,7 +30,7 @@ Cách này phù hợp với local MVP vì đơn giản, dễ kiểm chứng và 
 còn thay đổi. Tuy nhiên khi dữ liệu lớn hơn, mỗi lần chạy lại toàn bộ Gold modeled
 và load lại toàn bộ ClickHouse serving marts sẽ không tối ưu.
 
-Hướng tiếp theo là chuyển Gold sang incremental batch/micro-batch: xử lý thường
+Hướng đã chốt là chuyển Gold sang incremental batch/micro-batch: xử lý thường
 xuyên phần dữ liệu mới từ Silver và chỉ refresh các partition/entity bị ảnh
 hưởng.
 

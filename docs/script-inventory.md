@@ -15,6 +15,9 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
 - `scripts/lakehouse/run_lakehouse_path_incremental.py`: chạy phase Gold
   incremental sau khi live pipeline đã ghi dữ liệu vào Silver Iceberg; đây là
   entrypoint chính cho demo Gold dashboard trên máy local.
+- `scripts/gold/refresh/refresh_gold_incremental.py`: orchestrator chính của
+  Gold incremental, chạy facts, dimensions, Gold modeled check và các serving
+  marts theo đúng thứ tự phụ thuộc.
 - `scripts/lakehouse/check_lakehouse_path.py`: kiểm tra lakehouse path
   hiện có mà không build hoặc refresh lại dữ liệu.
 - `scripts/realtime/stream_metrics_to_clickhouse.py`: chạy realtime fast path từ
@@ -51,6 +54,14 @@ cụ thể.
   namespace và các bảng Gold modeled Iceberg v1.
 - `scripts/gold/refresh/refresh_serving_from_iceberg.py`: build Gold aggregates từ Silver
   hoặc Gold modeled Iceberg, load vào ClickHouse và chạy Gold serving checkpoint.
+- `scripts/gold/refresh/refresh_gold_facts_incremental.py`: refresh incremental
+  các Gold fact tables từ Silver Iceberg.
+- `scripts/gold/refresh/refresh_gold_dimensions_incremental.py`: refresh
+  incremental các Gold dimension tables bằng affected keys và Iceberg merge.
+- `scripts/gold/check/check_gold_facts_incremental.py`: kiểm tra key quality cho
+  các Gold fact tables sau full build hoặc incremental refresh.
+- `scripts/gold/check/check_gold_dimensions_incremental.py`: kiểm tra key quality
+  cho các Gold dimension tables sau full build hoặc incremental refresh.
 - `scripts/gold/check/check_serving_v1.py`: checkpoint tổng hợp cho Gold serving v1.
 
 ## 3. Gold aggregate/serving sub-steps
@@ -108,6 +119,18 @@ Thư mục `scripts/gold/` được tách theo vai trò:
   actor activity daily giữa Gold staging và ClickHouse.
 - `scripts/gold/check/check_network_growth_daily_reconciliation.py`: reconcile Gold
   network growth daily giữa Gold staging và ClickHouse.
+- `scripts/gold/refresh/refresh_gold_content_quality_hourly_incremental.py`: refresh
+  incremental mart content quality theo affected hourly windows.
+- `scripts/gold/refresh/refresh_gold_post_performance_incremental.py`: refresh
+  incremental mart post performance theo affected `post_uri`.
+- `scripts/gold/refresh/refresh_gold_thread_conversation_summary_incremental.py`: refresh
+  incremental mart thread summary theo affected `reply_root_uri`.
+- `scripts/gold/refresh/refresh_gold_actor_activity_daily_incremental.py`: refresh
+  incremental mart actor activity theo affected `activity_date + actor_did`.
+- `scripts/gold/refresh/refresh_gold_network_growth_daily_incremental.py`: refresh
+  incremental mart network growth theo affected `activity_date + target_actor_did`.
+- `scripts/gold/common/incremental_serving_utils.py`: helper dùng chung cho
+  ClickHouse delete/insert, mutation wait và reconciliation theo affected scope.
 - `scripts/platform/create_clickhouse_gold_tables.py`: tạo database và các bảng serving
   trong ClickHouse.
 - `scripts/platform/cleanup_ingested_data.py`: dọn dữ liệu ingest local trên
@@ -140,3 +163,5 @@ quá trình khám phá dữ liệu và kiểm chứng từng lớp.
   ghi trên MinIO.
 - `scripts/discovery/smoke_test_iceberg_minio.py`: smoke test Iceberg catalog và MinIO
   trước khi build Silver Iceberg thật.
+- `scripts/discovery/smoke_test_iceberg_merge.py`: smoke test Iceberg `MERGE INTO`
+  trước khi dùng row-level merge cho Gold dimension incremental.

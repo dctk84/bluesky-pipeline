@@ -95,7 +95,7 @@ Lưu ý:
 Khởi động hạ tầng:
 
 ```bash
-docker compose up -d kafka minio hive-metastore trino clickhouse
+docker compose up -d kafka minio hive-metastore trino clickhouse grafana
 ```
 
 Kiểm tra ClickHouse:

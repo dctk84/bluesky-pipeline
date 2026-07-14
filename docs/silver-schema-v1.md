@@ -7,6 +7,10 @@ Mục tiêu của Silver v1 là chuẩn hóa các commit event chính thành b�
 dễ validate và làm nguồn cho Gold analytics sau này. Đây chưa phải schema cuối
 cùng; schema sẽ tiếp tục được điều chỉnh khi có thêm dữ liệu và use case.
 
+Trạng thái hiện tại: Silver v1 đã được materialize bằng Apache Iceberg trên MinIO
+và là source of truth của lakehouse path cho các bảng commit event chính. Tài
+liệu này vẫn giữ vai trò mô tả contract schema của Silver v1.
+
 ## Nguồn dữ liệu
 
 Input hiện tại:
@@ -25,6 +29,24 @@ s3a://bluesky-lake/bronze/bluesky_account_events
 Silver v1 trong bước đầu chỉ xử lý commit events. Identity/account events sẽ có
 thiết kế Silver riêng khi triển khai bài toán account lifecycle.
 
+Namespace/table hiện tại:
+
+```text
+lakehouse.silver_v1.silver_posts
+lakehouse.silver_v1.silver_engagements
+lakehouse.silver_v1.silver_follows
+lakehouse.silver_v1.silver_deleted_records
+```
+
+Script build/check liên quan:
+
+```text
+scripts/lakehouse/build_iceberg_silver_v1.py
+scripts/lakehouse/stream_silver_from_bronze.py
+scripts/lakehouse/check_iceberg_silver_v1.py
+scripts/lakehouse/check_trino_silver_v1.py
+```
+
 ## Quan sát từ Bronze profile
 
 Profile hiện tại cho thấy:
@@ -42,13 +64,13 @@ Profile hiện tại cho thấy:
 - Delete event có `rkey` nhưng thường thiếu `cid`, `record_type` và
   `record_created_at`.
 
-## Bảng Silver dự kiến
+## Bảng Silver v1 hiện tại
 
 ### `silver_posts`
 
 Dùng cho post create/update.
 
-Các cột dự kiến:
+Các cột chính:
 
 ```text
 post_uri
@@ -82,7 +104,7 @@ Ghi chú:
 
 Dùng cho like/repost create.
 
-Các cột dự kiến:
+Các cột chính:
 
 ```text
 engagement_uri
@@ -114,7 +136,7 @@ Ghi chú:
 
 Dùng cho follow create.
 
-Các cột dự kiến:
+Các cột chính:
 
 ```text
 follow_uri
@@ -141,7 +163,7 @@ Ghi chú:
 
 Dùng cho mọi delete event.
 
-Các cột dự kiến:
+Các cột chính:
 
 ```text
 record_uri
@@ -170,7 +192,6 @@ Các phần chưa xử lý trong Silver v1:
 - Watermark và late event handling.
 - Pseudonymization/hash DID.
 - Quarantine invalid events.
-- Iceberg table format.
 - Account lifecycle Silver tables.
 - Hashtag, language và shared domain extraction.
 

@@ -21,6 +21,21 @@ Realtime fast path vẫn giữ nhiệm vụ riêng:
 Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana
 ```
 
+Trạng thái hiện tại: năm serving marts v1 trong tài liệu này đã được implement,
+load vào ClickHouse và đưa vào Gold incremental refresh:
+
+```text
+bluesky.gold_post_performance
+bluesky.gold_content_quality_hourly
+bluesky.gold_thread_conversation_summary
+bluesky.gold_actor_activity_daily
+bluesky.gold_network_growth_daily
+```
+
+Hai bảng `bluesky.gold_event_volume_by_type` và
+`bluesky.gold_post_engagement_summary` vẫn được giữ như legacy/minimal serving
+checkpoints, không phải bộ metric phân tích chính.
+
 ## 1. Nguyên tắc thiết kế
 
 - Gold analytics/serving phải đọc từ Gold modeled Iceberg, không đọc trực tiếp từ
@@ -112,9 +127,9 @@ Các câu hỏi:
 - Vì project chỉ quan sát stream public trong một khoảng thời gian, metric này là
   observed network activity, không phải follower count toàn cục của Bluesky.
 
-## 3. Bảng serving đề xuất
+## 3. Bảng serving v1
 
-## 3.1. `gold_post_performance`
+### 3.1. `gold_post_performance`
 
 **Mức ưu tiên**
 
@@ -182,7 +197,7 @@ like_count + repost_count * 2
 Repost được weighted cao hơn like vì repost thường làm content lan truyền rộng
 hơn trong social graph.
 
-## 3.2. `gold_content_quality_hourly`
+### 3.2. `gold_content_quality_hourly`
 
 **Mức ưu tiên**
 
@@ -227,7 +242,7 @@ avg_text_length
 - Bảng này khác fast path ở chỗ nó phân tích lifecycle và content mix, không chỉ
   đếm event type realtime.
 
-## 3.3. `gold_thread_conversation_summary`
+### 3.3. `gold_thread_conversation_summary`
 
 **Mức ưu tiên**
 
@@ -270,7 +285,7 @@ deleted_reply_count
 - Nếu root post không nằm trong dữ liệu observe được, các cột root metadata có
   thể null.
 
-## 3.4. `gold_actor_activity_daily`
+### 3.4. `gold_actor_activity_daily`
 
 **Mức ưu tiên**
 
@@ -334,7 +349,7 @@ content_events_created * 2
 - `creator_engager_ratio` giúp phân biệt actor chủ yếu tạo nội dung với actor chủ
   yếu đi tương tác.
 
-## 3.5. `gold_network_growth_daily`
+### 3.5. `gold_network_growth_daily`
 
 **Mức ưu tiên**
 
