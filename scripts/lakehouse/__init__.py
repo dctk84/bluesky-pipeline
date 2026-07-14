@@ -1,0 +1,1 @@
+"""Lakehouse path entrypoints."""
