@@ -28,7 +28,7 @@ bài học của bước lớn tương ứng.
 15. [Chốt hai serving paths: realtime và lakehouse](#bước-15-chốt-hai-serving-paths-realtime-và-lakehouse)
 16. [Xây dựng realtime fast path vào ClickHouse](#bước-16-xây-dựng-realtime-fast-path-vào-clickhouse)
 17. [Hoàn thiện Grafana realtime dashboard và operational health](#bước-17-hoàn-thiện-grafana-realtime-dashboard-và-operational-health)
-18. [Trạng thái hiện tại và bài học thiết kế](#bước-18-trạng-thái-hiện-tại-và-bài-học-thiết-kế)
+18. [Chốt trạng thái sau realtime và lakehouse baseline](#bước-18-chốt-trạng-thái-sau-realtime-và-lakehouse-baseline)
 19. [Bổ sung live demo runner và cleanup dữ liệu local](#bước-19-bổ-sung-live-demo-runner-và-cleanup-dữ-liệu-local)
 20. [Bổ sung Trino Query Engine cho Lakehouse](#bước-20-bổ-sung-trino-query-engine-cho-lakehouse)
 21. [Thiết kế contract Gold modeled v1](#bước-21-thiết-kế-contract-gold-modeled-v1)
@@ -567,7 +567,7 @@ gốc chính.
 **Kết quả sau khi hoàn thành**
 
 Project có scripts build aggregate event volume và post engagement summary từ Silver
-Iceberg, load vào ClickHouse và entrypoint `refresh_gold_serving_from_iceberg.py`
+Iceberg, load vào ClickHouse và entrypoint `refresh_serving_from_iceberg.py`
 để chạy refresh Gold serving v1. Checkpoint cuối của Gold serving đối chiếu
 ClickHouse với Silver Iceberg source of truth, không còn quay lại Silver Parquet
 prototype. Project cũng có entrypoint `run_lakehouse_path.py` để chạy
@@ -801,12 +801,13 @@ theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chư
   ClickHouse nhưng Grafana báo no data.
 - Grafana time series cần output sort tăng dần theo cột time.
 
-## Bước 18: Trạng thái hiện tại và bài học thiết kế
+## Bước 18: Chốt trạng thái sau realtime và lakehouse baseline
 
 **Mục tiêu**
 
-Tóm tắt trạng thái hiện tại của project và các bài học thiết kế quan trọng trước
-khi chuyển sang hoàn thiện lakehouse path.
+Tóm tắt trạng thái của project tại mốc đã có realtime fast path và lakehouse
+baseline, trước khi chuyển sang hoàn thiện Gold modeled, Gold analytics marts và
+incremental refresh.
 
 **Vì sao cần thực hiện**
 
@@ -816,7 +817,7 @@ bày dự án theo mạch rõ ràng hơn.
 
 **Kết quả sau khi hoàn thành**
 
-Project hiện có hai path đã chạy được ở local:
+Tại mốc này, project có hai path đã chạy được ở local:
 
 - Realtime fast path:
   `Jetstream -> Gateway -> Kafka -> Spark Streaming -> ClickHouse realtime marts -> Grafana`.
@@ -1586,94 +1587,24 @@ Module cũng có helper đọc/ghi local state file dạng JSON để lưu
 compile Python, ví dụ tính window có lookback 2 giờ và smoke test đọc/ghi state
 file.
 
-Project cũng có script scaffold `refresh_gold_facts_incremental.py` để đọc state,
-tính refresh window và in phạm vi xử lý. Script hỗ trợ `--ignore-state` để chạy
-như initial refresh, đọc các bảng Silver Iceberg trong window và in row count
-incremental. Ở giai đoạn count-only, script chưa update state; state chỉ nên
-được ghi sau khi bước write/check Gold fact thật sự pass.
-
-Script đã build thử 3 Gold fact DataFrames từ subset Silver incremental và kiểm
-tra key uniqueness trước khi ghi Iceberg:
+Project đã triển khai incremental refresh cho nhóm Gold facts và dimensions:
 
 - `gold_fact_content_events`
 - `gold_fact_engagement_events`
 - `gold_fact_network_events`
+- `gold_dim_posts`
+- `gold_dim_actors`
 
-Với initial refresh bằng `--ignore-state`, cả 3 fact đều có `rows` bằng
-`distinct_keys` và `key_status: OK`.
+Fact refresh dùng deterministic event id để anti-join với bảng Gold hiện có và
+chỉ append rows mới. Dimension refresh xác định affected business keys từ Silver,
+recompute state cho các key đó từ Silver source of truth, rồi dùng Iceberg
+`MERGE INTO` để update/insert theo business key.
 
-Script sau đó được nâng cấp thành refresh idempotent cho Gold fact Iceberg:
-
-- Tạo Gold namespace/table nếu chưa tồn tại.
-- Anti-join candidate rows với keys hiện có trong Iceberg.
-- Chỉ append rows mới.
-- Kiểm tra lại key uniqueness của bảng Iceberg sau append.
-- Chỉ update local state sau khi cả 3 fact pass.
-
-Khi chạy lại trên dữ liệu đã được full lakehouse path build trước đó, toàn bộ
-candidate rows overlap với Gold hiện có, `new_rows_to_append = 0`,
-`appended_rows = 0`, key check vẫn `OK` và `state_updated: true`. Điều này xác
-nhận incremental write path có tính idempotent cho nhóm Gold facts.
-
-Khi chạy tiếp không dùng `--ignore-state`, script đọc state thật, tính window mới
-theo lookback, không tìm thấy candidate rows mới, không append thêm dữ liệu, nhưng
-vẫn kiểm tra bảng Gold hiện có và update state thành công.
-
-Project cũng có checkpoint riêng `check_gold_facts_incremental.py` để kiểm tra 3
-Gold fact Iceberg tables độc lập với refresh script. Checkpoint đọc Gold fact
-tables, so sánh `row_count`, `non_null_key_count` và `distinct_key_count`, rồi
-fail nếu có null key hoặc duplicate key. Checkpoint đã chạy pass cho cả 3 fact
-tables.
-
-Refresh script đã được nối với checkpoint này sau bước append. Lần chạy sau đó
-xác nhận checkpoint được gọi trong refresh job và state chỉ được update sau khi
-các bảng Gold fact đều pass key check.
-
-Sau Gold facts, project bắt đầu scaffold incremental refresh cho Gold dimensions.
-Script `refresh_gold_dimensions_incremental.py` đọc Silver trong refresh window,
-xác định affected `post_uri` và `actor_did`, rồi in count/sample để kiểm chứng
-scope trước khi recompute state. Với initial refresh, script xác định được
-`affected_post_uri_count = 109469` và `affected_actor_did_count = 69868`, đồng
-thời không update state ở bước discovery.
-
-Script dimensions sau đó được tách scope rõ hơn:
-
-- `affected_post_uri_for_dimension`: chỉ post create/update/delete, dùng để
-  refresh `gold_dim_posts`.
-- `affected_post_uri_for_downstream_marts`: post scope cộng thêm engagement
-  subject, dùng cho các mart downstream như post performance.
-- `affected_actor_did`: actor scope dùng để refresh `gold_dim_actors`.
-
-Với initial refresh, `affected_post_uri_for_dimension_count = 31552`,
-`affected_post_uri_for_downstream_marts_count = 109469` và
-`affected_actor_did_count = 69868`. Script đã build thử affected rows cho
-`gold_dim_posts` và `gold_dim_actors` từ full Silver source of truth, cả hai đều
-pass key uniqueness check.
-
-Trước khi implement merge thật cho dimensions, project có smoke test Iceberg
-`MERGE INTO`. Smoke test tạo một bảng Iceberg v2 nhỏ, chạy update/insert bằng
-`MERGE INTO`, verify kết quả và drop bảng test. Kết quả pass, xác nhận stack
-Spark + Iceberg + Hive catalog hiện tại hỗ trợ row-level merge cho bước
-production-like tiếp theo.
-
-Script dimensions sau đó được nâng cấp để dùng Iceberg `MERGE INTO` cho
-`gold_dim_posts` và `gold_dim_actors`. Script đảm bảo bảng target dùng Iceberg
-format version 2, merge affected rows theo business key, kiểm tra lại key
-uniqueness sau merge và chỉ update state khi cả hai dimension pass. Initial merge
-đã chạy thành công với key check `OK` trên cả affected rows và full Iceberg
-table, rồi in `state_updated: true`.
-
-Project cũng có checkpoint riêng `check_gold_dimensions_incremental.py` để kiểm
-tra `gold_dim_posts.post_uri` và `gold_dim_actors.actor_did` độc lập với refresh
-script. Checkpoint đọc full Gold dimension tables, so sánh `row_count`,
-`non_null_key_count` và `distinct_key_count`, rồi fail nếu dimension có null key
-hoặc duplicate key.
-
-Refresh dimensions đã được nối với checkpoint này sau bước `MERGE INTO` và trước
-khi update state. Lần chạy thường không dùng `--ignore-state` không có Silver row
-mới trong refresh window nên affected rows bằng 0, nhưng job vẫn kiểm tra full
-Gold dimension tables và chỉ in `state_updated: true` sau khi cả
-`gold_dim_posts` và `gold_dim_actors` đều pass key check.
+Trước khi dùng `MERGE INTO` trong pipeline chính, project có smoke test Iceberg
+v2 để xác nhận stack Spark + Iceberg + Hive catalog hỗ trợ row-level merge. Facts
+và dimensions đều có checkpoint riêng để kiểm tra row count, key không null và
+key uniqueness. Các refresh script chỉ update local state sau khi write và
+checkpoint pass.
 
 **Các file liên quan**
 

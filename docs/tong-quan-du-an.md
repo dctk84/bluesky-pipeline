@@ -67,7 +67,8 @@ Project xây dựng một nền tảng có khả năng:
 7. Query dữ liệu lakehouse bằng Trino cho ad-hoc analytics.
 8. Phục vụ truy vấn gần thời gian thực bằng ClickHouse.
 9. Hiển thị business metrics và platform metrics qua Grafana.
-10. Hỗ trợ backfill, data quality, compaction và rebuild bằng Airflow.
+10. Có hướng mở rộng để orchestration backfill, data quality, compaction và
+    rebuild bằng Airflow.
 11. Theo dõi độ trễ, throughput, consumer lag và lỗi pipeline.
 
 ---
@@ -117,8 +118,10 @@ Spark Structured Streaming được sử dụng để:
 - Ghi dữ liệu chuẩn hóa vào Silver Iceberg.
 - Tạo aggregate phục vụ ClickHouse.
 
-Spark phải được chạy ở chế độ multi-worker Spark Standalone bằng Docker Compose,
-không chỉ chạy bằng `local[*]`.
+Trong target production-like, Spark nên chạy qua Spark Standalone hoặc một
+resource manager tương đương để chứng minh distributed execution và resource
+isolation. Trong MVP local hiện tại, project dùng `SPARK_MASTER=local[2]` để phù
+hợp tài nguyên WSL và tránh oversubscribe khi chạy nhiều Spark application.
 
 Trong lakehouse path, Spark là compute engine chính cho các đoạn xử lý dữ liệu:
 
@@ -200,7 +203,8 @@ Silver Iceberg khi cần.
 
 ### 4.7. Platform operations
 
-Airflow được sử dụng cho các workflow có điểm bắt đầu và kết thúc rõ ràng:
+Airflow là hướng orchestration dự kiến cho các workflow có điểm bắt đầu và kết
+thúc rõ ràng:
 
 - Lakehouse backfill.
 - Gold lakehouse modeling từ Silver Iceberg.
@@ -214,10 +218,11 @@ Airflow được sử dụng cho các workflow có điểm bắt đầu và kế
 
 Airflow không được sử dụng để xử lý từng streaming event.
 Airflow cũng không thay thế live ingestion gateway hoặc Spark streaming consumer.
-Trong project này, Airflow phù hợp nhất để schedule các job hữu hạn như
-`Silver Iceberg -> Gold modeled tables`, chạy Trino validation/query checkpoint,
-rồi `Gold modeled tables -> Gold aggregate/serving marts -> ClickHouse` và các
-checkpoint sau load.
+Trong MVP local hiện tại, Airflow chưa được triển khai; Gold analytics refresh
+được chạy thủ công sau live pipeline. Trong milestone tiếp theo, Airflow phù hợp
+để schedule các job hữu hạn như `Silver Iceberg -> Gold modeled tables`, chạy
+Trino validation/query checkpoint, rồi `Gold modeled tables -> Gold
+aggregate/serving marts -> ClickHouse` và các checkpoint sau load.
 
 ### 4.8. Observability
 
@@ -346,7 +351,7 @@ Bluesky Jetstream
             Grafana                                                   │
 
 ┌─────────────────────────────┐
-│ Apache Airflow              │
+│ Apache Airflow (future)     │
 │                             │
 │ - Backfill                  │
 │ - Data quality              │
@@ -464,7 +469,7 @@ tái sử dụng ở nhiều đoạn xử lý.
 - PySpark.
 - Spark SQL.
 - Spark Structured Streaming.
-- Spark Standalone cluster.
+- Spark local mode cho MVP hiện tại; Spark Standalone cluster là hướng mở rộng.
 - Spark UI.
 - Spark History Server.
 
@@ -491,7 +496,7 @@ tái sử dụng ở nhiều đoạn xử lý.
 
 ### 6.8. Orchestration
 
-- Apache Airflow.
+- Apache Airflow cho milestone orchestration tiếp theo.
 
 ### 6.9. Monitoring
 
@@ -518,7 +523,7 @@ Cấu trúc repository không cố định ngay từ đầu. Ở giai đoạn đ
 cấu trúc đơn giản. Khi số lượng file tăng lên, repository phải được tách dần theo
 trách nhiệm hoặc tầng xử lý.
 
-Cấu trúc định hướng:
+Cấu trúc hiện tại:
 
 ```text
 bluesky-pipeline/
@@ -528,14 +533,23 @@ bluesky-pipeline/
 │   └── jetstream-schema-notes.md
 ├── src/
 │   └── bluesky_pipeline/
-│       ├── event_envelope.py
-│       ├── normalize_event.py
-│       └── ...
+│       ├── clients/
+│       ├── config/
+│       ├── schemas/
+│       ├── state/
+│       ├── transforms/
+│       └── ingestion_gateway.py
 ├── scripts/
 │   ├── discovery/
 │   ├── ingestion/
+│   ├── e2e/
 │   ├── lakehouse/
 │   ├── gold/
+│   │   ├── build/
+│   │   ├── load/
+│   │   ├── check/
+│   │   ├── refresh/
+│   │   └── common/
 │   ├── realtime/
 │   └── platform/
 ├── tests/
@@ -888,7 +902,7 @@ Nguyên tắc:
 ### 10.1. Topic MVP
 
 ```text
-bluesky.raw.events.v1
+bluesky.raw.events.v2
 ```
 
 Topic dùng cho raw Jetstream events thuộc scope hiện tại.

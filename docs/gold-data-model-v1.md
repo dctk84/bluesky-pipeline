@@ -14,6 +14,12 @@ luồng riêng:
 Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana
 ```
 
+Trạng thái hiện tại: Gold modeled v1 đã được materialize trên Iceberg trong
+namespace `lakehouse.gold_v1`, được build từ Silver Iceberg bằng
+`scripts/lakehouse/build_gold_modeled_v1.py`, kiểm chứng bằng Trino qua
+`scripts/lakehouse/check_trino_gold_modeled_v1.py`, và được refresh incremental
+qua nhóm script trong `scripts/gold/refresh/`.
+
 ## 1. Vị trí trong kiến trúc
 
 Lakehouse path mục tiêu:
@@ -54,7 +60,7 @@ Trong đó:
 
 ## 3. Namespace và naming
 
-Namespace Iceberg đề xuất:
+Namespace Iceberg hiện tại:
 
 ```text
 lakehouse.gold_v1

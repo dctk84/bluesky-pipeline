@@ -57,6 +57,14 @@ Tóm tắt điều cần nhớ để giải thích với interviewer.
 Liệt kê đường dẫn file, bảng hoặc script liên quan.
 ```
 
+## Nhóm chủ đề
+
+- Schema và contract nguồn: Case 1, 2, 3, 9, 14.
+- Timestamp, event time và dashboard: Case 4, 16, 18.
+- Query engine và serving database: Case 6, 10, 11.
+- Delivery semantics, runtime local và cleanup: Case 7, 8, 13, 19, 20.
+- Gold modeled, incremental và reconciliation: Case 5, 12, 15, 17.
+
 ## Case 1: Delete event thường thiếu `record`
 
 **Hiện tượng**
@@ -282,7 +290,7 @@ freshness.
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
 
-## Case 16: Cùng tên `actor_did` nhưng khác vai trò nghiệp vụ sau join
+## Case 5: Cùng tên `actor_did` nhưng khác vai trò nghiệp vụ sau join
 
 **Hiện tượng**
 
@@ -352,7 +360,7 @@ columns và giúp metric dễ giải thích hơn.
 - `lakehouse.gold_v1.gold_dim_posts`
 - `bluesky.gold_actor_activity_daily`
 
-## Case 5: ClickHouse và Trino không dùng cùng namespace/table path
+## Case 6: ClickHouse và Trino không dùng cùng namespace/table path
 
 **Hiện tượng**
 
@@ -393,7 +401,7 @@ nhiều tầng, phải biết đang query engine nào và source of truth của 
 - `lakehouse.gold_v1.gold_fact_content_events`
 - `bluesky.gold_content_quality_hourly`
 
-## Case 6: Spark streaming ghi ClickHouse hiện là at-least-once
+## Case 7: Spark streaming ghi ClickHouse hiện là at-least-once
 
 **Hiện tượng**
 
@@ -444,15 +452,22 @@ duplicate.
 - `src/bluesky_pipeline/schemas/gold_tables.py`
 - `docs/tong-quan-du-an.md`
 
-## Case 7: Local Spark hiện chưa phải Spark Standalone multi-worker
+## Case 8: Local Spark hiện chưa phải Spark Standalone multi-worker
 
 **Hiện tượng**
 
 Tài liệu mục tiêu yêu cầu Spark Structured Streaming chạy ở chế độ multi-worker
-Spark Standalone, nhưng helper hiện tại tạo SparkSession bằng:
+Spark Standalone. Trong giai đoạn đầu, helper từng tạo SparkSession bằng:
 
 ```text
 .master("local[*]")
+```
+
+Sau khi gặp giới hạn tài nguyên WSL khi chạy nhiều Spark application, cấu hình
+local hiện tại đã được giảm tải thành:
+
+```text
+SPARK_MASTER=local[2]
 ```
 
 **Cách phát hiện**
@@ -473,16 +488,17 @@ production-scale hoặc HA. Bước Spark Standalone multi-worker thuộc phần
 
 **Bài học phỏng vấn**
 
-Portfolio project nên trung thực về phạm vi đã chứng minh. `local[*]` giúp học
-Spark API và hoàn thiện data flow, nhưng chưa chứng minh scheduling qua nhiều
-worker, executor failure hoặc cluster resource management.
+Portfolio project nên trung thực về phạm vi đã chứng minh. Spark local mode giúp
+học Spark API và hoàn thiện data flow, nhưng chưa chứng minh scheduling qua nhiều
+worker, executor failure hoặc cluster resource management. Với máy cá nhân, giới
+hạn số core bằng `local[2]` thực tế hơn `local[*]` khi nhiều job cùng dùng Spark.
 
 **File hoặc bảng liên quan**
 
 - `src/bluesky_pipeline/config/spark.py`
 - `docs/tong-quan-du-an.md`
 
-## Case 8: Bronze Parquet schema mismatch cột `partition`
+## Case 9: Bronze Parquet schema mismatch cột `partition`
 
 **Hiện tượng**
 
@@ -499,7 +515,7 @@ Column: [partition], Expected: bigint, Found: INT32.
 
 - `logs/live_pipeline/silver-stream.log`
 
-**Nguyên nhân khả dĩ**
+**Nguyên nhân**
 
 Bronze Parquet có file được ghi với physical type khác nhau cho cột Kafka
 `partition`. Một số Spark schema khai báo `partition` là `IntegerType`, trong khi
@@ -526,7 +542,7 @@ Bronze cũng cần ổn định, dù Bronze là raw layer.
 - `scripts/lakehouse/stream_silver_from_bronze.py`
 - `logs/live_pipeline/silver-stream.log`
 
-## Case 9: ClickHouse `ILLEGAL_AGGREGATION` khi alias trùng tên cột gốc
+## Case 10: ClickHouse `ILLEGAL_AGGREGATION` khi alias trùng tên cột gốc
 
 **Hiện tượng**
 
@@ -606,7 +622,7 @@ subquery trước, alias không trùng cột gốc, rồi sort/filter ở tầng
 - `src/bluesky_pipeline/schemas/gold_tables.py`
 - `docs/gold-analytics-metrics-v1.md`
 
-## Case 10: ClickHouse `NO_COMMON_TYPE` khi `UNION ALL` trộn `UInt64` và `Int64`
+## Case 11: ClickHouse `NO_COMMON_TYPE` khi `UNION ALL` trộn `UInt64` và `Int64`
 
 **Hiện tượng**
 
@@ -668,7 +684,7 @@ type contract ở tầng serving/dashboard.
 - `src/bluesky_pipeline/schemas/gold_tables.py`
 - `scripts/gold/build/build_network_growth_daily_from_gold_modeled.py`
 
-## Case 11: Follow delete không luôn lookup được `target_actor_did`
+## Case 12: Follow delete không luôn lookup được `target_actor_did`
 
 **Hiện tượng**
 
@@ -735,7 +751,7 @@ metric thay vì âm thầm drop hoặc gán sai target.
 - `src/bluesky_pipeline/transforms/gold_transformations.py`
 - `src/bluesky_pipeline/transforms/gold_analytics_transformations.py`
 
-## Case 12: Cleanup Iceberg phải xử lý cả Hive Metastore và data files
+## Case 13: Cleanup Iceberg phải xử lý cả Hive Metastore và data files
 
 **Hiện tượng**
 
@@ -800,7 +816,7 @@ lake” đơn giản và “table format” có catalog cộng với incremental
 - MinIO Iceberg warehouse
 - `data/state/*.json`
 
-## Case 13: `follow_create` có thể trùng `follow_uri` trong fact event
+## Case 14: `follow_create` có thể trùng `follow_uri` trong fact event
 
 **Hiện tượng**
 
@@ -870,7 +886,7 @@ exactly-once guarantee end-to-end.
 - `lakehouse.silver_v1.silver_follows`
 - `lakehouse.gold_v1.gold_fact_network_events`
 
-## Case 14: Initial refresh marker năm 0001 làm Spark timestamp filter trả về 0 row
+## Case 15: Initial refresh marker năm 0001 làm Spark timestamp filter trả về 0 row
 
 **Hiện tượng**
 
@@ -952,7 +968,7 @@ thường nên là một branch logic riêng thay vì ép thành một timestamp
 - `lakehouse.silver_v1.silver_follows`
 - `lakehouse.silver_v1.silver_deleted_records`
 
-## Case 15: Incremental mart phải phân biệt `received_at` và `event_time`
+## Case 16: Incremental mart phải phân biệt `received_at` và `event_time`
 
 **Hiện tượng**
 
