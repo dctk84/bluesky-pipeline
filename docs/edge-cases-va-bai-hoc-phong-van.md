@@ -60,7 +60,7 @@ Liệt kê đường dẫn file, bảng hoặc script liên quan.
 ## Nhóm chủ đề
 
 - Schema và contract nguồn: Case 1, 2, 3, 9, 14.
-- Timestamp, event time và dashboard: Case 4, 16, 18.
+- Timestamp, event time và dashboard: Case 4, 16, 18, 21.
 - Query engine và serving database: Case 6, 10, 11.
 - Delivery semantics, runtime local và cleanup: Case 7, 8, 13, 19, 20.
 - Gold modeled, incremental và reconciliation: Case 5, 12, 15, 17.
@@ -1408,3 +1408,112 @@ Exit code 255 đồng loạt trên nhiều container thường là dấu hiệu 
 - `src/bluesky_pipeline/config/spark.py`
 - `src/bluesky_pipeline/config/kafka.py`
 - `scripts/platform/cleanup_ingested_data.py`
+
+## Case 21: Hot path dashboard phải chọn đúng timestamp theo câu hỏi vận hành
+
+**Hiện tượng**
+
+Khi dựng lại dashboard hot path trong Grafana, các panel business realtime như
+event volume, content activity, engagement và network activity có mốc thời gian
+lệch so với các panel platform runtime như Spark batch duration hoặc input rows
+per batch. Nếu cộng thủ công 7 giờ trong query thì nhìn có vẻ đúng hơn, nhưng đây
+chỉ là xử lý triệu chứng ở dashboard.
+
+**Cách phát hiện**
+
+So sánh hai nhóm panel trong Grafana:
+
+- Business realtime panels đọc các bảng ClickHouse `gold_*_1m_stream`.
+- Platform runtime panels đọc bảng ClickHouse `gold_realtime_stream_batches`.
+
+Runtime panels khớp với thời điểm pipeline đang chạy, còn business panels bị lệch
+window. Trace về script realtime cho thấy business window đang dùng timestamp từ
+Kafka:
+
+```python
+col("kafka_timestamp").alias("event_timestamp")
+```
+
+trong khi batch health dùng timestamp do pipeline tạo tại runtime:
+
+```python
+datetime.now(timezone.utc).replace(tzinfo=None)
+```
+
+Sau khi đổi business window sang `received_at`, panel vẫn có thể lệch tiếp 7 giờ
+nếu `window_start` là Spark `TimestampType` được `.collect()` về Python driver
+rồi mới format. Ở bước collect, PySpark có thể chuyển timestamp nội bộ sang
+timezone local của driver và trả về `datetime` naive. Khi chuỗi naive này được
+insert vào ClickHouse rồi Grafana hiển thị theo timezone browser, timestamp bị
+dịch thêm một lần nữa.
+
+**Nguyên nhân**
+
+Dashboard hot path trong project này trả lời câu hỏi vận hành: "pipeline vừa nhận
+và xử lý bao nhiêu event quanh thời điểm hiện tại?". Với câu hỏi đó, timestamp
+phù hợp nhất là ingestion time của event envelope, tức `received_at`, không phải
+mốc hiển thị được chỉnh bằng `+7 hour` trong Grafana.
+
+Nếu mỗi panel tự cộng/trừ timezone trong query, dashboard sẽ dễ bị sai khi đổi
+datasource, đổi timezone Grafana hoặc đổi session timezone của Spark/ClickHouse.
+Gốc vấn đề là phải thống nhất semantics timestamp trong pipeline trước khi query.
+Ngoài ra, cần tránh để Python driver tự diễn giải lại timezone khi collect
+`TimestampType` từ Spark.
+
+**Cách xử lý hoặc quyết định**
+
+Chuẩn hóa Spark SQL session timezone về UTC trong helper tạo SparkSession:
+
+```text
+spark.sql.session.timeZone = UTC
+```
+
+Sau đó sửa realtime metrics job để tạo `event_timestamp` từ
+`event.received_at`, fallback về `kafka_timestamp` nếu event cũ thiếu envelope:
+
+```python
+coalesce(
+    to_timestamp(col("event.received_at")),
+    col("kafka_timestamp"),
+).alias("event_timestamp")
+```
+
+ClickHouse vẫn lưu `DateTime` theo chuỗi UTC nhất quán. Grafana chỉ chịu trách
+nhiệm hiển thị theo timezone được chọn, không chứa logic sửa lệch timestamp.
+Khi insert aggregate realtime, `window_start` được format thành chuỗi UTC ngay
+trong Spark trước khi collect:
+
+```python
+date_format(
+    col("window_start"),
+    "yyyy-MM-dd HH:mm:ss",
+).alias("window_start")
+```
+
+**Bài học phỏng vấn**
+
+Không có một timestamp "đúng" cho mọi dashboard. Cần chọn timestamp theo câu hỏi:
+
+- Operational freshness: thường dùng ingestion time, processing time hoặc load
+  time.
+- Business event-time analytics: dùng source event time nếu muốn biết hành vi xảy
+  ra khi nào tại nguồn.
+- Debug pipeline: so sánh nhiều timestamp song song để phân biệt lỗi hiển thị,
+  lỗi timezone và dữ liệu đến muộn.
+- Khi đưa Spark timestamp sang hệ thống khác qua Python driver, cần cẩn thận với
+  `TimestampType` và `datetime` naive; tốt hơn là format hoặc cast rõ timezone ở
+  engine trước khi collect.
+
+Đây là ví dụ thực tế để giải thích vì sao không nên sửa timezone bằng phép cộng
+giờ rải rác trong từng Grafana query.
+
+**File hoặc bảng liên quan**
+
+- `scripts/realtime/stream_metrics_to_clickhouse.py`
+- `src/bluesky_pipeline/config/spark.py`
+- `src/bluesky_pipeline/transforms/event_envelope.py`
+- `bluesky.gold_event_volume_1m_stream`
+- `bluesky.gold_content_activity_1m_stream`
+- `bluesky.gold_engagement_1m_stream`
+- `bluesky.gold_network_activity_1m_stream`
+- `bluesky.gold_realtime_stream_batches`

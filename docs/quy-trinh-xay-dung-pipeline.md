@@ -775,16 +775,20 @@ panels.
 
 Grafana có các nhóm panel:
 
+- Pipeline freshness dạng Stat để nhìn nhanh dashboard còn nhận dữ liệu mới hay
+  không.
 - Event volume theo event type.
 - Content activity: post, original post, reply, post update, post delete.
 - Engagement: like, repost, reply.
 - Network activity: follow, unfollow, net follow.
-- Freshness: lần ghi ClickHouse gần nhất.
 - Batch health: batch duration, input rows, rows inserted by metric group,
   seconds since last batch.
 
-Các query time series đã được chỉnh để group theo business key và sort tăng dần
-theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chưa sorted.
+Các query time series đã được chỉnh để group theo business key, dùng đúng
+`content_activity_type` trong bảng serving và sort tăng dần theo thời gian, tránh
+lỗi Grafana không xử lý được dữ liệu chưa sorted. Các business window của hot
+path dùng ingestion timestamp `received_at` để phản ánh thời điểm pipeline nhận
+event, còn Spark batch health dùng processing/load time để quan sát runtime.
 
 **Các file liên quan**
 
@@ -800,6 +804,10 @@ theo thời gian, tránh lỗi Grafana không xử lý được dữ liệu chư
 - Time picker/timezone là nguyên nhân thường gặp khi query có dữ liệu trong
   ClickHouse nhưng Grafana báo no data.
 - Grafana time series cần output sort tăng dần theo cột time.
+- Với local demo/MVP, một dashboard gồm business time series và vài health panels
+  là đủ để chứng minh realtime serving path. Với production monitoring, cần bổ
+  sung Prometheus metrics, consumer lag, error rate, service health, alerts và
+  log tracing thay vì chỉ dựa vào dashboard ClickHouse.
 
 ## Bước 18: Chốt trạng thái sau realtime và lakehouse baseline
 
@@ -1532,7 +1540,10 @@ các nhóm:
 
 Dashboard dùng wide-format query cho time series để legend rõ ràng, tách count và
 ratio theo panel khi scale khác nhau, và giữ DQ panel cho các giới hạn dữ liệu
-quan sát được.
+quan sát được. Các panel còn thiếu ở lần rà cuối đã được bổ sung vào nhóm
+Network Growth và Data Quality; panel Actor Activity dùng subquery để tránh lỗi
+ClickHouse `ILLEGAL_AGGREGATION` khi tính tỷ lệ creator/engager từ alias
+aggregate.
 
 **Các file liên quan**
 
@@ -1866,6 +1877,14 @@ orchestrator. Lần chạy E2E incremental đã pass với normal state/no-op pa
 Gold incremental refresh passed
 Lakehouse incremental path passed
 ```
+
+Sau lần clean demo cuối, Silver đã có dữ liệu từ live pipeline, chạy
+`run_lakehouse_path_incremental.py --live-mode --ignore-state --gold-mode standard`
+đã refresh Gold modeled và Gold serving marts thành công. Dashboard
+`Bluesky Gold Analytics` trong Grafana đã có dữ liệu cho các nhóm Post
+Performance, Content Quality, Conversation Analytics, Actor Activity, Network
+Growth và Data Quality. Người học đã chụp lại ảnh màn hình dashboard realtime
+hot path và Gold analytics để dùng làm tư liệu giới thiệu dự án.
 
 Full rebuild path cũ `scripts/lakehouse/run_lakehouse_path.py` vẫn được giữ lại
 để bootstrap, rebuild hoặc recovery khi cần. Incremental path mới là đường vận

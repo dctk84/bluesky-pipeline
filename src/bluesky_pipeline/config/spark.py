@@ -13,6 +13,7 @@ SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "8")
 SPARK_DEFAULT_PARALLELISM = os.getenv("SPARK_DEFAULT_PARALLELISM", "8")
 SPARK_DRIVER_MEMORY = os.getenv("SPARK_DRIVER_MEMORY", "1g")
 SPARK_DRIVER_MAX_RESULT_SIZE = os.getenv("SPARK_DRIVER_MAX_RESULT_SIZE", "512m")
+SPARK_SQL_SESSION_TIMEZONE = os.getenv("SPARK_SQL_SESSION_TIMEZONE", "UTC")
 
 
 def create_spark_session(
@@ -40,6 +41,7 @@ def create_spark_session(
         .master(SPARK_MASTER)
         .config("spark.jars.packages", ",".join(packages))
         .config("spark.sql.shuffle.partitions", SPARK_SQL_SHUFFLE_PARTITIONS)
+        .config("spark.sql.session.timeZone", SPARK_SQL_SESSION_TIMEZONE)
         .config("spark.default.parallelism", SPARK_DEFAULT_PARALLELISM)
         .config("spark.driver.memory", SPARK_DRIVER_MEMORY)
         .config("spark.driver.maxResultSize", SPARK_DRIVER_MAX_RESULT_SIZE)
