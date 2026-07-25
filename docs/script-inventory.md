@@ -3,7 +3,8 @@
 Tài liệu này mô tả vai trò của các script trong thư mục `scripts/`.
 
 Mục tiêu là giúp người đọc biết script nào là entrypoint chính, script nào là
-bước con để debug, và script nào chỉ giữ lại để phục vụ học tập/discovery.
+bước con để debug, và script nào là utility phục vụ discovery hoặc kiểm chứng
+thiết kế.
 
 ## 1. Main entrypoints
 
@@ -148,9 +149,9 @@ Các script này phục vụ đưa dữ liệu vào Kafka hoặc ghi Bronze.
 - `scripts/ingestion/publish_sample_to_kafka.py`: publish một sample event vào Kafka để
   kiểm thử nhanh.
 
-## 5. Discovery/debug giữ lại cho học tập
+## 5. Discovery/debug utilities
 
-Các script này không nằm trên main path hiện tại, nhưng vẫn hữu ích để giải thích
+Các script này không nằm trên main path hiện tại, nhưng vẫn hữu ích để tái hiện
 quá trình khám phá dữ liệu và kiểm chứng từng lớp.
 
 - `scripts/discovery/jetstream_probe.py`: quan sát raw event từ Bluesky Jetstream.

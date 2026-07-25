@@ -6,11 +6,11 @@ Jetstream.
 Tài liệu kỹ thuật chi tiết:
 
 - [Tổng quan dự án](docs/tong-quan-du-an.md)
-- [Hướng dẫn làm việc với Codex](docs/huong-dan-lam-viec-voi-codex.md)
 - [Gold data model v1](docs/gold-data-model-v1.md)
 - [Gold analytics metrics v1](docs/gold-analytics-metrics-v1.md)
+- [Gold incremental refresh design](docs/gold-incremental-refresh-design.md)
+- [Silver schema v1](docs/silver-schema-v1.md)
 - [Script inventory](docs/script-inventory.md)
-- [Project walkthrough khi phỏng vấn](docs/phong-van-project-walkthrough.md)
 
 Project hiện được triển khai theo từng milestone nhỏ và có hai path phục vụ
 dashboard:
@@ -121,7 +121,7 @@ ICEBERG_HIVE_METASTORE_URI=thrift://localhost:9083
 
 ## Demo workflow cho máy local
 
-Với máy cá nhân/WSL, project demo theo hai phase độc lập để tránh chạy quá nhiều
+Với môi trường local/WSL, project demo theo hai phase độc lập để tránh chạy quá nhiều
 Spark application cùng lúc:
 
 ```text
@@ -316,7 +316,7 @@ ClickHouse.
 
 ## Known Limitations
 
-Project này là bản MVP/portfolio chạy trên máy local, chưa phải production
+Project này là bản MVP chạy trên máy local, chưa phải production
 deployment. Các giới hạn chính cần trình bày trung thực:
 
 - Spark hiện chạy ở `local[2]` để phù hợp tài nguyên WSL/local. Production nên
@@ -330,7 +330,7 @@ deployment. Các giới hạn chính cần trình bày trung thực:
   local, nhưng production nên tách tài nguyên và orchestration thay vì phụ thuộc
   thao tác thủ công.
 - State của Gold incremental hiện lưu bằng local JSON trong `data/state/`. Cách
-  này đủ cho học tập/demo, nhưng production nên dùng durable metadata store hoặc
+  này đủ cho local demo, nhưng production nên dùng durable metadata store hoặc
   orchestrator state.
 - Project chưa tuyên bố exactly-once end-to-end. Luồng hiện tại có checkpoint,
   deterministic keys và reconciliation, nhưng ClickHouse serving writes vẫn cần

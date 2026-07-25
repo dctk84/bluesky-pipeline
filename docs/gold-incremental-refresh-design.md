@@ -11,7 +11,7 @@ Trạng thái hiện tại: contract này đã được triển khai cho Gold fa
 dimensions và các Gold analytics serving marts v1. Entrypoint vận hành hiện tại
 là `scripts/lakehouse/run_lakehouse_path_incremental.py`, gọi orchestrator
 `scripts/gold/refresh/refresh_gold_incremental.py`. Tài liệu này vẫn giữ vai trò
-giải thích thiết kế, trade-off và cách trình bày incremental Gold khi phỏng vấn.
+giải thích thiết kế, trade-off và cách vận hành incremental Gold.
 
 ## 1. Bối cảnh
 
@@ -294,7 +294,7 @@ DELETE affected range/key -> INSERT rebuilt rows
 Sau khi pattern ổn định mới cân nhắc table engine hoặc partition strategy phức
 tạp hơn.
 
-## 11. Cách giải thích khi phỏng vấn
+## 11. Cách tóm tắt thiết kế
 
 Cách mô tả ngắn gọn:
 

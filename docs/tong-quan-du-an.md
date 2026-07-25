@@ -14,21 +14,12 @@ Tên mô tả ngắn:
 
 ## 2. Bối cảnh
 
-Dự án được xây dựng nhằm phục vụ mục tiêu học tập và portfolio cho vị trí
-Data Engineer/Data Platform Engineer.
+Dự án này mô phỏng một nền tảng streaming analytics hiện đại cho dữ liệu mạng xã
+hội công khai. Mục tiêu là thể hiện cách thiết kế một pipeline có khả năng ingest
+dữ liệu liên tục, lưu trữ dữ liệu lịch sử trong lakehouse, phục vụ query phân
+tích và hiển thị dashboard gần thời gian thực.
 
-Người thực hiện đã có một project batch Data Warehouse với các nội dung:
-
-- Ingest dữ liệu từ API và file.
-- Incremental loading.
-- Python ETL.
-- SQL Server Data Warehouse.
-- Dimensional modeling.
-- Fact và dimension tables.
-- SCD Type 1.
-- Power BI.
-
-Project hiện tại phải bổ sung các năng lực mà project batch chưa chứng minh rõ:
+Dự án tập trung vào các năng lực kỹ thuật sau:
 
 - Continuous streaming ingestion.
 - Message broker và event log.
@@ -41,7 +32,9 @@ Project hiện tại phải bổ sung các năng lực mà project batch chưa c
 - Checkpoint, replay và failure recovery.
 - Monitoring, data quality và platform operations.
 
-Project không được lặp lại bài toán batch order processing dưới một công nghệ khác.
+Dữ liệu nguồn được chọn là Bluesky Jetstream để tránh bài toán batch order
+processing quen thuộc và tạo ra các yêu cầu thực tế hơn về streaming, schema
+evolution, late data, replay và observability.
 
 ---
 
@@ -528,9 +521,14 @@ Cấu trúc hiện tại:
 ```text
 bluesky-pipeline/
 ├── docs/
-│   ├── huong-dan-lam-viec-voi-codex.md
 │   ├── tong-quan-du-an.md
-│   └── jetstream-schema-notes.md
+│   ├── jetstream-schema-notes.md
+│   ├── silver-schema-v1.md
+│   ├── gold-data-model-v1.md
+│   ├── gold-analytics-metrics-v1.md
+│   ├── gold-incremental-refresh-design.md
+│   ├── script-inventory.md
+│   └── assets/
 ├── src/
 │   └── bluesky_pipeline/
 │       ├── clients/
@@ -1718,9 +1716,9 @@ Dữ liệu công khai vẫn phải được xử lý có trách nhiệm.
 
 Nguyên tắc:
 
-- Không hiển thị danh tính tài khoản cụ thể trong portfolio.
+- Không hiển thị danh tính tài khoản cụ thể trong public demo.
 - Hash hoặc pseudonymize DID trong Silver/Gold.
-- Không xây tính năng profiling cá nhân.
+- Không xây tính năng account profiling.
 - Không giữ post text lâu hơn nhu cầu kỹ thuật.
 - Tôn trọng delete event.
 - Raw data có retention rõ ràng.
@@ -1908,7 +1906,7 @@ Mục tiêu:
 - Xác nhận Python.
 - Xác nhận Docker và Docker Compose.
 - Khởi tạo repository.
-- Thiết lập tài liệu hướng dẫn Codex.
+- Thiết lập tài liệu nền tảng cho project.
 
 Không triển khai Kafka hoặc Spark.
 
@@ -2160,7 +2158,7 @@ Các deliverables phù hợp cho milestone production-like tiếp theo:
 
 ---
 
-## 28. Các câu hỏi project phải trả lời được khi phỏng vấn
+## 28. Các câu hỏi kỹ thuật project cần trả lời được
 
 ### Streaming
 
