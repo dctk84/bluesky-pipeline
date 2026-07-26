@@ -105,30 +105,37 @@ bằng Trino, còn ClickHouse giữ các serving marts để dashboard truy vấ
 ## Repository Structure
 
 ```text
-src/bluesky_pipeline/
-  clients/      service clients, for example ClickHouse HTTP helper
-  config/       Kafka, Spark and Iceberg runtime configuration
-  schemas/      schema, table name, path and DDL contracts
-  state/        incremental refresh state contracts
-  transforms/   Bronze, Silver, Gold and event-envelope transformations
-
-scripts/
-  discovery/    source probing and schema discovery utilities
-  ingestion/    Kafka sample publishers and Bronze writer
-  e2e/          local live pipeline runner
-  lakehouse/    Silver/Gold build, check and lakehouse runners
-  gold/
-    build/      build Gold serving marts
-    load/       load marts into ClickHouse
-    check/      reconciliation and validation
-    refresh/    incremental refresh orchestration
-    common/     shared helpers for Gold scripts
-  realtime/     realtime fast-path metrics into ClickHouse
-  platform/     cleanup and local platform setup utilities
-
-docs/           project design docs and dashboard assets
-tests/          unit tests
-config/         Hive and Trino local configuration
+bluesky-pipeline/
+├── src/
+│   └── bluesky_pipeline/
+│       ├── clients/      # Helper giao tiếp service bên ngoài, ví dụ ClickHouse
+│       ├── config/       # Cấu hình runtime cho Kafka, Spark và Iceberg
+│       ├── schemas/      # Schema, table name, path contract và DDL dùng chung
+│       ├── state/        # Contract/state cho incremental refresh
+│       ├── transforms/   # Logic biến đổi Bronze, Silver, Gold và event envelope
+│       └── ingestion_gateway.py
+├── scripts/
+│   ├── discovery/        # Script probe nguồn và phân tích schema
+│   ├── ingestion/        # Script publish sample và ghi Bronze
+│   ├── e2e/              # Runner live pipeline cho môi trường local
+│   ├── lakehouse/        # Script build/check Silver, Gold modeled và lakehouse
+│   ├── gold/
+│   │   ├── build/        # Build Gold serving marts
+│   │   ├── load/         # Load marts vào ClickHouse
+│   │   ├── check/        # Reconciliation và validation
+│   │   ├── refresh/      # Orchestration cho Gold incremental refresh
+│   │   └── common/       # Helper dùng chung cho Gold scripts
+│   ├── realtime/         # Realtime fast-path metrics vào ClickHouse
+│   └── platform/         # Cleanup và setup object local
+├── config/
+│   ├── hive/             # Cấu hình Hive Metastore
+│   └── trino/            # Cấu hình Trino catalog
+├── docs/
+│   └── assets/           # Tài liệu thiết kế và hình ảnh dashboard/architecture
+├── tests/                # Unit tests
+├── docker-compose.yml    # Local runtime services
+├── requirements.txt      # Python dependencies
+└── README.md
 ```
 
 ## Data Model
