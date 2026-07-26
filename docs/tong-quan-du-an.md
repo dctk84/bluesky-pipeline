@@ -72,7 +72,7 @@ Project xây dựng một nền tảng có khả năng:
 
 Hệ thống phải tiếp nhận sự kiện liên tục thay vì chạy theo schedule.
 
-Cần chứng minh:
+Yêu cầu kỹ thuật:
 
 - WebSocket connection dài hạn.
 - Reconnect khi nguồn bị ngắt.
@@ -111,10 +111,10 @@ Spark Structured Streaming được sử dụng để:
 - Ghi dữ liệu chuẩn hóa vào Silver Iceberg.
 - Tạo aggregate phục vụ ClickHouse.
 
-Trong target production-like, Spark nên chạy qua Spark Standalone hoặc một
-resource manager tương đương để chứng minh distributed execution và resource
-isolation. Trong MVP local hiện tại, project dùng `SPARK_MASTER=local[2]` để phù
-hợp tài nguyên WSL và tránh oversubscribe khi chạy nhiều Spark application.
+Trong kiến trúc production-like, Spark nên chạy qua Spark Standalone hoặc một
+resource manager tương đương để có distributed execution và resource isolation.
+Trong phiên bản local hiện tại, project dùng `SPARK_MASTER=local[2]` để phù hợp
+tài nguyên WSL và tránh oversubscribe khi chạy nhiều Spark application.
 
 Trong lakehouse path, Spark là compute engine chính cho các đoạn xử lý dữ liệu:
 
@@ -174,7 +174,7 @@ Trino phục vụ:
 - Query SQL trực tiếp lên các bảng Iceberg.
 - Ad-hoc analytics trên Silver và Gold modeled tables.
 - Kiểm tra dữ liệu lakehouse mà không cần viết Spark job riêng cho từng câu hỏi.
-- Demo rõ lớp Query Engine Layer của kiến trúc lakehouse hiện đại.
+- Thể hiện rõ lớp Query Engine Layer của kiến trúc lakehouse hiện đại.
 
 Trino không thay thế Spark. Spark vẫn là compute engine cho streaming,
 transformation, backfill và build các bảng Silver/Gold. Trino cũng không thay thế
@@ -211,10 +211,10 @@ thúc rõ ràng:
 
 Airflow không được sử dụng để xử lý từng streaming event.
 Airflow cũng không thay thế live ingestion gateway hoặc Spark streaming consumer.
-Trong MVP local hiện tại, Airflow chưa được triển khai; Gold analytics refresh
-được chạy thủ công sau live pipeline. Trong milestone tiếp theo, Airflow phù hợp
-để schedule các job hữu hạn như `Silver Iceberg -> Gold modeled tables`, chạy
-Trino validation/query checkpoint, rồi `Gold modeled tables -> Gold
+Trong phiên bản local hiện tại, Airflow chưa được triển khai; Gold analytics
+refresh được chạy thủ công sau live pipeline. Trong hướng mở rộng tiếp theo,
+Airflow phù hợp để schedule các job hữu hạn như `Silver Iceberg -> Gold modeled
+tables`, chạy Trino validation/query checkpoint, rồi `Gold modeled tables -> Gold
 aggregate/serving marts -> ClickHouse` và các checkpoint sau load.
 
 ### 4.8. Observability
@@ -462,7 +462,8 @@ tái sử dụng ở nhiều đoạn xử lý.
 - PySpark.
 - Spark SQL.
 - Spark Structured Streaming.
-- Spark local mode cho MVP hiện tại; Spark Standalone cluster là hướng mở rộng.
+- Spark local mode cho phiên bản hiện tại; Spark Standalone cluster là hướng mở
+  rộng.
 - Spark UI.
 - Spark History Server.
 
@@ -489,7 +490,7 @@ tái sử dụng ở nhiều đoạn xử lý.
 
 ### 6.8. Orchestration
 
-- Apache Airflow cho milestone orchestration tiếp theo.
+- Apache Airflow cho hướng orchestration tiếp theo.
 
 ### 6.9. Monitoring
 
@@ -562,13 +563,13 @@ bluesky-pipeline/
 Vai trò:
 
 - `src/bluesky_pipeline/`: code Python có thể dùng lại trong pipeline.
-- `scripts/`: entrypoint và script chạy tay, được tách theo vai trò như
+- `scripts/`: entrypoint và utility script local, được tách theo vai trò như
   discovery, ingestion, lakehouse, gold, realtime và platform.
 - `tests/`: test cho các module có logic đáng kiểm chứng.
 - `docs/`: tài liệu thiết kế, phạm vi dự án, ghi chú schema và quyết định kỹ
   thuật.
 - `data/`: dữ liệu local sinh ra khi chạy probe hoặc sample; không commit.
-- `requirements.txt`: dependency Python cho milestone hiện tại.
+- `requirements.txt`: dependency Python cho phạm vi hiện tại.
 
 Package `src/bluesky_pipeline/` được tách theo các nhóm trách nhiệm chính:
 
@@ -594,8 +595,8 @@ Quy ước:
 - Không commit dữ liệu trong `data/`.
 - Không đặt sample JSONL trong `src/`.
 - Không để script discovery phát triển lẫn với logic pipeline lâu dài. Khi số
-  lượng script chạy tay tăng lên, cần tách sang thư mục riêng như `scripts/`.
-- Chỉ tạo thư mục mới khi có vai trò rõ ràng trong milestone hiện tại.
+  lượng utility script tăng lên, cần tách sang thư mục riêng như `scripts/`.
+- Chỉ tạo thư mục mới khi có vai trò rõ ràng trong phạm vi hiện tại.
 - Ưu tiên cấu trúc đơn giản trước, chỉ tách module/thư mục khi số lượng file hoặc
   độ phức tạp thật sự tăng.
 
@@ -615,7 +616,7 @@ Project sử dụng Jetstream cho mục đích:
 
 - Streaming analytics.
 - Informal metrics.
-- Data engineering demonstration.
+- Minh họa kiến trúc data engineering streaming.
 
 Project không coi Jetstream là authoritative archive.
 
@@ -716,7 +717,7 @@ Trino phục vụ:
 
 - Query SQL trực tiếp trên Silver và Gold modeled Iceberg tables.
 - Ad-hoc analytics và kiểm tra dữ liệu bằng SQL.
-- Demo lớp query engine của kiến trúc lakehouse.
+- Thể hiện vai trò query engine độc lập trong kiến trúc lakehouse.
 
 Trino không ghi thay Spark và không phục vụ dashboard realtime thay ClickHouse.
 Spark vẫn build/refresh dữ liệu; ClickHouse vẫn giữ metric serving marts cho
@@ -1704,9 +1705,8 @@ Các kiểm tra dự kiến:
 - Count giữa các layer không chênh lệch bất thường.
 - ClickHouse load count khớp aggregate tính lại từ Silver.
 
-Data quality không chỉ là unit test cho code.
-
-Nó phải kiểm tra dữ liệu đang chạy trong pipeline.
+Data quality không chỉ là unit test cho code; checkpoint cần kiểm tra dữ liệu
+đang chạy trong pipeline.
 
 ---
 
@@ -1716,7 +1716,7 @@ Dữ liệu công khai vẫn phải được xử lý có trách nhiệm.
 
 Nguyên tắc:
 
-- Không hiển thị danh tính tài khoản cụ thể trong public demo.
+- Không hiển thị danh tính tài khoản cụ thể trong dashboard hoặc tài liệu public.
 - Hash hoặc pseudonymize DID trong Silver/Gold.
 - Không xây tính năng account profiling.
 - Không giữ post text lâu hơn nhu cầu kỹ thuật.
@@ -1828,11 +1828,11 @@ Không thêm:
 - Flink khi Spark đang là compute engine.
 - Kubernetes trước khi Docker Compose architecture hoạt động.
 - Connector hoặc federated source chỉ thêm khi có nhu cầu query rõ ràng.
-- OpenMetadata chỉ để chụp giao diện.
+- OpenMetadata nếu chưa có metadata hoặc lineage use case rõ ràng.
 
 ### 23.2. Xây theo vertical slice
 
-Mỗi milestone phải tạo một luồng nhỏ chạy được.
+Mỗi phase triển khai phải tạo một luồng nhỏ chạy được.
 
 Ví dụ:
 
@@ -1852,7 +1852,7 @@ sau đó:
 Kafka → Spark → console
 ```
 
-Không dựng toàn bộ hạ tầng trước khi có data flow.
+Không dựng toàn bộ hạ tầng trước khi có data flow kiểm chứng được.
 
 ### 23.3. Source of truth rõ ràng
 
@@ -2099,7 +2099,7 @@ Chỉ dùng khi cần:
 
 ### OpenLineage/OpenMetadata
 
-Chỉ dùng khi cần chứng minh:
+Chỉ dùng khi cần:
 
 - Dataset lineage.
 - Ownership.
@@ -2133,7 +2133,7 @@ Không thuộc phạm vi core streaming analytics.
 
 ## 27. Deliverables cuối dự án
 
-Repository MVP hiện tại cần có:
+Deliverables của phiên bản hiện tại:
 
 - Docker Compose có thể chạy lại.
 - Hướng dẫn setup.
@@ -2145,9 +2145,9 @@ Repository MVP hiện tại cần có:
 - Unit tests.
 - Design decisions.
 - Trade-offs và limitations.
-- Demo video hoặc screenshots.
+- Dashboard screenshots hoặc walkthrough video.
 
-Các deliverables phù hợp cho milestone production-like tiếp theo:
+Deliverables cho hướng production-like tiếp theo:
 
 - Architecture diagram và data flow diagram dạng hình hóa chính thức.
 - Airflow DAGs cho Gold incremental, data quality, compaction và backfill.
@@ -2158,7 +2158,10 @@ Các deliverables phù hợp cho milestone production-like tiếp theo:
 
 ---
 
-## 28. Các câu hỏi kỹ thuật project cần trả lời được
+## 28. Architecture Review Checklist
+
+Checklist này dùng để rà soát các quyết định kỹ thuật chính của project và đảm
+bảo tài liệu có đủ thông tin giải thích kiến trúc.
 
 ### Streaming
 

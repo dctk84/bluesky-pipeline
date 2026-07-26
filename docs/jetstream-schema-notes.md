@@ -604,8 +604,8 @@ Những phần chưa triển khai ở bản gateway đầu tiên:
 - Metrics cho throughput, delivery failure và latency.
 - Backpressure handling khi Kafka hoặc downstream chậm.
 
-Vì vậy gateway hiện tại mới chứng minh được luồng live ingestion cơ bản, chưa phải
-ingestion gateway hoàn chỉnh.
+Gateway hiện tại bao phủ luồng live ingestion cơ bản, nhưng chưa phải ingestion
+gateway hoàn chỉnh.
 
 ## Ghi chú thiết kế
 

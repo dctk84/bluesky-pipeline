@@ -21,7 +21,7 @@ Realtime fast path vẫn giữ nhiệm vụ riêng:
 Kafka -> Spark Structured Streaming -> ClickHouse realtime marts -> Grafana
 ```
 
-Trạng thái hiện tại: năm serving marts v1 trong tài liệu này đã được implement,
+Trạng thái hiện tại: năm serving marts v1 trong tài liệu này đã được triển khai,
 load vào ClickHouse và đưa vào Gold incremental refresh:
 
 ```text
@@ -133,7 +133,7 @@ Các câu hỏi:
 
 **Mức ưu tiên**
 
-Cao nhất. Đây là bảng nên implement đầu tiên.
+Cao nhất. Đây là bảng trọng tâm của bộ Gold analytics v1.
 
 **Grain**
 
@@ -154,7 +154,7 @@ bởi `gold_fact_engagement_events.target_post_uri`.
 - Post bị delete có engagement khác post còn tồn tại không?
 - Text length có liên quan tới engagement không?
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 post_uri
@@ -219,7 +219,7 @@ Một dòng cho mỗi giờ event time.
 - Tỷ lệ update/delete theo giờ có bất thường không?
 - Text length trung bình theo giờ thay đổi ra sao?
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 window_start
@@ -264,7 +264,7 @@ Một dòng cho mỗi `reply_root_uri`.
 - Conversation kéo dài trong bao lâu?
 - Reply trong thread có bị delete nhiều không?
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 reply_root_uri
@@ -310,7 +310,7 @@ Một dòng cho mỗi `activity_date + actor_did`.
 - Actor nào nhận nhiều engagement?
 - Actor nào có hành vi cân bằng giữa create và engage?
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 activity_date
@@ -369,7 +369,7 @@ Một dòng cho mỗi `activity_date + target_actor_did`.
 - Net follow tăng/giảm thế nào theo ngày?
 - Có actor nào có unfollow spike không?
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 activity_date
@@ -388,9 +388,10 @@ last_follow_at
 - `target_actor_did` có thể null với unfollow nếu delete event không lookup được
   follow history; checkpoint cần theo dõi tỷ lệ null này.
 
-## 4. Thứ tự implement đề xuất
+## 4. Thứ tự triển khai v1
 
-Thứ tự nên đi từ bảng tạo nhiều insight nhất và dễ kiểm chứng nhất:
+Các serving marts v1 được triển khai theo thứ tự ưu tiên từ bảng tạo nhiều
+insight nhất và dễ kiểm chứng nhất:
 
 1. `gold_post_performance`
 2. `gold_content_quality_hourly`
@@ -398,7 +399,7 @@ Thứ tự nên đi từ bảng tạo nhiều insight nhất và dễ kiểm ch�
 4. `gold_actor_activity_daily`
 5. `gold_network_growth_daily`
 
-Lý do chọn `gold_post_performance` đầu tiên:
+Lý do `gold_post_performance` là mart ưu tiên cao nhất:
 
 - Dùng trực tiếp `gold_dim_posts` và `gold_fact_engagement_events`, hai bảng Gold
   modeled đã có rõ nhất.
@@ -406,9 +407,9 @@ Lý do chọn `gold_post_performance` đầu tiên:
   đến nhanh hay chậm, reply khác original post ra sao.
 - Có thể thay thế và mở rộng bảng `gold_post_engagement_summary` cũ.
 
-## 5. Dashboard gợi ý
+## 5. Dashboard coverage
 
-Các panel Grafana nên ưu tiên:
+Dashboard Gold Analytics bao phủ các nhóm panel:
 
 - Top posts by engagement score.
 - Like vs repost mix by top posts.

@@ -4,8 +4,8 @@ Tài liệu này mô tả thiết kế Silver schema ban đầu cho dữ liệu 
 Bronze trên MinIO.
 
 Mục tiêu của Silver v1 là chuẩn hóa các commit event chính thành bảng dễ query,
-dễ validate và làm nguồn cho Gold analytics sau này. Đây chưa phải schema cuối
-cùng; schema sẽ tiếp tục được điều chỉnh khi có thêm dữ liệu và use case.
+dễ validate và làm nguồn cho Gold analytics. Schema có thể tiếp tục được điều
+chỉnh khi có thêm dữ liệu và use case.
 
 Trạng thái hiện tại: Silver v1 đã được materialize bằng Apache Iceberg trên MinIO
 và là source of truth của lakehouse path cho các bảng commit event chính. Tài
@@ -26,8 +26,8 @@ s3a://bluesky-lake/bronze/bluesky_identity_events
 s3a://bluesky-lake/bronze/bluesky_account_events
 ```
 
-Silver v1 trong bước đầu chỉ xử lý commit events. Identity/account events sẽ có
-thiết kế Silver riêng khi triển khai bài toán account lifecycle.
+Silver v1 xử lý commit events. Identity/account events nằm ngoài scope hiện tại
+và cần thiết kế Silver riêng khi triển khai bài toán account lifecycle.
 
 Namespace/table hiện tại:
 
@@ -195,5 +195,5 @@ Các phần chưa xử lý trong Silver v1:
 - Account lifecycle Silver tables.
 - Hashtag, language và shared domain extraction.
 
-Những phần này sẽ được bổ sung sau khi có Silver batch/streaming job đầu tiên chạy
-được từ Bronze.
+Các phần này nằm ngoài scope Silver v1 và có thể được bổ sung khi cần mở rộng
+khả năng xử lý dữ liệu sạch.

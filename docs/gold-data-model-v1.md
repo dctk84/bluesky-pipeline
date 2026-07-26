@@ -74,7 +74,7 @@ Bảng Gold modeled v1:
 - `gold_fact_engagement_events`
 - `gold_fact_network_events`
 
-Bảng Gold aggregate/serving sẽ được thiết kế chi tiết trong:
+Bảng Gold aggregate/serving được mô tả chi tiết trong:
 
 - `docs/gold-analytics-metrics-v1.md`
 
@@ -104,7 +104,7 @@ actor_did
 - `silver_follows.target_actor_did`
 - `silver_deleted_records.repository_did`
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 actor_did
@@ -120,8 +120,8 @@ source_event_count
 - Bảng này chưa có handle/display name vì nguồn hiện tại chỉ có DID.
 - `first_seen_at` và `last_seen_at` dùng để biết actor xuất hiện trong pipeline
   từ khi nào đến khi nào.
-- Nếu sau này ingest identity/account events, bảng này có thể được enrich thêm
-  handle, display name hoặc trạng thái account.
+- Khi bổ sung identity/account events, bảng này có thể được enrich thêm handle,
+  display name hoặc trạng thái account.
 
 ## 5. Bảng `gold_dim_posts`
 
@@ -141,7 +141,7 @@ post_uri
 - `silver_posts`
 - `silver_deleted_records` với `collection = 'app.bsky.feed.post'`
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 post_uri
@@ -192,7 +192,7 @@ content_uri + content_event_type + jetstream_time_us
 - `silver_posts`
 - `silver_deleted_records` với `collection = 'app.bsky.feed.post'`
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 content_event_id
@@ -249,15 +249,16 @@ Một dòng cho mỗi engagement event.
 engagement_event_id
 ```
 
-Với create event, `engagement_event_id` có thể dùng `engagement_uri`. Với delete
-event trong tương lai, có thể dựng từ `record_uri + event_type + jetstream_time_us`.
+Với create event, `engagement_event_id` có thể dùng `engagement_uri`. Khi mở rộng
+model delete event, id có thể dựng từ
+`record_uri + event_type + jetstream_time_us`.
 
 **Nguồn Silver**
 
 - `silver_engagements`
 - `silver_deleted_records` với collection like/repost nếu cần model delete event
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 engagement_event_id
@@ -296,9 +297,9 @@ repost_delete
 
 - V1 ưu tiên create events vì `silver_engagements` hiện đã có đầy đủ
   `subject_uri` để join về `gold_dim_posts`.
-- Delete like/repost từ `silver_deleted_records` có thể thiếu `subject_uri`, nên
-  nếu cần model delete chính xác hơn thì phải lookup từ engagement history hoặc
-  giữ thêm mapping ở Silver.
+- Delete like/repost từ `silver_deleted_records` có thể thiếu `subject_uri`.
+  Mô hình delete chính xác hơn cần lookup từ engagement history hoặc giữ thêm
+  mapping ở Silver.
 
 ## 8. Bảng `gold_fact_network_events`
 
@@ -320,7 +321,7 @@ id có thể dựng từ `record_uri + event_type + jetstream_time_us`.
 - `silver_follows`
 - `silver_deleted_records` với `collection = 'app.bsky.graph.follow'`
 
-**Cột đề xuất**
+**Cột chính**
 
 ```text
 network_event_id
@@ -406,7 +407,7 @@ repost_count
 engagement_count
 ```
 
-## 10. Thứ tự triển khai đề xuất
+## 10. Trình tự triển khai v1
 
 1. Tạo contract metadata cho Gold Iceberg namespace và table names.
 2. Viết transformation dùng chung để build Gold modeled từ Silver Iceberg.

@@ -3,9 +3,8 @@
 Tài liệu này mô tả hướng tiến hóa lớp Gold từ full rebuild sang incremental
 batch/micro-batch trong project `bluesky-pipeline`.
 
-Mục tiêu của tài liệu là chốt contract thiết kế trước khi implement, để tránh
-nhầm lẫn giữa streaming ingestion, incremental lakehouse refresh và realtime
-serving.
+Mục tiêu của tài liệu là ghi lại contract thiết kế để phân biệt rõ streaming
+ingestion, incremental lakehouse refresh và realtime serving.
 
 Trạng thái hiện tại: contract này đã được triển khai cho Gold facts, Gold
 dimensions và các Gold analytics serving marts v1. Entrypoint vận hành hiện tại
@@ -30,7 +29,7 @@ Cách này phù hợp với local MVP vì đơn giản, dễ kiểm chứng và 
 còn thay đổi. Tuy nhiên khi dữ liệu lớn hơn, mỗi lần chạy lại toàn bộ Gold modeled
 và load lại toàn bộ ClickHouse serving marts sẽ không tối ưu.
 
-Hướng đã chốt là chuyển Gold sang incremental batch/micro-batch: xử lý thường
+Thiết kế hiện tại chuyển Gold sang incremental batch/micro-batch: xử lý thường
 xuyên phần dữ liệu mới từ Silver và chỉ refresh các partition/entity bị ảnh
 hưởng.
 
@@ -42,8 +41,8 @@ refresh để:
 - Giảm lượng dữ liệu phải scan và ghi lại mỗi lần chạy.
 - Tránh để dữ liệu mới từ Silver tồn đọng quá lâu trước khi lên Gold.
 - Giữ khả năng rebuild và reconciliation của lakehouse path.
-- Phù hợp hơn với cách vận hành production-like nhưng vẫn đủ đơn giản cho môi
-  trường học/local.
+- Phù hợp hơn với cách vận hành production-like trong khi vẫn giữ phạm vi đủ gọn
+  cho môi trường local.
 
 ## 3. Nguyên tắc thiết kế
 
@@ -98,11 +97,12 @@ Gold incremental refresh có thể được trigger theo một trong các cách:
 
 - Chạy định kỳ ngắn, ví dụ mỗi 5 phút, 15 phút hoặc 1 giờ.
 - Chạy sau khi Silver streaming đã ghi xong một số micro-batch.
-- Sau này orchestrate bằng Airflow cho các workflow có điểm bắt đầu và kết thúc
-  rõ ràng.
+- Orchestration bằng Airflow cho các workflow có điểm bắt đầu và kết thúc rõ
+  ràng.
 
-Trong giai đoạn hiện tại, chưa cần dựng Airflow ngay. Có thể bắt đầu bằng một
-script chạy tay để kiểm chứng logic incremental, sau đó mới đưa vào orchestration.
+Airflow nằm ngoài phạm vi triển khai hiện tại. Incremental refresh được kích hoạt
+bằng script để giữ local runtime gọn nhẹ, sau đó có thể đưa vào orchestration khi
+cần scheduling, retry và run history.
 
 ## 6. Watermark và lookback
 
@@ -223,8 +223,8 @@ Một số lựa chọn kỹ thuật có thể cân nhắc sau:
 - Materialized view nếu logic aggregation phù hợp và không cần correction phức
   tạp.
 
-Trong project hiện tại, bước đầu nên chọn phương án đơn giản, dễ kiểm chứng:
-delete affected range/key rồi insert lại dữ liệu tương ứng.
+Phiên bản hiện tại sử dụng phương án đơn giản, dễ kiểm chứng: delete affected
+range/key rồi insert lại dữ liệu tương ứng.
 
 ## 9. Reconciliation incremental
 
@@ -238,65 +238,62 @@ checkpoint theo phạm vi incremental:
 - Check ClickHouse serving khớp với Gold staging hoặc Gold modeled trong phạm vi
   vừa refresh.
 
-Full reconciliation vẫn hữu ích nhưng nên dùng như checkpoint định kỳ hoặc trước
-demo lớn, không nhất thiết chạy sau mọi micro-batch.
+Full reconciliation vẫn hữu ích như checkpoint định kỳ hoặc trước các lần kiểm
+thử quan trọng, không nhất thiết chạy sau mọi micro-batch.
 
-## 10. Lộ trình triển khai đề xuất
+## 10. Trạng thái triển khai
 
-### Giai đoạn 1: Chốt incremental contract
+### Giai đoạn 1: Incremental contract
 
-- Tạo tài liệu thiết kế này.
-- Xác định key, grain và affected scope cho từng nhóm bảng.
-- Giữ full rebuild path hiện tại làm baseline an toàn.
+- Contract thiết kế đã được ghi lại trong tài liệu này.
+- Key, grain và affected scope đã được xác định cho từng nhóm bảng.
+- Full rebuild path vẫn được giữ làm baseline kiểm chứng và fallback.
 
-### Giai đoạn 2: Implement incremental cho Gold fact tables
+### Giai đoạn 2: Gold fact tables
 
-Làm trước nhóm fact vì dễ hơn dimension và mart:
+Nhóm fact được refresh incremental từ Silver rows mới:
 
 ```text
 Silver new rows -> Gold fact events -> merge/append by event id -> key check
 ```
 
-Bảng mục tiêu:
+Bảng đã triển khai:
 
 - `gold_fact_content_events`
 - `gold_fact_engagement_events`
 - `gold_fact_network_events`
 
-### Giai đoạn 3: Implement incremental cho dimensions
+### Giai đoạn 3: Gold dimension tables
 
-Recompute và merge state cho affected business keys:
+Dimension state được recompute và merge theo affected business keys:
 
 - `post_uri`
 - `actor_did`
 
-### Giai đoạn 4: Implement incremental cho analytics marts
+### Giai đoạn 4: Analytics serving marts
 
-Bắt đầu với mart có grain thời gian rõ nhất:
-
-- `gold_content_quality_hourly`
-
-Sau đó nhân pattern sang:
+Pattern incremental đã được áp dụng cho các marts:
 
 - `gold_actor_activity_daily`
 - `gold_network_growth_daily`
 - `gold_post_performance`
+- `gold_content_quality_hourly`
 - `gold_thread_conversation_summary`
 
-### Giai đoạn 5: Incremental ClickHouse load
+### Giai đoạn 5: ClickHouse incremental load
 
-Thay truncate/load full bằng replace affected scope:
+ClickHouse load sử dụng replace affected scope thay cho truncate/load full:
 
 ```text
 DELETE affected range/key -> INSERT rebuilt rows
 ```
 
-Sau khi pattern ổn định mới cân nhắc table engine hoặc partition strategy phức
-tạp hơn.
+Table engine hoặc partition strategy phức tạp hơn có thể được đánh giá sau khi
+khối lượng dữ liệu và query pattern rõ hơn.
 
-## 11. Cách tóm tắt thiết kế
+## 11. Tóm tắt thiết kế
 
-Cách mô tả ngắn gọn:
+Mô tả ngắn:
 
 ```text
 Project là streaming lakehouse với hybrid serving architecture. Dữ liệu được
@@ -306,7 +303,7 @@ không full streaming toàn bộ mà dùng incremental batch/micro-batch để x
 dedup, late data, update/delete, join và reconciliation một cách kiểm soát hơn.
 ```
 
-Điểm cần nhấn mạnh:
+Đặc điểm chính:
 
 - Streaming project không có nghĩa mọi layer đều phải streaming.
 - Gold analytical layer thường cần consistency, correction và rebuildability.

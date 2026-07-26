@@ -2,20 +2,19 @@
 
 Tài liệu này mô tả vai trò của các script trong thư mục `scripts/`.
 
-Mục tiêu là giúp người đọc biết script nào là entrypoint chính, script nào là
-bước con để debug, và script nào là utility phục vụ discovery hoặc kiểm chứng
-thiết kế.
+Tài liệu phân loại script theo vai trò vận hành: entrypoint chính, bước con để
+debug, utility phục vụ discovery và checkpoint kiểm chứng thiết kế.
 
 ## 1. Main entrypoints
 
-Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra project.
+Các script này là entrypoint chính cho local run hoặc kiểm tra project.
 
 - `scripts/lakehouse/run_lakehouse_path.py`: chạy toàn bộ lakehouse
   path, gồm build Silver Iceberg, check Silver, build/check Gold modeled, refresh
   Gold serving và check Gold serving.
 - `scripts/lakehouse/run_lakehouse_path_incremental.py`: chạy phase Gold
   incremental sau khi live pipeline đã ghi dữ liệu vào Silver Iceberg; đây là
-  entrypoint chính cho demo Gold dashboard trên máy local.
+  entrypoint chính để refresh Gold dashboard trên máy local.
 - `scripts/gold/refresh/refresh_gold_incremental.py`: orchestrator chính của
   Gold incremental, chạy facts, dimensions, Gold modeled check và các serving
   marts theo đúng thứ tự phụ thuộc.
@@ -29,7 +28,7 @@ Các script này là lệnh nên ưu tiên chạy khi demo hoặc kiểm tra pro
   Bronze writer, realtime metrics stream và Bronze-to-Silver streaming job.
 
 Trong môi trường local, không có entrypoint gộp hot path và Gold path chạy song
-song. Demo chuẩn của project là chạy `scripts/e2e/run_live_pipeline.py`, dừng
+song. Workflow local mặc định là chạy `scripts/e2e/run_live_pipeline.py`, dừng
 pipeline khi đã ingest đủ dữ liệu, rồi chạy
 `scripts/lakehouse/run_lakehouse_path_incremental.py` để refresh Gold modeled và
 Gold serving marts.
