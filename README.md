@@ -378,11 +378,3 @@ Các checkpoint dữ liệu chính:
 - Iceberg maintenance jobs như compaction và snapshot expiration.
 - Extended analytics như hashtags, shared domains, language activity hoặc account
   lifecycle modeling.
-
-## License
-
-Repository hiện chưa có license file.
-
-## Author
-
-[dctk84](https://github.com/dctk84)
